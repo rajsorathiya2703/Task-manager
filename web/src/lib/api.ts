@@ -25,11 +25,17 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const isAuthRequest =
+      originalRequest?.url?.includes('/auth/refresh') ||
+      originalRequest?.url?.includes('/auth/guest') ||
+      originalRequest?.url?.includes('/auth/google') ||
+      originalRequest?.url?.includes('/auth/logout');
+
     if (
       error.response?.status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/guest')
+      !isAuthRequest
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -43,20 +49,13 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // Try refresh token first
-        await api.post('/auth/refresh');
+        // Try refresh token using plain axios to prevent recursive interceptor calls
+        await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
         processQueue();
         return api(originalRequest);
       } catch (refreshErr) {
-        // If refresh fails, fallback to guest session creation
-        try {
-          await api.post('/auth/guest');
-          processQueue();
-          return api(originalRequest);
-        } catch (guestErr) {
-          processQueue(guestErr);
-          return Promise.reject(guestErr);
-        }
+        processQueue(refreshErr);
+        return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
