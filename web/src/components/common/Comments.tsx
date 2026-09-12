@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck } from "lucide-react";
+import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
 import { uploadGenericResource, fetchMe, fetchEmployees, API_URL } from "../../lib/api";
 
@@ -60,6 +60,10 @@ export interface CommentsProps {
   maxHeight?: string;
   /** Unique ID for comment thread to track unread state */
   threadId?: string;
+  /** Whether current user is allowed to write comments (default: true) */
+  canComment?: boolean;
+  /** Message shown when commenting is disabled */
+  cannotCommentMessage?: string;
 }
 
 /* ─── helpers ────────────────────────────────────────────────── */
@@ -195,6 +199,8 @@ export function Comments({
   placeholder = "Add a comment... (Type @ to mention)",
   maxHeight = "500px",
   threadId,
+  canComment = true,
+  cannotCommentMessage,
 }: CommentsProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [newComment, setNewComment] = useState("");
@@ -808,54 +814,61 @@ export function Comments({
           </div>
         )}
 
-        <div className="flex items-end gap-2 text-muted-foreground border border-border rounded-xl px-3 py-2 bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all">
-          <textarea
-            ref={inputRef}
-            value={newComment}
-            onChange={handleInputChange}
-            onClick={(e) => checkMentionTrigger(newComment, (e.target as HTMLTextAreaElement).selectionStart)}
-            onKeyUp={(e) => checkMentionTrigger(newComment, (e.target as HTMLTextAreaElement).selectionStart)}
-            placeholder={placeholder}
-            className="flex-1 text-sm bg-transparent resize-none focus:outline-none min-h-[40px] max-h-[120px] custom-scrollbar py-2 text-foreground"
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-          />
-          <div className="flex items-center gap-1.5 pb-2">
-            {enableAttachments && (
-              <>
-                <input type="file" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+        {canComment ? (
+          <div className="flex items-end gap-2 text-muted-foreground border border-border rounded-xl px-3 py-2 bg-card shadow-sm focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all">
+            <textarea
+              ref={inputRef}
+              value={newComment}
+              onChange={handleInputChange}
+              onClick={(e) => checkMentionTrigger(newComment, (e.target as HTMLTextAreaElement).selectionStart)}
+              onKeyUp={(e) => checkMentionTrigger(newComment, (e.target as HTMLTextAreaElement).selectionStart)}
+              placeholder={placeholder}
+              className="flex-1 text-sm bg-transparent resize-none focus:outline-none min-h-[40px] max-h-[120px] custom-scrollbar py-2 text-foreground"
+              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+            />
+            <div className="flex items-center gap-1.5 pb-2">
+              {enableAttachments && (
+                <>
+                  <input type="file" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                    title="Attach file"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              {enableEmoji && (
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                   className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                  title="Attach file"
+                  title="Add emoji"
                 >
-                  <Paperclip className="w-4 h-4" />
+                  <Smile className="w-4 h-4" />
                 </button>
-              </>
-            )}
-            {enableEmoji && (
+              )}
               <button
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                title="Add emoji"
+                onClick={handleSubmit}
+                disabled={(!newComment.trim() && attachments.length === 0) || isSubmitting}
+                className="p-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md disabled:opacity-50 disabled:hover:bg-primary/10 transition-colors ml-1"
               >
-                <Smile className="w-4 h-4" />
+                <Send className="w-4 h-4" />
               </button>
-            )}
-            <button
-              onClick={handleSubmit}
-              disabled={(!newComment.trim() && attachments.length === 0) || isSubmitting}
-              className="p-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md disabled:opacity-50 disabled:hover:bg-primary/10 transition-colors ml-1"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 p-3.5 text-xs text-muted-foreground bg-muted/30 border border-border/80 rounded-xl">
+            <Lock className="w-4 h-4 text-muted-foreground/70 shrink-0" />
+            <span>{cannotCommentMessage || "Only team members can participate in this discussion."}</span>
+          </div>
+        )}
       </div>
     </div>
   );

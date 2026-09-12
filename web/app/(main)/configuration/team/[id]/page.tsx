@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
-import { fetchTeamById, createTeam, fetchEmployees, api } from "../../../../../src/lib/api";
+import { fetchTeamById, createTeam, fetchEmployees, fetchMe, api } from "../../../../../src/lib/api";
 import { TeamComments } from "../../../../../src/components/team/TeamComments";
 import { getUserDisplayName } from "../../../../../src/components/common/Comments";
 import { TeamLiveTimeline } from "../../../../../src/components/team/TeamLiveTimeline";
@@ -49,12 +49,17 @@ export default function TeamDetailPage({
   const [originalData, setOriginalData] = useState<any>(null);
   const [teamData, setTeamData] = useState<any>(EMPTY_TEAM);
   const [allEmployees, setAllEmployees] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
     const init = async () => {
       try {
-        const emps = await fetchEmployees();
+        const [emps, me] = await Promise.all([
+          fetchEmployees().catch(() => []),
+          fetchMe().catch(() => null),
+        ]);
         setAllEmployees(emps || []);
+        setCurrentUser(me);
 
         if (!isNew) {
           const data = await fetchTeamById(id);
@@ -71,6 +76,45 @@ export default function TeamDetailPage({
     };
     init();
   }, [id, isNew]);
+
+  // Check if current logged-in user is a member or team lead of this team
+  const isMember = (() => {
+    if (isNew) return true;
+    if (!currentUser) return true; // optimistic default while loading
+
+    const userIdStr = (currentUser._id || currentUser.id)?.toString();
+    const userEmail = currentUser.email ? currentUser.email.trim().toLowerCase() : null;
+
+    const userEmployee = allEmployees.find((e: any) => {
+      const empUserId = (e.userId?._id || e.userId)?.toString();
+      if (userIdStr && empUserId === userIdStr) return true;
+      if (userEmail && e.email && e.email.trim().toLowerCase() === userEmail) return true;
+      return false;
+    });
+    const userEmpIdStr = userEmployee?._id?.toString();
+
+    // Check team lead
+    const leadObj = teamData.teamLead;
+    if (leadObj) {
+      const leadIdStr = (leadObj._id || leadObj).toString();
+      if (userEmpIdStr && leadIdStr === userEmpIdStr) return true;
+      if (userIdStr && leadIdStr === userIdStr) return true;
+      if (userEmail && leadObj.email && leadObj.email.trim().toLowerCase() === userEmail) return true;
+    }
+
+    // Check members
+    if (Array.isArray(teamData.members)) {
+      for (const m of teamData.members) {
+        if (!m) continue;
+        const memberIdStr = (m._id || m).toString();
+        if (userEmpIdStr && memberIdStr === userEmpIdStr) return true;
+        if (userIdStr && memberIdStr === userIdStr) return true;
+        if (userEmail && m.email && m.email.trim().toLowerCase() === userEmail) return true;
+      }
+    }
+
+    return false;
+  })();
 
   // Detect changes (ignore comments — they save inline)
   const hasChanges =
@@ -527,6 +571,7 @@ export default function TeamDetailPage({
                 teamId={id}
                 comments={teamData.comments || []}
                 setTeamData={setTeamData}
+                isMember={isMember}
                 mentionMembers={
                   (teamData.members || []).map((m: any) => ({
                     name: getUserDisplayName(m),

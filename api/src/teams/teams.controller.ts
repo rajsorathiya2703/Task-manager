@@ -17,8 +17,9 @@ export class TeamsController {
 
   @Get()
   @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
-  findAll() {
-    return this.teamsService.findAll();
+  findAll(@Request() req) {
+    const userId = req.user?.id || req.user?._id;
+    return this.teamsService.findAll(userId?.toString(), req.user?.email);
   }
 
   @Get(':id')
@@ -50,14 +51,15 @@ export class TeamsController {
   @Post(':id/comments')
   @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
   addComment(@Request() req, @Param('id') id: string, @Body() commentData: any) {
+    const userId = req.user?.id || req.user?._id;
     const user = {
       name: req.user.name || req.user.email || 'User',
       avatarUrl: req.user.avatarUrl,
-      userId: (req.user.id || req.user._id)?.toString(),
+      userId: userId?.toString(),
       email: req.user.email,
     };
     const newComment = { ...commentData, user };
-    return this.teamsService.addComment(id, newComment);
+    return this.teamsService.addComment(id, newComment, userId?.toString(), req.user?.email);
   }
 
   @Patch(':id/comments/:commentId')

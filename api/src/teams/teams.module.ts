@@ -4,13 +4,15 @@ import { TeamsService } from './teams.service';
 import { TeamsController } from './teams.controller';
 import { Team, TeamSchema } from './schemas/team.schema';
 import { Task, TaskSchema } from '../tasks/schemas/task.schema';
+import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import { CommentsModule } from '../comments/comments.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Team.name, schema: TeamSchema },
-      { name: Task.name, schema: TaskSchema }
+      { name: Task.name, schema: TaskSchema },
+      { name: Employee.name, schema: EmployeeSchema },
     ]),
     CommentsModule,
   ],
