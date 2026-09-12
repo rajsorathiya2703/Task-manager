@@ -5,6 +5,8 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../users/users.service';
+import { EmployeesService } from '../employees/employees.service';
 
 @Controller('auth')
 export class AuthController {
@@ -13,6 +15,8 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
+    private readonly usersService: UsersService,
+    private readonly employeesService: EmployeesService,
   ) {}
 
   private setCookies(res: Response, accessToken: string, refreshToken: string) {
@@ -81,7 +85,35 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  getMe(@Req() req: Request) {
-    return (req as any).user;
+  async getMe(@Req() req: Request) {
+    const user = (req as any).user;
+    if (!user) return null;
+
+    const userId = user._id?.toString() || user.id;
+    const email = user.email;
+
+    let employee: any = null;
+    if (userId) {
+      employee = await this.employeesService.findByUserId(userId);
+    }
+    if (!employee && email) {
+      employee = await this.employeesService.findByEmail(email);
+      if (employee && !employee.userId && userId) {
+        await this.employeesService.linkUserByEmail(email, user._id);
+      }
+    }
+
+    const hasEmployee = Boolean(employee);
+    if (user.is_employee !== hasEmployee && userId) {
+      user.is_employee = hasEmployee;
+      await this.usersService.updateUser(userId, { is_employee: hasEmployee });
+    }
+
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    userObj.is_employee = hasEmployee;
+    if (employee) {
+      userObj.employeeId = employee._id;
+    }
+    return userObj;
   }
 }

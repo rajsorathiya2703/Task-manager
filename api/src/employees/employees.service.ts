@@ -15,10 +15,11 @@ export class EmployeesService {
   async create(createEmployeeDto: any): Promise<Employee> {
     if (createEmployeeDto.email && typeof createEmployeeDto.email === 'string') {
       createEmployeeDto.email = createEmployeeDto.email.trim().toLowerCase();
-      // If user exists with this email, link userId
+      // If user exists with this email, link userId and set is_employee
       const existingUser = await this.usersService.findByEmail(createEmployeeDto.email);
       if (existingUser) {
         createEmployeeDto.userId = existingUser._id;
+        await this.usersService.updateUser(existingUser._id.toString(), { is_employee: true });
       }
     }
     const newEmployee = new this.employeeModel(createEmployeeDto);
@@ -53,11 +54,16 @@ export class EmployeesService {
   async linkUserByEmail(email: string, userId: any): Promise<Employee | null> {
     if (!email || !email.trim()) return null;
     const cleanEmail = email.trim();
-    return this.employeeModel.findOneAndUpdate(
+    const updated = await this.employeeModel.findOneAndUpdate(
       { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
       { $set: { userId } },
       { new: true },
     ).exec();
+
+    if (updated && userId) {
+      await this.usersService.updateUser(userId.toString(), { is_employee: true });
+    }
+    return updated;
   }
 
   async update(id: string, updateEmployeeDto: any): Promise<Employee> {
@@ -66,6 +72,9 @@ export class EmployeesService {
         updateEmployeeDto.email = updateEmployeeDto.email.trim().toLowerCase();
         const matchingUser = await this.usersService.findByEmail(updateEmployeeDto.email);
         updateEmployeeDto.userId = matchingUser ? matchingUser._id : null;
+        if (matchingUser) {
+          await this.usersService.updateUser(matchingUser._id.toString(), { is_employee: true });
+        }
       } else {
         updateEmployeeDto.userId = null;
       }
@@ -87,6 +96,12 @@ export class EmployeesService {
     const deletedEmployee = await this.employeeModel.findByIdAndDelete(id).exec();
     if (!deletedEmployee) {
       throw new NotFoundException(`Employee #${id} not found`);
+    }
+    if (deletedEmployee.userId) {
+      const remaining = await this.employeeModel.findOne({ userId: deletedEmployee.userId }).exec();
+      if (!remaining) {
+        await this.usersService.updateUser(deletedEmployee.userId.toString(), { is_employee: false });
+      }
     }
     return deletedEmployee;
   }

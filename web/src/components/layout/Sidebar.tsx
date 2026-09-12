@@ -19,6 +19,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
 
   // Module read permissions
+  const isEmployee = Boolean(user?.is_employee);
   const hasTasksAccess = can("tasks", "read");
   const hasProjectsAccess = can("projects", "read");
   const hasTimelineAccess = can("tasks", "read") || can("projects", "read");
@@ -28,7 +29,7 @@ export function Sidebar({ user }: SidebarProps) {
   const hasUsersAccess = can("settings", "read");
   const hasUserGroupsAccess = can("settings", "read");
 
-  const hasWorkspaceSection = hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
+  const hasWorkspaceSection = isEmployee || hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
   const hasConfigurationSection =
     hasTeamAccess || hasEmployeesAccess || hasUsersAccess || hasUserGroupsAccess;
 
@@ -100,19 +101,21 @@ export function Sidebar({ user }: SidebarProps) {
               </div>
               
               <nav className="space-y-1">
-                <Link
-                  href="/dashboard"
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    pathname.startsWith("/dashboard")
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                  }`}
-                >
-                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                  </svg>
-                  Dashboard
-                </Link>
+                {isEmployee && (
+                  <Link
+                    href="/dashboard"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname.startsWith("/dashboard")
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                    Dashboard
+                  </Link>
+                )}
                 {hasTasksAccess && (
                   <Link
                     href="/tasks"

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Task } from '../tasks/schemas/task.schema';
@@ -96,8 +96,12 @@ export class DashboardService {
         .findOne({ email: { $regex: new RegExp(`^${email.trim()}$`, 'i') } })
         .exec();
     }
-    if (!selectedEmployee && allEmployees.length > 0) {
-      selectedEmployee = allEmployees[0];
+
+    // Require an active employee profile: do NOT fall back to other users' employee records
+    if (!selectedEmployee) {
+      throw new ForbiddenException(
+        'No employee profile found for your account. An active employee profile is required to access the activity dashboard.',
+      );
     }
 
     // 3. Facet Aggregation on Task model for overall workspace metrics
