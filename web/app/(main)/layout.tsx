@@ -1,35 +1,46 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "../../src/components/layout/Sidebar";
 import { SidebarProvider } from "../../src/components/layout/SidebarContext";
 import { ChatbotProvider } from "../../src/components/chatbot/ChatbotContext";
 import { TaskChatbot } from "../../src/components/chatbot/TaskChatbot";
 import { ChatbotTrigger } from "../../src/components/chatbot/ChatbotTrigger";
-import { API_URL } from "../../src/lib/api";
+import { fetchMe } from "../../src/lib/api";
 
-export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value;
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!token) {
-    redirect("/login");
-  }
+  useEffect(() => {
+    let mounted = true;
+    fetchMe()
+      .then((data) => {
+        if (mounted) {
+          setUser(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          console.warn("Session check failed, redirecting to /login", err);
+          router.replace("/login");
+        }
+      });
 
-  let user = null;
-  try {
-    const res = await fetch(`${API_URL}/auth/me`, {
-      headers: {
-        Cookie: `access_token=${token}`,
-      },
-    });
-    
-    if (!res.ok) {
-      throw new Error("Unauthorized");
-    }
-    
-    user = await res.json();
-  } catch (err) {
-    redirect("/login");
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
@@ -47,3 +58,4 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     </SidebarProvider>
   );
 }
+

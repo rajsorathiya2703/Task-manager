@@ -39,13 +39,7 @@ export function LoginCard() {
         setIsLoadingGoogle(true);
         setError(null);
         await api.post(authEndpoints.googleLogin, { token: tokenResponse.access_token });
-        // NOTE: The backend expects an idToken. useGoogleLogin standard mode returns access_token. 
-        // We usually need the 'implicit' flow or 'auth-code' flow. If the backend needs idToken,
-        // we can fetch userinfo ourselves or use Google OAuth provider in a way it returns idToken.
-        // Actually, if we use flow: 'implicit' it might not give id_token directly unless requested.
-        // I will use tokenResponse.access_token for now, assuming the backend can decode or we need
-        // to tweak the google login config to return id_token (e.g., prompt: 'consent').
-        router.push("/tasks");
+        window.location.href = "/tasks";
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to login with Google");
       } finally {
@@ -60,7 +54,7 @@ export function LoginCard() {
       setIsLoadingGuest(true);
       setError(null);
       await api.post(authEndpoints.guestLogin);
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to continue as guest");
     } finally {
