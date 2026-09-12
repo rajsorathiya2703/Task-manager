@@ -1,0 +1,83 @@
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { TeamsService } from './teams.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermission } from '../auth/decorators/permissions.decorator';
+
+@Controller('teams')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class TeamsController {
+  constructor(private readonly teamsService: TeamsService) {}
+
+  @Post()
+  @RequirePermission({ module: 'teams', action: 'create', model: 'teams' })
+  create(@Body() createTeamDto: any) {
+    return this.teamsService.create(createTeamDto);
+  }
+
+  @Get()
+  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
+  findAll() {
+    return this.teamsService.findAll();
+  }
+
+  @Get(':id')
+  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
+  findOne(@Param('id') id: string) {
+    return this.teamsService.findOne(id);
+  }
+
+  @Patch(':id')
+  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
+  update(@Param('id') id: string, @Body() updateTeamDto: any) {
+    return this.teamsService.update(id, updateTeamDto);
+  }
+
+  @Delete(':id')
+  @RequirePermission({ module: 'teams', action: 'delete', model: 'teams' })
+  remove(@Param('id') id: string) {
+    return this.teamsService.remove(id);
+  }
+
+  @Get(':id/active-tasks')
+  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
+  getActiveTasks(@Param('id') id: string) {
+    return this.teamsService.getActiveTasks(id);
+  }
+
+  // ── Comment Endpoints ──
+
+  @Post(':id/comments')
+  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
+  addComment(@Request() req, @Param('id') id: string, @Body() commentData: any) {
+    const user = {
+      name: req.user.name || req.user.email || 'User',
+      avatarUrl: req.user.avatarUrl,
+      userId: (req.user.id || req.user._id)?.toString(),
+      email: req.user.email,
+    };
+    const newComment = { ...commentData, user };
+    return this.teamsService.addComment(id, newComment);
+  }
+
+  @Patch(':id/comments/:commentId')
+  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
+  updateComment(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @Body() updateData: any,
+  ) {
+    return this.teamsService.updateComment(id, commentId, updateData, req.user.id, req.user.email, req.user);
+  }
+
+  @Delete(':id/comments/:commentId')
+  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
+  deleteComment(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+  ) {
+    return this.teamsService.deleteComment(id, commentId, req.user.id, req.user.email, req.user);
+  }
+}
