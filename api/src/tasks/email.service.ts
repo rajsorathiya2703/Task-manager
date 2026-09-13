@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import * as dns from 'dns';
 
 @Injectable()
 export class EmailService {
@@ -43,22 +44,37 @@ export class EmailService {
     const port = rawPort === 587 && isGmail ? 465 : rawPort;
     const isSecure = port === 465;
 
+    // CRITICAL FOR RENDER: Render containers have no outbound IPv6 route.
+    // Nodemailer's internal resolver randomly selects IPv6 addresses from DNS, causing:
+    // "connect ENETUNREACH 2607:f8b0...:465 - Local (:::0)".
+    // Explicitly resolving to an IPv4 address here bypasses Nodemailer's dual-stack DNS.
+    let connectHost = host;
+    try {
+      const resolved = await dns.promises.lookup(host, { family: 4 });
+      if (resolved && resolved.address) {
+        connectHost = resolved.address;
+        this.logger.log(`Resolved SMTP host ${host} to IPv4: ${connectHost}`);
+      }
+    } catch (dnsErr: any) {
+      this.logger.warn(`Could not resolve IPv4 for ${host}, using hostname directly: ${dnsErr?.message || dnsErr}`);
+    }
+
     this.transporter = nodemailer.createTransport({
-      host: host,
+      host: connectHost,
       port: port,
       secure: isSecure, // true for 465 (SSL), false for other ports
       auth: {
         user: user,
         pass: pass,
       },
-      // CRITICAL FOR RENDER: Force IPv4 to prevent "connect ENETUNREACH 2607:f8b0... (IPv6)"
-      family: 4,
+      tls: {
+        // Required so TLS certificate validation matches the domain name (e.g. smtp.gmail.com) instead of the IP
+        servername: host,
+        rejectUnauthorized: false,
+      },
       connectionTimeout: 20000,
       greetingTimeout: 20000,
       socketTimeout: 30000,
-      tls: {
-        rejectUnauthorized: false,
-      },
     } as any);
 
     // Verify SMTP connection on startup so connection errors appear directly in Render runtime logs
