@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Popover } from "@headlessui/react";
 import { Filter, X, Plus } from "lucide-react";
 
@@ -13,24 +13,59 @@ export interface FilterRule {
   value: string;
 }
 
+export interface FilterFieldDefinition {
+  field: string;
+  label: string;
+  options: string[];
+}
+
 interface FilterDropdownProps {
   filters: FilterRule[];
   onApplyFilter: (filter: FilterRule) => void;
   onRemoveFilter: (id: string) => void;
-  availableStages: string[];
-  availablePriorities: string[];
+  filterFields?: FilterFieldDefinition[];
+  availableStages?: string[];
+  availablePriorities?: string[];
 }
 
 export function FilterDropdown({ 
   filters, 
   onApplyFilter, 
   onRemoveFilter,
+  filterFields,
   availableStages,
   availablePriorities
 }: FilterDropdownProps) {
-  const [selectedField, setSelectedField] = useState<string>("Stage");
+  const resolvedFields = useMemo<FilterFieldDefinition[]>(() => {
+    if (filterFields && filterFields.length > 0) {
+      return filterFields;
+    }
+    const legacyFields: FilterFieldDefinition[] = [];
+    if (availableStages && availableStages.length > 0) {
+      legacyFields.push({ field: "Stage", label: "Stage", options: availableStages });
+    }
+    if (availablePriorities && availablePriorities.length > 0) {
+      legacyFields.push({ field: "Priority", label: "Priority", options: availablePriorities });
+    }
+    return legacyFields.length > 0
+      ? legacyFields
+      : [
+          { field: "Stage", label: "Stage", options: ["To Do", "Doing", "Completed", "On Hold"] },
+          { field: "Priority", label: "Priority", options: ["Low", "Medium", "High"] },
+        ];
+  }, [filterFields, availableStages, availablePriorities]);
+
+  const [selectedField, setSelectedField] = useState<string>(resolvedFields[0]?.field || "Stage");
   const [selectedCondition, setSelectedCondition] = useState<FilterCondition>("eq");
   const [selectedValue, setSelectedValue] = useState<string>("");
+
+  // Keep selectedField valid if resolvedFields changes
+  useEffect(() => {
+    if (!resolvedFields.some(f => f.field === selectedField) && resolvedFields.length > 0) {
+      setSelectedField(resolvedFields[0].field);
+      setSelectedValue("");
+    }
+  }, [resolvedFields, selectedField]);
 
   const handleAddFilter = () => {
     if (!selectedValue) return;
@@ -46,13 +81,8 @@ export function FilterDropdown({
     setSelectedValue("");
   };
 
-  const getAvailableValues = () => {
-    if (selectedField === "Stage") return availableStages;
-    if (selectedField === "Priority") return availablePriorities;
-    return [];
-  };
-
-  const availableValues = getAvailableValues();
+  const currentFieldDef = resolvedFields.find(f => f.field === selectedField) || resolvedFields[0];
+  const availableValues = currentFieldDef?.options || [];
 
   return (
     <Popover className="relative">
@@ -82,8 +112,9 @@ export function FilterDropdown({
                     setSelectedValue(""); // Reset value when field changes
                   }}
                 >
-                  <option value="Stage">Stage</option>
-                  <option value="Priority">Priority</option>
+                  {resolvedFields.map(f => (
+                    <option key={f.field} value={f.field}>{f.label}</option>
+                  ))}
                 </select>
               </div>
 

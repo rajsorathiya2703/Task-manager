@@ -7,37 +7,60 @@ import { ListView } from "../../../src/components/board/ListView";
 import { fetchTasks } from "../../../src/lib/api";
 import { Task } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
+import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
 import { usePermissions } from "../../../src/contexts/PermissionsContext";
 
-const emptyData: Record<string, Task[]> = {
-  "To Do": [],
-  "Doing": [],
-  "Completed": [],
-  "On Hold": [],
-};
+const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
+const defaultPriorities = ["High", "Medium", "Low", "No Priority"];
+
+const groupByOptions: GroupByOption[] = [
+  { key: "stage", label: "Stage" },
+  { key: "priority", label: "Priority" },
+  { key: "project", label: "Project" },
+];
 
 export default function TasksPage() {
   const { can } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
-  const [data, setData] = useState<Record<string, Task[]>>(emptyData);
+  const [data, setData] = useState<Record<string, Task[]>>({
+    "To Do": [],
+    "Doing": [],
+    "Completed": [],
+    "On Hold": [],
+  });
   const [rawTasks, setRawTasks] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchContext, setSearchContext] = useState<SearchContext>('all');
+  const [groupBy, setGroupBy] = useState<string>("stage");
   const [isLoading, setIsLoading] = useState(true);
 
-  const processAndSetData = (tasksToProcess: any[], currentFilters: FilterRule[], query: string, context: SearchContext) => {
+  const processAndSetData = (
+    tasksToProcess: any[], 
+    currentFilters: FilterRule[], 
+    query: string, 
+    context: SearchContext,
+    currentGroupBy: string
+  ) => {
     if (!tasksToProcess || tasksToProcess.length === 0) {
-      setData(emptyData);
+      if (currentGroupBy === "priority") {
+        const emptyPriorities: Record<string, Task[]> = {};
+        defaultPriorities.forEach(p => { emptyPriorities[p] = []; });
+        setData(emptyPriorities);
+      } else {
+        const emptyStages: Record<string, Task[]> = {};
+        defaultStages.forEach(s => { emptyStages[s] = []; });
+        setData(emptyStages);
+      }
       return;
     }
 
-    const grouped: Record<string, Task[]> = {
-      "To Do": [],
-      "Doing": [],
-      "Completed": [],
-      "On Hold": [],
-    };
+    const grouped: Record<string, Task[]> = {};
+    if (currentGroupBy === "stage") {
+      defaultStages.forEach(s => { grouped[s] = []; });
+    } else if (currentGroupBy === "priority") {
+      defaultPriorities.forEach(p => { grouped[p] = []; });
+    }
     
     tasksToProcess.forEach((task: any) => {
       // Apply filters
@@ -85,7 +108,7 @@ export default function TasksPage() {
 
       if (!matchesAllFilters) return;
 
-      const formattedTask = {
+      const formattedTask: Task = {
         ...task,
         id: task._id || task.id,
         project: task.projectId && typeof task.projectId === 'object' && task.projectId.name
@@ -95,12 +118,18 @@ export default function TasksPage() {
           ? task.projectId._id
           : task.projectId,
       };
-      const status = task.status || "To Do";
+
+      let groupKey = task.status || "To Do";
+      if (currentGroupBy === "priority") {
+        groupKey = task.priority || "Medium";
+      } else if (currentGroupBy === "project") {
+        groupKey = formattedTask.project?.name || "No Project";
+      }
       
-      if (grouped[status]) {
-        grouped[status].push(formattedTask);
+      if (grouped[groupKey]) {
+        grouped[groupKey].push(formattedTask);
       } else {
-        grouped[status] = [formattedTask];
+        grouped[groupKey] = [formattedTask];
       }
     });
     
@@ -112,10 +141,12 @@ export default function TasksPage() {
       try {
         const backendTasks = await fetchTasks();
         setRawTasks(backendTasks || []);
-        processAndSetData(backendTasks || [], filters, searchQuery, searchContext);
+        processAndSetData(backendTasks || [], filters, searchQuery, searchContext, groupBy);
       } catch (error) {
         console.error("Failed to fetch tasks from backend", error);
-        setData(emptyData);
+        const emptyStages: Record<string, Task[]> = {};
+        defaultStages.forEach(s => { emptyStages[s] = []; });
+        setData(emptyStages);
       } finally {
         setIsLoading(false);
       }
@@ -126,31 +157,35 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!isLoading) {
-      processAndSetData(rawTasks, filters, searchQuery, searchContext);
+      processAndSetData(rawTasks, filters, searchQuery, searchContext, groupBy);
     }
-  }, [filters, searchQuery, searchContext]);
+  }, [filters, searchQuery, searchContext, groupBy]);
 
-  const handleTaskStatusChange = async (taskId: string, newStatus: string) => {
+  const handleTaskStatusChange = async (taskId: string, newGroupValue: string) => {
     // Optimistic UI update
     setData((prevData) => {
       const newData = { ...prevData };
       let taskToMove: Task | null = null;
       
       // Find and remove task from old column
-      for (const status in newData) {
-        const idx = newData[status].findIndex(t => t.id === taskId || (t as any)._id === taskId);
+      for (const group in newData) {
+        const idx = newData[group].findIndex(t => t.id === taskId || (t as any)._id === taskId);
         if (idx !== -1) {
-          taskToMove = newData[status][idx];
-          newData[status] = [...newData[status]];
-          newData[status].splice(idx, 1);
+          taskToMove = newData[group][idx];
+          newData[group] = [...newData[group]];
+          newData[group].splice(idx, 1);
           break;
         }
       }
       
       if (taskToMove) {
-        taskToMove.status = newStatus;
-        if (!newData[newStatus]) newData[newStatus] = [];
-        newData[newStatus] = [...newData[newStatus], taskToMove];
+        if (groupBy === "priority") {
+          taskToMove.priority = newGroupValue as any;
+        } else if (groupBy === "stage") {
+          taskToMove.status = newGroupValue;
+        }
+        if (!newData[newGroupValue]) newData[newGroupValue] = [];
+        newData[newGroupValue] = [...newData[newGroupValue], taskToMove];
       }
       
       return newData;
@@ -158,10 +193,13 @@ export default function TasksPage() {
 
     try {
       const { updateTask } = await import("../../../src/lib/api");
-      await updateTask(taskId, { status: newStatus });
+      if (groupBy === "priority") {
+        await updateTask(taskId, { priority: newGroupValue });
+      } else if (groupBy === "stage") {
+        await updateTask(taskId, { status: newGroupValue });
+      }
     } catch (error) {
-      console.error("Failed to update task status", error);
-      // Revert could be implemented here by re-fetching
+      console.error("Failed to update task", error);
     }
   };
 
@@ -184,6 +222,9 @@ export default function TasksPage() {
           setSearchQuery(q);
           setSearchContext(ctx);
         }}
+        groupByOptions={groupByOptions}
+        selectedGroupBy={groupBy}
+        onGroupByChange={setGroupBy}
       />
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center">

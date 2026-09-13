@@ -8,40 +8,62 @@ import { ProjectDialog } from "../../../src/components/projects/ProjectDialog";
 import { fetchProjects, createProject, updateProject, deleteProject } from "../../../src/lib/api";
 import { Project } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
+import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
 import { Loader2 } from "lucide-react";
 import { usePermissions } from "../../../src/contexts/PermissionsContext";
 
-const emptyData: Record<string, Project[]> = {
-  "To Do": [],
-  "Doing": [],
-  "Completed": [],
-  "On Hold": [],
-};
+const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
+const defaultPriorities = ["High", "Medium", "Low"];
+
+const groupByOptions: GroupByOption[] = [
+  { key: "stage", label: "Stage" },
+  { key: "priority", label: "Priority" },
+];
 
 export default function ProjectsPage() {
   const { can } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
-  const [data, setData] = useState<Record<string, Project[]>>(emptyData);
+  const [data, setData] = useState<Record<string, Project[]>>({
+    "To Do": [],
+    "Doing": [],
+    "Completed": [],
+    "On Hold": [],
+  });
   const [rawProjects, setRawProjects] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchContext, setSearchContext] = useState<SearchContext>('all');
+  const [groupBy, setGroupBy] = useState<string>("stage");
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  const processAndSetData = (projectsToProcess: any[], currentFilters: FilterRule[], query: string, context: SearchContext) => {
+  const processAndSetData = (
+    projectsToProcess: any[], 
+    currentFilters: FilterRule[], 
+    query: string, 
+    context: SearchContext,
+    currentGroupBy: string
+  ) => {
     if (!projectsToProcess || projectsToProcess.length === 0) {
-      setData(emptyData);
+      if (currentGroupBy === "priority") {
+        const emptyPriorities: Record<string, Project[]> = {};
+        defaultPriorities.forEach(p => { emptyPriorities[p] = []; });
+        setData(emptyPriorities);
+      } else {
+        const emptyStages: Record<string, Project[]> = {};
+        defaultStages.forEach(s => { emptyStages[s] = []; });
+        setData(emptyStages);
+      }
       return;
     }
 
-    const grouped: Record<string, Project[]> = {
-      "To Do": [],
-      "Doing": [],
-      "Completed": [],
-      "On Hold": [],
-    };
+    const grouped: Record<string, Project[]> = {};
+    if (currentGroupBy === "stage") {
+      defaultStages.forEach(s => { grouped[s] = []; });
+    } else if (currentGroupBy === "priority") {
+      defaultPriorities.forEach(p => { grouped[p] = []; });
+    }
 
     projectsToProcess.forEach((proj: any) => {
       // Apply filters
@@ -90,11 +112,15 @@ export default function ProjectsPage() {
       if (!matchesAllFilters) return;
 
       const formattedProj = { ...proj, id: proj._id || proj.id };
-      const status = proj.status || "To Do";
-      if (grouped[status]) {
-        grouped[status].push(formattedProj);
+      let groupKey = proj.status || "To Do";
+      if (currentGroupBy === "priority") {
+        groupKey = proj.priority || "Medium";
+      }
+
+      if (grouped[groupKey]) {
+        grouped[groupKey].push(formattedProj);
       } else {
-        grouped[status] = [formattedProj];
+        grouped[groupKey] = [formattedProj];
       }
     });
 
@@ -106,10 +132,12 @@ export default function ProjectsPage() {
       setIsLoading(true);
       const backendProjects = await fetchProjects();
       setRawProjects(backendProjects || []);
-      processAndSetData(backendProjects || [], filters, searchQuery, searchContext);
+      processAndSetData(backendProjects || [], filters, searchQuery, searchContext, groupBy);
     } catch (error) {
       console.error("Failed to fetch projects", error);
-      setData(emptyData);
+      const emptyStages: Record<string, Project[]> = {};
+      defaultStages.forEach(s => { emptyStages[s] = []; });
+      setData(emptyStages);
     } finally {
       setIsLoading(false);
     }
@@ -121,9 +149,9 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!isLoading) {
-      processAndSetData(rawProjects, filters, searchQuery, searchContext);
+      processAndSetData(rawProjects, filters, searchQuery, searchContext, groupBy);
     }
-  }, [filters, searchQuery, searchContext]);
+  }, [filters, searchQuery, searchContext, groupBy]);
 
   const handleOpenCreate = () => {
     setSelectedProject(null);
@@ -140,8 +168,7 @@ export default function ProjectsPage() {
       const targetId = selectedProject?.id || (selectedProject as any)?._id;
       if (targetId) {
         // Update
-        const updated = await updateProject(targetId, projectData);
-        // Refresh local data
+        await updateProject(targetId, projectData);
         await loadProjects();
       } else {
         // Create
@@ -164,35 +191,43 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleProjectStatusChange = async (projectId: string, newStatus: string) => {
+  const handleProjectStatusChange = async (projectId: string, newGroupValue: string) => {
     // Optimistic UI update
     setData((prevData) => {
       const newData = { ...prevData };
       let projectToMove: Project | null = null;
 
-      for (const status in newData) {
-        const idx = newData[status].findIndex(p => p.id === projectId || (p as any)._id === projectId);
+      for (const group in newData) {
+        const idx = newData[group].findIndex(p => p.id === projectId || (p as any)._id === projectId);
         if (idx !== -1) {
-          projectToMove = newData[status][idx];
-          newData[status] = [...newData[status]];
-          newData[status].splice(idx, 1);
+          projectToMove = newData[group][idx];
+          newData[group] = [...newData[group]];
+          newData[group].splice(idx, 1);
           break;
         }
       }
 
       if (projectToMove) {
-        projectToMove.status = newStatus;
-        if (!newData[newStatus]) newData[newStatus] = [];
-        newData[newStatus] = [...newData[newStatus], projectToMove];
+        if (groupBy === "priority") {
+          projectToMove.priority = newGroupValue;
+        } else if (groupBy === "stage") {
+          projectToMove.status = newGroupValue;
+        }
+        if (!newData[newGroupValue]) newData[newGroupValue] = [];
+        newData[newGroupValue] = [...newData[newGroupValue], projectToMove];
       }
 
       return newData;
     });
 
     try {
-      await updateProject(projectId, { status: newStatus });
+      if (groupBy === "priority") {
+        await updateProject(projectId, { priority: newGroupValue });
+      } else if (groupBy === "stage") {
+        await updateProject(projectId, { status: newGroupValue });
+      }
     } catch (error) {
-      console.error("Failed to update project status", error);
+      console.error("Failed to update project", error);
       loadProjects();
     }
   };
@@ -218,6 +253,9 @@ export default function ProjectsPage() {
           setSearchQuery(q);
           setSearchContext(ctx);
         }}
+        groupByOptions={groupByOptions}
+        selectedGroupBy={groupBy}
+        onGroupByChange={setGroupBy}
       />
 
       {isLoading ? (

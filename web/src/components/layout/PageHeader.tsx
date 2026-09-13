@@ -1,17 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Popover } from "@headlessui/react";
-import { Search, Filter, Plus, Columns, LayoutGrid, List, Menu, X, Tag, Type, AlignLeft, Bot } from "lucide-react";
+import { Search, Filter, Plus, Columns, LayoutGrid, List, Menu, X, Tag, Type, AlignLeft, Bot, LucideIcon } from "lucide-react";
 import { Button } from "../ui/Button";
 import { useSidebar } from "./SidebarContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
 import Link from "next/link";
-import { FilterDropdown, FilterRule } from "../common/FilterDropdown";
+import { FilterDropdown, FilterRule, FilterFieldDefinition } from "../common/FilterDropdown";
+import { GroupByDropdown, GroupByOption } from "../common/GroupByDropdown";
 import { GlobalTimerDisplay } from "../common/GlobalTimerDisplay";
 import { NotificationDropdown } from "../common/NotificationDropdown";
 
-export type SearchContext = 'all' | 'title' | 'description' | 'label';
+export type SearchContext = string;
+
+export interface SearchContextItem {
+  key: string;
+  label: string;
+  icon?: any;
+}
 
 interface PageHeaderProps {
   title: React.ReactNode | string;
@@ -26,11 +33,16 @@ interface PageHeaderProps {
   onApplyFilter?: (filter: FilterRule) => void;
   onRemoveFilter?: (id: string) => void;
   onClearFilters?: () => void;
+  filterFields?: FilterFieldDefinition[];
   availableStages?: string[];
   availablePriorities?: string[];
   searchQuery?: string;
   searchContext?: SearchContext;
+  searchContexts?: SearchContextItem[];
   onSearchChange?: (query: string, context: SearchContext) => void;
+  groupByOptions?: GroupByOption[];
+  selectedGroupBy?: string;
+  onGroupByChange?: (key: string) => void;
 }
 
 export function PageHeader({ 
@@ -46,17 +58,30 @@ export function PageHeader({
   onApplyFilter,
   onRemoveFilter,
   onClearFilters,
+  filterFields,
   availableStages = [],
   availablePriorities = [],
   searchQuery = "",
   searchContext = "all",
-  onSearchChange
+  searchContexts,
+  onSearchChange,
+  groupByOptions,
+  selectedGroupBy,
+  onGroupByChange,
 }: PageHeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const { isOpen, toggleSidebar } = useSidebar();
   const { isOpen: isChatbotOpen, toggleChatbot } = useChatbot();
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const defaultContexts: SearchContextItem[] = useMemo(() => [
+    { key: 'title', label: 'Title', icon: Type },
+    { key: 'description', label: 'Description', icon: AlignLeft },
+    { key: 'label', label: 'Label', icon: Tag },
+  ], []);
+
+  const resolvedContexts = searchContexts && searchContexts.length > 0 ? searchContexts : defaultContexts;
 
   // Sync local query with prop if needed
   useEffect(() => {
@@ -83,7 +108,6 @@ export function PageHeader({
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setIsSearchOpen(true);
         // Focus the input so the character goes into it
-        // We use setTimeout to ensure the input is visible/rendered if it was transitioning
         setTimeout(() => {
           searchInputRef.current?.focus();
         }, 0);
@@ -113,6 +137,8 @@ export function PageHeader({
       onSearchChange("", "all");
     }
   };
+
+  const currentContextObj = resolvedContexts.find(c => c.key === searchContext);
 
   return (
     <header className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-background shrink-0 min-h-[50px]">
@@ -154,107 +180,98 @@ export function PageHeader({
 
       <div className="flex-1 flex items-center justify-end gap-2 shrink-0 min-w-0">
         {/* Search */}
-        <div className={`flex items-center justify-end transition-all duration-300 ease-in-out ${isSearchOpen || localQuery ? 'w-full max-w-lg' : 'w-8'}`}>
-          {isSearchOpen || localQuery ? (
-            <div className="relative w-full">
-              <div className="flex items-center border border-border rounded-md px-2 py-1 bg-card w-full shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
-                <Search className="w-4 h-4 text-muted-foreground mr-1.5 shrink-0" />
-                
-                {/* Context Tag */}
-                {searchContext !== 'all' && (
-                  <div className="flex items-center gap-1 bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded mr-1.5 shrink-0 whitespace-nowrap">
-                    {searchContext === 'title' && <Type className="w-3 h-3" />}
-                    {searchContext === 'description' && <AlignLeft className="w-3 h-3" />}
-                    {searchContext === 'label' && <Tag className="w-3 h-3" />}
-                    Filtered by {searchContext}
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleContextSelect('all'); }}
-                      className="hover:text-primary-foreground hover:bg-primary rounded-full p-0.5 transition-colors ml-0.5"
-                    >
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                )}
+        {(onSearchChange !== undefined) && (
+          <div className={`flex items-center justify-end transition-all duration-300 ease-in-out ${isSearchOpen || localQuery ? 'w-full max-w-lg' : 'w-8'}`}>
+            {isSearchOpen || localQuery ? (
+              <div className="relative w-full">
+                <div className="flex items-center border border-border rounded-md px-2 py-1 bg-card w-full shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
+                  <Search className="w-4 h-4 text-muted-foreground mr-1.5 shrink-0" />
+                  
+                  {/* Context Tag */}
+                  {searchContext !== 'all' && (
+                    <div className="flex items-center gap-1 bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded mr-1.5 shrink-0 whitespace-nowrap">
+                      {currentContextObj?.icon && (
+                        <currentContextObj.icon className="w-3 h-3" />
+                      )}
+                      Filtered by {currentContextObj?.label || searchContext}
+                      <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleContextSelect('all'); }}
+                        className="hover:text-primary-foreground hover:bg-primary rounded-full p-0.5 transition-colors ml-0.5"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  )}
 
-                <input 
-                  ref={searchInputRef}
-                  type="text" 
-                  placeholder={searchContext === 'all' ? "Search tasks..." : `Search ${searchContext}...`}
-                  className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground min-w-0"
-                  value={localQuery}
-                  onChange={(e) => handleQueryChange(e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  onKeyUp={(e) => e.stopPropagation()}
-                  autoFocus
-                  onBlur={(e) => {
-                    // Small delay to allow clicking on recommendations before it closes
-                    setTimeout(() => {
-                      if (!localQuery) setIsSearchOpen(false);
-                    }, 200);
-                  }}
-                />
-                
+                  <input 
+                    ref={searchInputRef}
+                    type="text" 
+                    placeholder={searchContext === 'all' ? "Search..." : `Search ${currentContextObj?.label || searchContext}...`}
+                    className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground min-w-0"
+                    value={localQuery}
+                    onChange={(e) => handleQueryChange(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyUp={(e) => e.stopPropagation()}
+                    autoFocus
+                    onBlur={(e) => {
+                      setTimeout(() => {
+                        if (!localQuery) setIsSearchOpen(false);
+                      }, 200);
+                    }}
+                  />
+                  
+                  {localQuery && (
+                    <button 
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); clearSearch(); }}
+                      className="text-muted-foreground hover:text-foreground shrink-0 ml-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {!localQuery && (
+                    <span className="text-[10px] bg-muted text-muted-foreground px-1 py-0.5 rounded ml-1.5 shrink-0 hidden sm:block">⌘F</span>
+                  )}
+                </div>
+
+                {/* Recommendations Dropdown */}
                 {localQuery && (
-                  <button 
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); clearSearch(); }}
-                    className="text-muted-foreground hover:text-foreground shrink-0 ml-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                {!localQuery && (
-                  <span className="text-[10px] bg-muted text-muted-foreground px-1 py-0.5 rounded ml-1.5 shrink-0 hidden sm:block">⌘F</span>
+                  <div className="absolute top-full mt-1.5 w-full bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden outline-none">
+                    <div className="p-1 flex flex-col">
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Search "{localQuery}" in
+                      </div>
+                      
+                      {resolvedContexts.map((ctx) => {
+                        const IconComp = ctx.icon || Search;
+                        return (
+                          <button 
+                            key={ctx.key}
+                            onClick={() => handleContextSelect(ctx.key)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
+                          >
+                            <IconComp className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span><span className="font-medium">{ctx.label}:</span> {localQuery}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {/* Recommendations Dropdown */}
-              {localQuery && (
-                <div className="absolute top-full mt-1.5 w-full bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden outline-none">
-                  <div className="p-1 flex flex-col">
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Search "{localQuery}" in
-                    </div>
-                    
-                    <button 
-                      onClick={() => handleContextSelect('title')}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
-                    >
-                      <Type className="w-4 h-4 text-muted-foreground" />
-                      <span><span className="font-medium">Title:</span> {localQuery}</span>
-                    </button>
-                    
-                    <button 
-                      onClick={() => handleContextSelect('description')}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
-                    >
-                      <AlignLeft className="w-4 h-4 text-muted-foreground" />
-                      <span><span className="font-medium">Description:</span> {localQuery}</span>
-                    </button>
-                    
-                    <button 
-                      onClick={() => handleContextSelect('label')}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
-                    >
-                      <Tag className="w-4 h-4 text-muted-foreground" />
-                      <span><span className="font-medium">Label:</span> {localQuery}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button 
-              onClick={() => {
-                setIsSearchOpen(true);
-                setTimeout(() => searchInputRef.current?.focus(), 50);
-              }}
-              className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card w-8 h-8 flex items-center justify-center shrink-0"
-              title="Search (Type anywhere to search)"
-            >
-              <Search className="w-3.5 h-3.5 text-foreground" />
-            </button>
-          )}
-        </div>
+            ) : (
+              <button 
+                onClick={() => {
+                  setIsSearchOpen(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 50);
+                }}
+                className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card w-8 h-8 flex items-center justify-center shrink-0"
+                title="Search (Type anywhere to search)"
+              >
+                <Search className="w-3.5 h-3.5 text-foreground" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Filter */}
         {(onApplyFilter && onRemoveFilter) && (
@@ -263,6 +280,7 @@ export function PageHeader({
               filters={filters}
               onApplyFilter={onApplyFilter}
               onRemoveFilter={onRemoveFilter}
+              filterFields={filterFields}
               availableStages={availableStages}
               availablePriorities={availablePriorities}
             />
@@ -278,6 +296,15 @@ export function PageHeader({
               </button>
             )}
           </div>
+        )}
+
+        {/* Group By */}
+        {groupByOptions && groupByOptions.length > 0 && onGroupByChange && (
+          <GroupByDropdown
+            options={groupByOptions}
+            selected={selectedGroupBy || groupByOptions[0].key}
+            onChange={onGroupByChange}
+          />
         )}
 
         {/* View Switcher */}
