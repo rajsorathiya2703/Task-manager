@@ -24,10 +24,11 @@ export function Sidebar({ user }: SidebarProps) {
   const hasProjectsAccess = can("projects", "read");
   const hasTimelineAccess = can("tasks", "read") || can("projects", "read");
 
+  const isSystemAdmin = user?.is_system_admin !== false;
   const hasTeamAccess = can("teams", "read");
-  const hasEmployeesAccess = can("employees", "read");
-  const hasUsersAccess = can("settings", "read");
-  const hasUserGroupsAccess = can("settings", "read");
+  const hasEmployeesAccess = isSystemAdmin && can("employees", "read");
+  const hasUsersAccess = isSystemAdmin && can("settings", "read");
+  const hasUserGroupsAccess = isSystemAdmin && can("settings", "read");
 
   const hasWorkspaceSection = isEmployee || hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
   const hasConfigurationSection =

@@ -51,6 +51,7 @@ export default function UsersConfigurationPage() {
                       <th className="px-6 py-4 font-semibold">Email</th>
                       <th className="px-6 py-4 font-semibold">Auth Type</th>
                       <th className="px-6 py-4 font-semibold">Employee</th>
+                      <th className="px-6 py-4 font-semibold">System Admin</th>
                       <th className="px-6 py-4 font-semibold">Last Active</th>
                       <th className="px-6 py-4 font-semibold text-right">Actions</th>
                     </tr>
@@ -113,6 +114,17 @@ export default function UsersConfigurationPage() {
                               <span className="text-xs text-muted-foreground/50">—</span>
                             )}
                           </td>
+                          {/* System Admin status column */}
+                          <td className="px-6 py-4">
+                            {user.is_system_admin !== false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                                <Shield className="w-3 h-3" />
+                                Admin
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/50">—</span>
+                            )}
+                          </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
                               <Clock className="w-3.5 h-3.5" />
@@ -126,7 +138,7 @@ export default function UsersConfigurationPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <button className="text-primary hover:underline text-xs font-semibold">
+                            <button className="text-primary hover:underline text-xs font-semibold cursor-pointer">
                               View Details
                             </button>
                           </td>
@@ -134,7 +146,7 @@ export default function UsersConfigurationPage() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                           No users found.
                         </td>
                       </tr>

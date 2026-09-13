@@ -16,4 +16,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   is_employee?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_system_admin?: boolean;
 }

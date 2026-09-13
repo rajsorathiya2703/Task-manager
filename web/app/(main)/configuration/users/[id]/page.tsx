@@ -4,7 +4,7 @@ import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   PanelLeft, Save, Check, X, Loader2,
-  User as UserIcon, Mail, Shield, Globe, Sparkles,
+  User as UserIcon, Mail, Shield, ShieldCheck, Globe, Sparkles,
   Calendar, ArrowLeft, Trash2, Briefcase, UserCheck
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
@@ -22,6 +22,7 @@ export default function UserDetailPage({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isTogglingEmployee, setIsTogglingEmployee] = useState(false);
+  const [isTogglingSystemAdmin, setIsTogglingSystemAdmin] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -32,6 +33,8 @@ export default function UserDetailPage({
   const [name, setName] = useState("");
   // Local mirror of is_employee so the toggle feels instant
   const [isEmployee, setIsEmployee] = useState(false);
+  // Local mirror of is_system_admin (default true unless false)
+  const [isSystemAdmin, setIsSystemAdmin] = useState(true);
 
   useEffect(() => {
     const load = async () => {
@@ -46,6 +49,7 @@ export default function UserDetailPage({
         setName(data.name || "");
         setOriginalName(data.name || "");
         setIsEmployee(!!data.is_employee);
+        setIsSystemAdmin(data.is_system_admin !== false);
       } catch (err) {
         console.error("Failed to load user", err);
         router.push("/configuration/users");
@@ -71,6 +75,7 @@ export default function UserDetailPage({
       setUserData(updated);
       setOriginalName(name);
       setIsEmployee(!!updated.is_employee);
+      setIsSystemAdmin(updated.is_system_admin !== false);
       showToast("User updated successfully!");
     } catch (err) {
       console.error("Failed to update user", err);
@@ -106,6 +111,31 @@ export default function UserDetailPage({
       alert("Failed to update employee status.");
     } finally {
       setIsTogglingEmployee(false);
+    }
+  };
+
+  /**
+   * Toggle the is_system_admin flag.
+   */
+  const handleSystemAdminToggle = async () => {
+    const next = !isSystemAdmin;
+    setIsSystemAdmin(next); // optimistic update
+    setIsTogglingSystemAdmin(true);
+    try {
+      const updated = await updateUser(id, { is_system_admin: next });
+      setUserData(updated);
+      setIsSystemAdmin(updated.is_system_admin !== false);
+      if (next) {
+        showToast("System Administrator access granted!", "success");
+      } else {
+        showToast("System Administrator access revoked.", "info");
+      }
+    } catch (err) {
+      setIsSystemAdmin(!next);
+      console.error("Failed to toggle system admin status", err);
+      alert("Failed to update system administrator status.");
+    } finally {
+      setIsTogglingSystemAdmin(false);
     }
   };
 
@@ -320,6 +350,85 @@ export default function UserDetailPage({
                     <Briefcase className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                     <span>
                       Enabling this will automatically create an <strong>Employee record</strong> linked to this user account. If a matching employee email already exists, it will be linked instead of creating a duplicate.
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── System Administrator Status Card ── */}
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex items-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+              <h3 className="font-semibold text-foreground text-sm">System Administrator Role</h3>
+            </div>
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: description */}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">System Administrator Privileges</p>
+                    {isSystemAdmin && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        <ShieldCheck className="w-3 h-3" />
+                        System Admin
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    {isSystemAdmin
+                      ? "This user has full access to configuration modules (Employees, Users, User Groups)."
+                      : "Enable to grant this user access to Employees, Users, and User Groups in the sidebar and routes."}
+                  </p>
+                </div>
+
+                {/* Right: toggle switch */}
+                <button
+                  id="system-admin-toggle"
+                  role="switch"
+                  aria-checked={isSystemAdmin}
+                  aria-label="Toggle system admin status"
+                  disabled={isTogglingSystemAdmin}
+                  onClick={handleSystemAdminToggle}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isSystemAdmin
+                      ? "bg-purple-600 border-purple-600"
+                      : "bg-muted border-border"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out mt-0.5 ${
+                      isSystemAdmin ? "translate-x-5" : "translate-x-0.5"
+                    }`}
+                  >
+                    {isTogglingSystemAdmin && (
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground" />
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </div>
+
+              {/* What happens info box */}
+              <div className={`mt-4 rounded-lg p-3 text-xs leading-relaxed border transition-colors duration-200 ${
+                isSystemAdmin
+                  ? "bg-purple-500/5 border-purple-500/15 text-purple-700 dark:text-purple-300"
+                  : "bg-muted/40 border-border/50 text-muted-foreground"
+              }`}>
+                {isSystemAdmin ? (
+                  <span className="flex items-start gap-2">
+                    <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      This user has <strong>System Admin access</strong> enabled. They can view and manage Employees, Users, and User Groups in the sidebar.
+                    </span>
+                  </span>
+                ) : (
+                  <span className="flex items-start gap-2">
+                    <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      When disabled, the <strong>Employees, Users, and User Groups</strong> modules are hidden from the sidebar, and direct URL entry to those pages is blocked.
                     </span>
                   </span>
                 )}

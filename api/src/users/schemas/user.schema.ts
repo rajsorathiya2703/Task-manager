@@ -28,6 +28,9 @@ export class User {
 
   @Prop({ default: false })
   is_employee: boolean;
+
+  @Prop({ default: true })
+  is_system_admin: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
