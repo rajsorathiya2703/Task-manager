@@ -12,10 +12,16 @@ export class EmailService {
   }
 
   private async initTransporter() {
-    let user = process.env.SMTP_USER;
-    let pass = process.env.SMTP_PASS;
+    let user = process.env.SMTP_USER ? process.env.SMTP_USER.trim() : undefined;
+    // Strip spaces that often get included when copying Google App Passwords
+    let pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, '') : undefined;
 
     if (!user || !pass) {
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.warn(
+          'CRITICAL: SMTP_USER or SMTP_PASS is missing in production! Emails will not be delivered to users.',
+        );
+      }
       // Generate test SMTP service account from ethereal.email if no env variables provided
       try {
         const testAccount = await nodemailer.createTestAccount();
@@ -27,22 +33,36 @@ export class EmailService {
         return; // Exit early, transporter remains undefined
       }
     } else {
-      this.logger.log('Using SMTP credentials from environment variables');
+      this.logger.log(`Using SMTP credentials from environment variables (User: ${user})`);
     }
 
-    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
 
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: port,
-      secure: port === 465, // true for 465, false for other ports
+      secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
       auth: {
         user: user,
         pass: pass,
       },
     });
 
-    this.logger.log('Email Transporter initialized');
+    // Verify SMTP connection on startup so connection errors appear directly in Render runtime logs
+    this.transporter.verify((error) => {
+      if (error) {
+        this.logger.error(`SMTP Connection Failed: ${error.message}`, error.stack);
+      } else {
+        this.logger.log('SMTP Server verified successfully and ready to deliver emails');
+      }
+    });
+
+    this.logger.log(`Email Transporter initialized (Host: ${process.env.SMTP_HOST || 'smtp.gmail.com'}, Port: ${port})`);
+  }
+
+  private getFromAddress(): string {
+    const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@taskmanager.com';
+    return `"Task Manager App" <${senderEmail}>`;
   }
 
   async sendInviteEmail(to: string, taskTitle: string, inviterName: string) {
@@ -53,11 +73,12 @@ export class EmailService {
     }
 
     try {
+      const baseUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000';
       const info = await this.transporter.sendMail({
-        from: '"Task Manager App" <noreply@taskmanager.local>', // sender address
-        to, // list of receivers
-        subject: `You have been invited to a task: ${taskTitle}`, // Subject line
-        text: `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it.`, // plain text body
+        from: this.getFromAddress(),
+        to,
+        subject: `You have been invited to a task: ${taskTitle}`,
+        text: `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it.`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px;">
             <h2 style="color: #333;">Task Invitation</h2>
@@ -74,18 +95,19 @@ export class EmailService {
               Please log in to your dashboard to view and collaborate on this task.
             </p>
             <div style="margin-top: 30px; text-align: center;">
-              <a href="http://localhost:3000/tasks" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
+              <a href="${baseUrl}/tasks" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
             </div>
             <p style="color: #999; font-size: 12px; margin-top: 40px; text-align: center;">
               This is an automated message. Please do not reply.
             </p>
           </div>
-        `, // html body
+        `,
       });
 
       this.logger.log(`Message sent: ${info.messageId}`);
-      // Preview only available when sending through an Ethereal account
-      this.logger.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+      if (nodemailer.getTestMessageUrl(info)) {
+        this.logger.log(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+      }
     } catch (error) {
       this.logger.error('Failed to send invite email', error);
     }
@@ -106,12 +128,12 @@ export class EmailService {
     }
 
     try {
-      const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+      const baseUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000';
       const taskUrl = taskId ? `${baseUrl}/tasks/${taskId}` : `${baseUrl}/tasks`;
       const projectSnippet = projectName ? ` in project <strong>${projectName}</strong>` : '';
 
       const info = await this.transporter.sendMail({
-        from: '"Task Manager App" <noreply@taskmanager.local>',
+        from: this.getFromAddress(),
         to,
         subject: `New Task Assigned: ${taskTitle}`,
         text: `Hello ${employeeName},\n\n${assignerName} has assigned a new task to you: "${taskTitle}"${projectName ? ` in project "${projectName}"` : ''}.\n\nView it here: ${taskUrl}`,
