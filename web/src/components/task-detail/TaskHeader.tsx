@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { Calendar, Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Clock } from "lucide-react";
+import { Calendar, Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Clock, Video, Image as ImageIcon } from "lucide-react";
 import { Popover } from "@headlessui/react";
-import { uploadResource, fetchMe, API_URL } from "../../lib/api";
+import { uploadResource, fetchMe, API_URL, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 
 import { formatDisplayDate } from "../../lib/utils";
 import { useEffect } from "react";
@@ -26,6 +26,7 @@ export function TaskHeader({
   isTimerLoading = false
 }: TaskHeaderProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const title = taskData?.title ?? "Write API Documentation";
@@ -48,10 +49,19 @@ export function TaskHeader({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length || !taskId || taskId === 'new') return;
     
+    setUploadError(null);
+    const selectedFiles = Array.from(e.target.files);
+    const validation = validateUploadFiles(selectedFiles);
+    if (!validation.valid) {
+      setUploadError(validation.error || 'Invalid file');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     try {
       setIsUploading(true);
       const formData = new FormData();
-      Array.from(e.target.files).forEach(file => {
+      selectedFiles.forEach(file => {
         formData.append('files', file);
       });
       
@@ -62,8 +72,10 @@ export function TaskHeader({
           resources: updatedTask.resources
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to upload files", err);
+      const msg = err.response?.data?.message || err.message || "Failed to upload files";
+      setUploadError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -193,9 +205,17 @@ export function TaskHeader({
           {taskData?.resources?.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-1">
               {taskData.resources.map((res: any, idx: number) => {
-                const fileUrl = res.url.startsWith('http://') || res.url.startsWith('https://')
-                  ? res.url
-                  : `${API_URL}${res.url.startsWith('/') ? '' : '/'}${res.url}`;
+                const fileUrl = getAttachmentUrl(res.url, res.name);
+                const ext = res.name?.split('.').pop()?.toLowerCase() || '';
+                const isPdf = ext === 'pdf';
+                const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
+
+                let icon = <File className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
+                if (res.type === 'link') icon = <ExternalLink className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
+                else if (isPdf) icon = <FileText className="w-3.5 h-3.5 text-red-500 shrink-0" />;
+                else if (isVideo) icon = <Video className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
+                else if (isImage) icon = <ImageIcon className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
 
                 return (
                   <a 
@@ -205,12 +225,20 @@ export function TaskHeader({
                     rel="noopener noreferrer"
                     download={res.name}
                     className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors"
+                    title={res.name}
                   >
-                    {res.type === 'file' ? <File className="w-3.5 h-3.5 text-blue-500" /> : <ExternalLink className="w-3.5 h-3.5 text-orange-500" />}
+                    {icon}
                     <span className="truncate max-w-[200px]">{res.name}</span>
                   </a>
                 );
               })}
+            </div>
+          )}
+
+          {uploadError && (
+            <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-2.5 py-1.5 rounded-md flex items-center justify-between">
+              <span>{uploadError}</span>
+              <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-75">×</button>
             </div>
           )}
 
@@ -233,7 +261,7 @@ export function TaskHeader({
                     className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded-md text-xs text-left w-full transition-colors cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                    Upload Document
+                    Upload Document (PDF, Video, Image)
                   </button>
                   <div className="px-2 pb-1 border-t border-border/50 pt-2 mt-1">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
@@ -254,6 +282,7 @@ export function TaskHeader({
           <input 
             type="file" 
             multiple 
+            accept="image/*,video/*,application/pdf,.pdf"
             className="hidden" 
             ref={fileInputRef} 
             onChange={handleFileUpload} 

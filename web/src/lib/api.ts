@@ -201,6 +201,61 @@ export const uploadGenericResource = async (formData: FormData) => {
   return res.data;
 };
 
+export const getAttachmentUrl = (url: string, name?: string): string => {
+  if (!url) return '';
+  const isCloudinaryPdf =
+    url.includes('res.cloudinary.com') && url.toLowerCase().includes('.pdf');
+  if (isCloudinaryPdf) {
+    const apiBase = API_URL.replace(/\/+$/, '');
+    return `${apiBase}/tasks/file/view?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name || 'document.pdf')}`;
+  }
+  return url.startsWith('http://') || url.startsWith('https://')
+    ? url
+    : `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
+export const validateUploadFiles = (files: File[]): { valid: boolean; error?: string } => {
+  const allowedImageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'];
+  const allowedVideoExts = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp', 'ts'];
+
+  for (const file of files) {
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const isPdf = file.type === 'application/pdf' || ext === 'pdf';
+    const isVideo = file.type.startsWith('video/') || allowedVideoExts.includes(ext);
+    const isImage = file.type.startsWith('image/') || allowedImageExts.includes(ext);
+
+    if (!isPdf && !isVideo && !isImage) {
+      return {
+        valid: false,
+        error: `"${file.name}" has an unsupported format. Supported formats: Images, Videos (up to 10MB), and PDFs (up to 2MB).`,
+      };
+    }
+
+    if (isPdf && file.size > 2 * 1024 * 1024) {
+      return {
+        valid: false,
+        error: `PDF "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 2MB size limit.`,
+      };
+    }
+
+    if (isVideo && file.size > 10 * 1024 * 1024) {
+      return {
+        valid: false,
+        error: `Video "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB size limit.`,
+      };
+    }
+
+    if (isImage && file.size > 10 * 1024 * 1024) {
+      return {
+        valid: false,
+        error: `Image "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB size limit.`,
+      };
+    }
+  }
+
+  return { valid: true };
+};
+
 export const addComment = async (taskId: string, commentData: any) => {
   const res = await api.post(`/tasks/${taskId}/comments`, commentData);
   return res.data;

@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, UseInterceptors, UploadedFiles, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, UseInterceptors, UploadedFiles, BadRequestException, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -6,7 +7,49 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+
+function validateAttachmentFile(file: Express.Multer.File) {
+  if (!file) {
+    throw new BadRequestException('No file provided');
+  }
+
+  const ext = file.originalname ? file.originalname.split('.').pop()?.toLowerCase() || '' : '';
+  const mimetype = (file.mimetype || '').toLowerCase();
+
+  const isPdf = mimetype === 'application/pdf' || ext === 'pdf';
+  const isVideo =
+    mimetype.startsWith('video/') ||
+    ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp', 'ts'].includes(ext);
+  const isImage =
+    mimetype.startsWith('image/') ||
+    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
+
+  if (!isPdf && !isVideo && !isImage) {
+    throw new BadRequestException(
+      `File "${file.originalname}" has an unsupported format. Supported formats: images, videos (up to 10MB), and PDFs (up to 2MB).`,
+    );
+  }
+
+  if (isPdf && file.size > 2 * 1024 * 1024) {
+    throw new BadRequestException(
+      `PDF document "${file.originalname}" exceeds the 2MB size limit.`,
+    );
+  }
+
+  if (isVideo && file.size > 10 * 1024 * 1024) {
+    throw new BadRequestException(
+      `Video "${file.originalname}" exceeds the 10MB size limit.`,
+    );
+  }
+
+  if (isImage && file.size > 10 * 1024 * 1024) {
+    throw new BadRequestException(
+      `Image "${file.originalname}" exceeds the 10MB size limit.`,
+    );
+  }
+}
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -40,6 +83,43 @@ export class TasksController {
     return activeTask || null;
   }
 
+  @Public()
+  @Get('file/view')
+  async viewFile(
+    @Query('url') fileUrl: string,
+    @Query('name') fileName: string,
+    @Query('download') download: string,
+    @Res() res: Response,
+  ) {
+    if (!fileUrl) {
+      throw new BadRequestException('File URL is required');
+    }
+
+    const isPdf =
+      fileUrl.toLowerCase().includes('.pdf') ||
+      (fileName && fileName.toLowerCase().endsWith('.pdf'));
+
+    const publicId = this.cloudinaryService.extractPublicId(fileUrl);
+
+    if (publicId && isPdf) {
+      const fileStreamInfo = await this.cloudinaryService.getFileStream(publicId, 'pdf');
+      if (fileStreamInfo) {
+        const disposition = download === '1' || download === 'true' ? 'attachment' : 'inline';
+        const safeName = (fileName || `${publicId.split('/').pop()}.pdf`).replace(/[^\w\.\-\s]/g, '_');
+
+        res.setHeader('Content-Type', fileStreamInfo.contentType || 'application/pdf');
+        res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
+        if (fileStreamInfo.length) {
+          res.setHeader('Content-Length', fileStreamInfo.length.toString());
+        }
+
+        return fileStreamInfo.stream.pipe(res);
+      }
+    }
+
+    return res.redirect(fileUrl);
+  }
+
   @Get(':id')
   @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findOne(@Request() req, @Param('id') id: string) {
@@ -69,9 +149,30 @@ export class TasksController {
     return this.tasksService.duplicate(id, req.user.id, req.user.email);
   }
 
+  @Post('upload')
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files uploaded');
+    }
+
+    files.forEach((file) => validateAttachmentFile(file));
+
+    return Promise.all(
+      files.map(async (file) => {
+        const result: any = await this.cloudinaryService.uploadFile(file);
+        return {
+          name: file.originalname,
+          url: result.secure_url,
+          type: 'file' as const,
+        };
+      })
+    );
+  }
+
   @Post(':id/upload')
   @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
     @Request() req,
     @Param('id') id: string,
@@ -80,6 +181,8 @@ export class TasksController {
     if (!files || files.length === 0) {
       throw new BadRequestException('No files uploaded');
     }
+
+    files.forEach((file) => validateAttachmentFile(file));
     
     // Process files and create resource objects via Cloudinary
     const newResources = await Promise.all(
@@ -88,7 +191,7 @@ export class TasksController {
         return {
           name: file.originalname,
           url: result.secure_url,
-          type: 'file' as const
+          type: 'file' as const,
         };
       })
     );
@@ -104,24 +207,6 @@ export class TasksController {
     // We update using tasksService.update
     const updatedTask = await this.tasksService.update(id, { resources: updatedResources }, req.user.id, req.user.email);
     return updatedTask;
-  }
-
-  @Post('upload')
-  @UseInterceptors(FilesInterceptor('files', 10))
-  async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
-    if (!files || files.length === 0) {
-      throw new BadRequestException('No files uploaded');
-    }
-    return Promise.all(
-      files.map(async (file) => {
-        const result: any = await this.cloudinaryService.uploadFile(file);
-        return {
-          name: file.originalname,
-          url: result.secure_url,
-          type: 'file' as const
-        };
-      })
-    );
   }
 
   @Post(':id/comments')

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock } from "lucide-react";
+import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
-import { uploadGenericResource, fetchMe, fetchEmployees, API_URL } from "../../lib/api";
+import { uploadGenericResource, fetchMe, fetchEmployees, API_URL, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 
 export interface CommentUser {
   name: string;
@@ -207,6 +207,7 @@ export function Comments({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachments, setAttachments] = useState<CommentAttachment[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [showMentionList, setShowMentionList] = useState(false);
@@ -444,15 +445,28 @@ export function Comments({
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      setUploadError(null);
+      const selectedFiles = Array.from(e.target.files);
+      const validation = validateUploadFiles(selectedFiles);
+      if (!validation.valid) {
+        setUploadError(validation.error || 'Invalid file');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
       const formData = new FormData();
-      Array.from(e.target.files).forEach(file => {
+      selectedFiles.forEach(file => {
         formData.append('files', file);
       });
       try {
         const uploaded = await uploadGenericResource(formData);
         setAttachments(prev => [...prev, ...uploaded]);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to upload file", err);
+        const msg = err.response?.data?.message || err.message || "Failed to upload file";
+        setUploadError(Array.isArray(msg) ? msg.join(', ') : msg);
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     }
   };
@@ -622,9 +636,16 @@ export function Comments({
               {hasAttachments && (
                 <div className={`flex flex-col gap-1 w-full ${isMine ? 'items-end' : 'items-start'}`}>
                   {comment.attachments!.map((att, i) => {
-                    const fileUrl = att.url.startsWith('http://') || att.url.startsWith('https://')
-                      ? att.url
-                      : `${API_URL}${att.url.startsWith('/') ? '' : '/'}${att.url}`;
+                    const fileUrl = getAttachmentUrl(att.url, att.name);
+                    const ext = att.name?.split('.').pop()?.toLowerCase() || '';
+                    const isPdf = ext === 'pdf';
+                    const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
+                    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
+
+                    let icon = <File className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-primary'}`} />;
+                    if (isPdf) icon = <FileText className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-red-500'}`} />;
+                    else if (isVideo) icon = <Video className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-purple-500'}`} />;
+                    else if (isImage) icon = <ImageIcon className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-emerald-500'}`} />;
 
                     // Determine if this is the last/only item so we show timestamp in it
                     const isLastAtt = i === comment.attachments!.length - 1;
@@ -638,6 +659,7 @@ export function Comments({
                         rel="noopener noreferrer"
                         download={att.name}
                         style={tailStyle}
+                        title={att.name}
                         className={`
                           flex items-center gap-2 px-3 py-2.5 text-sm shadow-sm
                           hover:opacity-90 transition-opacity
@@ -649,7 +671,7 @@ export function Comments({
                       >
                         {/* File icon */}
                         <div className={`p-1.5 rounded-md ${isMine ? 'bg-white/20' : 'bg-primary/10'}`}>
-                          <File className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-primary'}`} />
+                          {icon}
                         </div>
 
                         {/* File name */}
@@ -755,23 +777,42 @@ export function Comments({
       {/* Pending Attachments Preview (before sending) */}
       {enableAttachments && attachments.length > 0 && (
         <div className="px-4 py-2 border-t border-border bg-muted/5 flex gap-2 flex-wrap">
-          {attachments.map((att, i) => (
-            <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-card border border-border rounded-md text-xs">
-              <File className="w-3 h-3 text-blue-500" />
-              <span className="max-w-[100px] truncate">{att.name}</span>
-              <button
-                onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                className="text-muted-foreground hover:text-red-500"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+          {attachments.map((att, i) => {
+            const ext = att.name?.split('.').pop()?.toLowerCase() || '';
+            const isPdf = ext === 'pdf';
+            const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
+            const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
+
+            let icon = <File className="w-3 h-3 text-blue-500 shrink-0" />;
+            if (isPdf) icon = <FileText className="w-3 h-3 text-red-500 shrink-0" />;
+            else if (isVideo) icon = <Video className="w-3 h-3 text-purple-500 shrink-0" />;
+            else if (isImage) icon = <ImageIcon className="w-3 h-3 text-emerald-500 shrink-0" />;
+
+            return (
+              <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-card border border-border rounded-md text-xs">
+                {icon}
+                <span className="max-w-[120px] truncate">{att.name}</span>
+                <button
+                  onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                  className="text-muted-foreground hover:text-red-500 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Input Box */}
       <div className="px-4 py-3 border-t border-border bg-muted/10 relative">
+        {uploadError && (
+          <div className="mb-2 text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-2.5 py-1.5 rounded-md flex items-center justify-between">
+            <span>{uploadError}</span>
+            <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-75">×</button>
+          </div>
+        )}
+
         {enableEmoji && showEmojiPicker && (
           <div className="absolute bottom-full right-4 mb-2 z-50 shadow-xl" ref={pickerRef}>
             <EmojiPicker onEmojiClick={onEmojiClick} width={300} height={400} />
@@ -835,11 +876,18 @@ export function Comments({
             <div className="flex items-center gap-1.5 pb-2">
               {enableAttachments && (
                 <>
-                  <input type="file" multiple className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,application/pdf,.pdf"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                  />
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                    title="Attach file"
+                    title="Attach file (Images, Videos up to 10MB, PDFs up to 2MB)"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
