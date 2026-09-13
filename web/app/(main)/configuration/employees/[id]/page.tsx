@@ -8,7 +8,8 @@ import {
   Calendar, Hash, ChevronDown, ArrowLeft
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
-import { fetchEmployeeById, createEmployee, api } from "../../../../../src/lib/api";
+import { fetchEmployeeById, fetchEmployees, createEmployee, api } from "../../../../../src/lib/api";
+import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
 import Link from "next/link";
 
 const EMPTY_EMPLOYEE = {
@@ -145,6 +146,43 @@ export default function EmployeeDetailPage({
     if (originalData) setEmployeeData(originalData);
   };
 
+  const [allEmployeeIds, setAllEmployeeIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isNew) {
+      fetchEmployees().then((emps) => {
+        if (emps && Array.isArray(emps)) {
+          setAllEmployeeIds(emps.map((e: any) => e._id || e.id));
+        }
+      }).catch((err) => console.error("Failed to load employee list", err));
+    }
+  }, [isNew]);
+
+  const empIndex = allEmployeeIds.indexOf(id);
+  const totalEmployees = allEmployeeIds.length;
+  const currentEmpNum = empIndex >= 0 ? empIndex + 1 : 1;
+
+  const navigateToEmployee = (targetId: string) => {
+    if (hasChanges) {
+      if (!confirm("You have unsaved changes. Discard and navigate to the other employee?")) {
+        return;
+      }
+    }
+    router.push(`/configuration/employees/${targetId}`);
+  };
+
+  const handlePrevEmployee = () => {
+    if (empIndex > 0) {
+      navigateToEmployee(allEmployeeIds[empIndex - 1]);
+    }
+  };
+
+  const handleNextEmployee = () => {
+    if (empIndex >= 0 && empIndex < totalEmployees - 1) {
+      navigateToEmployee(allEmployeeIds[empIndex + 1]);
+    }
+  };
+
   const displayName = employeeData.fullName?.firstName
     ? `${employeeData.fullName.firstName}${employeeData.fullName.lastName ? " " + employeeData.fullName.lastName : ""}`
     : isNew
@@ -185,6 +223,16 @@ export default function EmployeeDetailPage({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {!isNew && totalEmployees > 0 && (
+            <RecordNavigator
+              current={currentEmpNum}
+              total={totalEmployees}
+              onPrev={handlePrevEmployee}
+              onNext={handleNextEmployee}
+              hasPrev={empIndex > 0}
+              hasNext={empIndex >= 0 && empIndex < totalEmployees - 1}
+            />
+          )}
           {isNew ? (
             <button
               onClick={handleSave}

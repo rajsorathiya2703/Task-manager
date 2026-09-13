@@ -8,7 +8,8 @@ import {
   Calendar, ArrowLeft, Trash2, Briefcase, UserCheck
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
-import { fetchUserById, updateUser, deleteUser } from "../../../../../src/lib/api";
+import { fetchUserById, fetchUsers, updateUser, deleteUser } from "../../../../../src/lib/api";
+import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
 import Link from "next/link";
 
 export default function UserDetailPage({
@@ -60,7 +61,42 @@ export default function UserDetailPage({
     load();
   }, [id, router]);
 
+  const [allUserIds, setAllUserIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchUsers().then((users) => {
+      if (users && Array.isArray(users)) {
+        setAllUserIds(users.map((u: any) => u._id || u.id));
+      }
+    }).catch((err) => console.error("Failed to load user list", err));
+  }, []);
+
   const hasChanges = name !== originalName;
+
+  const userIndex = allUserIds.indexOf(id);
+  const totalUsers = allUserIds.length;
+  const currentUserNum = userIndex >= 0 ? userIndex + 1 : 1;
+
+  const navigateToUser = (targetId: string) => {
+    if (hasChanges) {
+      if (!confirm("You have unsaved changes. Discard and navigate to the other user?")) {
+        return;
+      }
+    }
+    router.push(`/configuration/users/${targetId}`);
+  };
+
+  const handlePrevUser = () => {
+    if (userIndex > 0) {
+      navigateToUser(allUserIds[userIndex - 1]);
+    }
+  };
+
+  const handleNextUser = () => {
+    if (userIndex >= 0 && userIndex < totalUsers - 1) {
+      navigateToUser(allUserIds[userIndex + 1]);
+    }
+  };
 
   const showToast = (message: string, type: "success" | "info" = "success") => {
     setToastType(type);
@@ -188,6 +224,16 @@ export default function UserDetailPage({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {totalUsers > 0 && (
+            <RecordNavigator
+              current={currentUserNum}
+              total={totalUsers}
+              onPrev={handlePrevUser}
+              onNext={handleNextUser}
+              hasPrev={userIndex > 0}
+              hasNext={userIndex >= 0 && userIndex < totalUsers - 1}
+            />
+          )}
           {hasChanges ? (
             <div className="flex items-center gap-2">
               <button

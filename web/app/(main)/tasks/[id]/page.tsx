@@ -9,9 +9,10 @@ import { TaskUpdatesPanel } from "../../../../src/components/task-detail/TaskUpd
 import { TaskTimelinePanel } from "../../../../src/components/task-detail/TaskTimelinePanel";
 import { use, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createTask, fetchTaskById, updateTask, fetchProjectById, startTaskTimer, stopTaskTimer } from "../../../../src/lib/api";
+import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, startTaskTimer, stopTaskTimer } from "../../../../src/lib/api";
 import { useTimer } from "../../../../src/contexts/TimerContext";
 import { getUserDisplayName } from "../../../../src/components/common/Comments";
+import { RecordNavigator } from "../../../../src/components/common/RecordNavigator";
 import Link from "next/link";
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -53,6 +54,18 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     timeEntries: [],
     isOwner: true,
   });
+
+  const [allTaskIds, setAllTaskIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isNew) {
+      fetchTasks().then((tasks) => {
+        if (tasks && Array.isArray(tasks)) {
+          setAllTaskIds(tasks.map((t: any) => t._id || t.id));
+        }
+      }).catch((err) => console.error("Failed to load tasks list", err));
+    }
+  }, [isNew]);
 
   useEffect(() => {
     if (!isNew) {
@@ -212,6 +225,31 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     return JSON.stringify(t1) !== JSON.stringify(t2);
   })();
 
+  const taskIndex = allTaskIds.indexOf(id);
+  const totalTasks = allTaskIds.length;
+  const currentTaskNum = taskIndex >= 0 ? taskIndex + 1 : 1;
+
+  const navigateToTask = (targetId: string) => {
+    if (hasChanges) {
+      if (!confirm("You have unsaved changes. Discard and navigate to the other task?")) {
+        return;
+      }
+    }
+    router.push(`/tasks/${targetId}`);
+  };
+
+  const handlePrevTask = () => {
+    if (taskIndex > 0) {
+      navigateToTask(allTaskIds[taskIndex - 1]);
+    }
+  };
+
+  const handleNextTask = () => {
+    if (taskIndex >= 0 && taskIndex < totalTasks - 1) {
+      navigateToTask(allTaskIds[taskIndex + 1]);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setIsSaving(true);
@@ -361,6 +399,16 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         </div>
         
         <div className="flex items-center gap-2">
+          {!isNew && totalTasks > 0 && (
+            <RecordNavigator
+              current={currentTaskNum}
+              total={totalTasks}
+              onPrev={handlePrevTask}
+              onNext={handleNextTask}
+              hasPrev={taskIndex > 0}
+              hasNext={taskIndex >= 0 && taskIndex < totalTasks - 1}
+            />
+          )}
           {isNew ? (
             <button 
               onClick={handleSave}

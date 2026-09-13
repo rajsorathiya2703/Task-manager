@@ -10,11 +10,13 @@ import {
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import {
   fetchUserGroupById,
+  fetchUserGroups,
   createUserGroup,
   updateUserGroup,
   deleteUserGroup,
   fetchUsers
 } from "../../../../../src/lib/api";
+import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
 import Link from "next/link";
 
 const COLOR_PRESETS = [
@@ -280,6 +282,43 @@ export default function UserGroupDetailPage({
       JSON.stringify(modulePerms) !== JSON.stringify(originalData.modulePerms) ||
       JSON.stringify(fieldPerms) !== JSON.stringify(originalData.fieldPerms));
 
+  const [allGroupIds, setAllGroupIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isNew) {
+      fetchUserGroups().then((groups) => {
+        if (groups && Array.isArray(groups)) {
+          setAllGroupIds(groups.map((g: any) => g._id || g.id));
+        }
+      }).catch((err) => console.error("Failed to load user groups list", err));
+    }
+  }, [isNew]);
+
+  const groupIndex = allGroupIds.indexOf(id);
+  const totalGroups = allGroupIds.length;
+  const currentGroupNum = groupIndex >= 0 ? groupIndex + 1 : 1;
+
+  const navigateToGroup = (targetId: string) => {
+    if (hasChanges) {
+      if (!confirm("You have unsaved changes. Discard and navigate to the other user group?")) {
+        return;
+      }
+    }
+    router.push(`/configuration/user-groups/${targetId}`);
+  };
+
+  const handlePrevGroup = () => {
+    if (groupIndex > 0) {
+      navigateToGroup(allGroupIds[groupIndex - 1]);
+    }
+  };
+
+  const handleNextGroup = () => {
+    if (groupIndex >= 0 && groupIndex < totalGroups - 1) {
+      navigateToGroup(allGroupIds[groupIndex + 1]);
+    }
+  };
+
   const handleToggleMember = (userId: string) => {
     setSelectedMembers((prev) =>
       prev.includes(userId) ? prev.filter((i) => i !== userId) : [...prev, userId]
@@ -521,6 +560,16 @@ export default function UserGroupDetailPage({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {!isNew && totalGroups > 0 && (
+            <RecordNavigator
+              current={currentGroupNum}
+              total={totalGroups}
+              onPrev={handlePrevGroup}
+              onNext={handleNextGroup}
+              hasPrev={groupIndex > 0}
+              hasNext={groupIndex >= 0 && groupIndex < totalGroups - 1}
+            />
+          )}
           {isNew ? (
             <button
               onClick={handleSave}

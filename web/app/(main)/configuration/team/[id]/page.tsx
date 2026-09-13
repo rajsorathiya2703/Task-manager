@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
-import { fetchTeamById, createTeam, fetchEmployees, fetchMe, api } from "../../../../../src/lib/api";
+import { fetchTeamById, fetchTeams, createTeam, fetchEmployees, fetchMe, api } from "../../../../../src/lib/api";
+import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
 import { TeamComments } from "../../../../../src/components/team/TeamComments";
 import { getUserDisplayName } from "../../../../../src/components/common/Comments";
 import { TeamLiveTimeline } from "../../../../../src/components/team/TeamLiveTimeline";
@@ -126,6 +127,43 @@ export default function TeamDetailPage({
       return JSON.stringify(t1) !== JSON.stringify(t2);
     })();
 
+  const [allTeamIds, setAllTeamIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isNew) {
+      fetchTeams().then((teams) => {
+        if (teams && Array.isArray(teams)) {
+          setAllTeamIds(teams.map((t: any) => t._id || t.id));
+        }
+      }).catch((err) => console.error("Failed to load team list", err));
+    }
+  }, [isNew]);
+
+  const teamIndex = allTeamIds.indexOf(id);
+  const totalTeams = allTeamIds.length;
+  const currentTeamNum = teamIndex >= 0 ? teamIndex + 1 : 1;
+
+  const navigateToTeam = (targetId: string) => {
+    if (hasChanges) {
+      if (!confirm("You have unsaved changes. Discard and navigate to the other team?")) {
+        return;
+      }
+    }
+    router.push(`/configuration/team/${targetId}`);
+  };
+
+  const handlePrevTeam = () => {
+    if (teamIndex > 0) {
+      navigateToTeam(allTeamIds[teamIndex - 1]);
+    }
+  };
+
+  const handleNextTeam = () => {
+    if (teamIndex >= 0 && teamIndex < totalTeams - 1) {
+      navigateToTeam(allTeamIds[teamIndex + 1]);
+    }
+  };
+
   const set = (field: string, value: any) =>
     setTeamData((prev: any) => ({ ...prev, [field]: value }));
 
@@ -232,6 +270,16 @@ export default function TeamDetailPage({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {!isNew && totalTeams > 0 && (
+            <RecordNavigator
+              current={currentTeamNum}
+              total={totalTeams}
+              onPrev={handlePrevTeam}
+              onNext={handleNextTeam}
+              hasPrev={teamIndex > 0}
+              hasNext={teamIndex >= 0 && teamIndex < totalTeams - 1}
+            />
+          )}
           {isNew ? (
             <button
               onClick={handleSave}
