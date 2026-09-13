@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeft, Lock, Eye, Share2, MoreHorizontal, PanelRight, Save, Check, X, Loader2, ShieldAlert, ArrowLeft } from "lucide-react";
+import { PanelLeft, PanelRight, Save, Check, X, Loader2, ShieldAlert, ArrowLeft } from "lucide-react";
 import { useSidebar } from "../../../../src/components/layout/SidebarContext";
 import { TaskHeader } from "../../../../src/components/task-detail/TaskHeader";
 import { TaskComments } from "../../../../src/components/task-detail/TaskComments";
@@ -389,23 +389,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 {isSaving ? 'Updating...' : 'Update Task'}
               </button>
             </div>
-          ) : (
-            <>
-              <button className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-muted-foreground">
-                <Lock className="w-3.5 h-3.5" />
-              </button>
-              <button className="flex items-center gap-1.5 p-1.5 px-2 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-blue-500 font-medium text-xs">
-                <Eye className="w-3.5 h-3.5" />
-                1
-              </button>
-              <button className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-muted-foreground">
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-              <button className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-muted-foreground">
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </>
-          )}
+          ) : null}
           
           <button 
             onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
