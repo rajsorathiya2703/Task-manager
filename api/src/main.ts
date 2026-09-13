@@ -5,8 +5,9 @@ import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
 import * as dns from 'dns';
 
-// Fix Node.js DNS resolution issues on Windows for MongoDB Atlas (mongodb+srv)
+// Fix Node.js DNS resolution issues on Windows for MongoDB Atlas & cloud container IPv6 issues (Render ENETUNREACH)
 try {
+  dns.setDefaultResultOrder('ipv4first');
   dns.setServers(['8.8.8.8', '1.1.1.1']);
 } catch {
   // fallback to system default if setting custom servers fails

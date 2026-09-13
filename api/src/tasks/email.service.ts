@@ -36,17 +36,30 @@ export class EmailService {
       this.logger.log(`Using SMTP credentials from environment variables (User: ${user})`);
     }
 
-    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+    const rawPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const isGmail = host.includes('gmail');
+    // On Render, port 587 frequently times out or blocks; switch to 465 with SSL for Gmail
+    const port = rawPort === 587 && isGmail ? 465 : rawPort;
+    const isSecure = port === 465;
 
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      host: host,
       port: port,
-      secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
+      secure: isSecure, // true for 465 (SSL), false for other ports
       auth: {
         user: user,
         pass: pass,
       },
-    });
+      // CRITICAL FOR RENDER: Force IPv4 to prevent "connect ENETUNREACH 2607:f8b0... (IPv6)"
+      family: 4,
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 30000,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    } as any);
 
     // Verify SMTP connection on startup so connection errors appear directly in Render runtime logs
     this.transporter.verify((error) => {
