@@ -176,9 +176,34 @@ export class EmailService {
     }
   }
 
+  private getBaseUrl(): string {
+    const configuredUrl =
+      process.env.APP_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.CLIENT_URL;
+
+    if (configuredUrl && configuredUrl.trim()) {
+      return configuredUrl.trim().replace(/\/+$/, '');
+    }
+
+    if (process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim()) {
+      const origins = process.env.CORS_ORIGIN.split(',').map((o) => o.trim());
+      const vercelOrigin = origins.find((o) => o.includes('vercel.app'));
+      if (vercelOrigin) {
+        return vercelOrigin.replace(/\/+$/, '');
+      }
+      const nonLocalhost = origins.find((o) => !o.includes('localhost') && !o.includes('127.0.0.1'));
+      if (nonLocalhost) {
+        return nonLocalhost.replace(/\/+$/, '');
+      }
+    }
+
+    return 'https://web-zeta-olive-95.vercel.app';
+  }
+
   async sendInviteEmail(to: string, taskTitle: string, inviterName: string) {
-    const baseUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000';
-    const text = `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it.`;
+    const baseUrl = this.getBaseUrl();
+    const text = `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it: ${baseUrl}/tasks`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px;">
         <h2 style="color: #333;">Task Invitation</h2>
@@ -217,7 +242,7 @@ export class EmailService {
     taskId?: string,
     projectName?: string,
   ) {
-    const baseUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000';
+    const baseUrl = this.getBaseUrl();
     const taskUrl = taskId ? `${baseUrl}/tasks/${taskId}` : `${baseUrl}/tasks`;
     const projectSnippet = projectName ? ` in project <strong>${projectName}</strong>` : '';
 

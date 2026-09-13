@@ -18,6 +18,8 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: APP_URL
+        value: https://web-zeta-olive-95.vercel.app
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: CLIENT_SECRET
