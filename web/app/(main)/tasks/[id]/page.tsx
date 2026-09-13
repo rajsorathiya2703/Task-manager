@@ -310,7 +310,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         </p>
         <Link 
           href="/tasks"
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Tasks
@@ -335,7 +335,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           {!isOpen && (
             <button 
               onClick={toggleSidebar}
-              className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm mr-2"
+              className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm mr-2 cursor-pointer"
             >
               <PanelLeft className="w-4 h-4 text-foreground" />
             </button>
@@ -365,7 +365,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             <button 
               onClick={handleSave}
               disabled={isSaving || !taskData.title?.trim()}
-              className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50"
+              className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               {isSaving ? 'Saving...' : 'Save Task'}
@@ -375,7 +375,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <button 
                 onClick={handleDiscard}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-muted-foreground text-xs font-medium disabled:opacity-50"
+                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm text-muted-foreground text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
                 <X className="w-3.5 h-3.5" />
                 Discard
@@ -383,7 +383,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <button 
                 onClick={handleUpdate}
                 disabled={isSaving || !taskData.title?.trim()}
-                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50"
+                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 {isSaving ? 'Updating...' : 'Update Task'}
@@ -393,7 +393,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           
           <button 
             onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-            className={`p-1.5 border border-border rounded-md transition-colors bg-card shadow-sm ml-1 ${isRightPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+            className={`p-1.5 border border-border rounded-md transition-colors bg-card shadow-sm ml-1 cursor-pointer ${isRightPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted text-muted-foreground'}`}
           >
             <PanelRight className="w-3.5 h-3.5" />
           </button>
@@ -455,7 +455,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           <div className="bg-primary text-primary-foreground px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
             <Check className="w-4 h-4" />
             <span className="text-sm font-medium">{toastMessage}</span>
-            <button onClick={() => setToastMessage(null)} className="ml-2 hover:opacity-70">
+            <button onClick={() => setToastMessage(null)} className="ml-2 hover:opacity-70 cursor-pointer">
               <X className="w-4 h-4" />
             </button>
           </div>

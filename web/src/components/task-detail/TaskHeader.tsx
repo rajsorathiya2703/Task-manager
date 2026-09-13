@@ -155,7 +155,7 @@ export function TaskHeader({
                 onClick={onStopTimer}
                 disabled={isTimerLoading || !isAssignee}
                 title={!isAssignee ? "Only the assigned user can stop the timer" : "Stop Timer"}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold text-xs transition-all shadow-sm animate-pulse disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold text-xs transition-all shadow-sm animate-pulse cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isTimerLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5 fill-current" />}
                 <span>Stop Timer</span>
@@ -165,7 +165,7 @@ export function TaskHeader({
                 onClick={onStartTimer}
                 disabled={isTimerLoading || !isAssignee}
                 title={!isAssignee ? "Only the assigned user can start the timer" : "Start Timer"}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isTimerLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
                 <span>Start Timer</span>
@@ -216,7 +216,7 @@ export function TaskHeader({
 
           <Popover className="relative">
             <Popover.Button 
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium outline-none w-fit"
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium outline-none w-fit cursor-pointer"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
               {isUploading ? 'Uploading...' : 'Add document or link...'}
@@ -230,7 +230,7 @@ export function TaskHeader({
                 <>
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded-md text-xs text-left w-full transition-colors"
+                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded-md text-xs text-left w-full transition-colors cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5 text-muted-foreground" />
                     Upload Document
