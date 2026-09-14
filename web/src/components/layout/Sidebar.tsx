@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot } from "lucide-react";
+import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders } from "lucide-react";
 import { UserProfile } from "./UserProfile";
 import { useSidebar } from "./SidebarContext";
 import { usePermissions } from "../../contexts/PermissionsContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
+import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
 
 interface SidebarProps {
   user: any;
@@ -17,6 +18,9 @@ export function Sidebar({ user }: SidebarProps) {
   const { isOpen: isChatbotOpen, toggleChatbot } = useChatbot();
   const { can } = usePermissions();
   const pathname = usePathname();
+
+  // Day Off / Time Off Module Toggle
+  const dayOffEnabled = isDayOffModuleEnabled();
 
   // Module read permissions
   const isEmployee = Boolean(user?.is_employee);
@@ -29,6 +33,11 @@ export function Sidebar({ user }: SidebarProps) {
   const hasEmployeesAccess = isSystemAdmin && can("employees", "read");
   const hasUsersAccess = isSystemAdmin && can("settings", "read");
   const hasUserGroupsAccess = isSystemAdmin && can("settings", "read");
+
+  // Time Off permissions
+  const hasTimeOffSection = dayOffEnabled;
+  const hasTimeOffApprovals = dayOffEnabled && (isSystemAdmin || can("employees", "read"));
+  const hasTimeOffPolicies = dayOffEnabled && isSystemAdmin;
 
   const hasWorkspaceSection = isEmployee || hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
   const hasConfigurationSection =
@@ -160,6 +169,72 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Timeline
+                  </Link>
+                )}
+              </nav>
+            </div>
+          )}
+
+          {/* Time Off Section */}
+          {hasTimeOffSection && (
+            <div>
+              <div className="flex items-center justify-between px-2 mb-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Time Off</h3>
+                <svg className="w-3 h-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+
+              <nav className="space-y-1">
+                <Link
+                  href="/dayoff/calendar"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    pathname.startsWith("/dayoff/calendar") || pathname === "/dayoff"
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 shrink-0" />
+                  Calendar
+                </Link>
+
+                <Link
+                  href="/dayoff/requests"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    pathname.startsWith("/dayoff/requests")
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <CalendarCheck className="w-4 h-4 shrink-0" />
+                  My Leaves
+                </Link>
+
+                {hasTimeOffApprovals && (
+                  <Link
+                    href="/dayoff/approvals"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname.startsWith("/dayoff/approvals")
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <ClipboardCheck className="w-4 h-4 shrink-0" />
+                    Approvals
+                  </Link>
+                )}
+
+                {hasTimeOffPolicies && (
+                  <Link
+                    href="/dayoff/policies"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname.startsWith("/dayoff/policies") || pathname.startsWith("/configuration/day-off")
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <Sliders className="w-4 h-4 shrink-0" />
+                    Leave Policies
                   </Link>
                 )}
               </nav>

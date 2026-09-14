@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Popover } from "@headlessui/react";
-import { Bell, MessageSquare, AtSign } from "lucide-react";
+import { Bell, MessageSquare, AtSign, Calendar } from "lucide-react";
 import Link from "next/link";
-import { fetchMe, fetchTasks, fetchTeams } from "../../lib/api";
+import { fetchMe, fetchTasks, fetchTeams, fetchNotifications, markNotificationRead } from "../../lib/api";
+import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
 import { getUserDisplayName } from "./Comments";
 
 export interface NotificationItem {
   id: string;
-  type: 'mention' | 'comment';
+  type: 'mention' | 'comment' | 'leave';
   title: string;
   message: string;
   authorName: string;
@@ -21,6 +22,7 @@ export interface NotificationItem {
 
 export function NotificationDropdown() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -34,6 +36,45 @@ export function NotificationDropdown() {
     };
     init();
   }, []);
+
+  // Poll system notifications (leave approvals, applications, etc.) every 1 hour as requested
+  useEffect(() => {
+    if (!currentUser || !isDayOffModuleEnabled()) return;
+
+    const loadSystemNotifs = async () => {
+      try {
+        const data = await fetchNotifications();
+        if (data && Array.isArray(data.list)) {
+          setSystemNotifications(data.list);
+        }
+      } catch {
+        // silent
+      }
+    };
+
+    loadSystemNotifs();
+    const interval = setInterval(loadSystemNotifs, 60 * 60 * 1000); // 1 hour polling
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // Merge thread notifications with system leave notifications
+  const allNotifications = useMemo(() => {
+    const sysItems: NotificationItem[] = systemNotifications
+      .filter((sn) => !sn.isRead)
+      .map((sn) => ({
+        id: `sys_${sn._id}`,
+        type: 'leave' as const,
+        title: sn.title,
+        message: sn.message,
+        authorName: 'Leave System',
+        targetUrl: sn.link || '/dayoff',
+        createdAt: sn.createdAt,
+        isRead: sn.isRead,
+      }));
+    return [...sysItems, ...notifications].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [systemNotifications, notifications]);
 
   // Poll tasks & teams every 10s to detect unread comments & mentions globally (grouped by thread)
   useEffect(() => {
@@ -166,15 +207,26 @@ export function NotificationDropdown() {
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  const unreadCount = notifications.length;
+  const unreadCount = allNotifications.length;
 
-  const handleNotificationClick = (n: NotificationItem) => {
+  const handleNotificationClick = async (n: NotificationItem) => {
+    if (n.id.startsWith('sys_')) {
+      const rawId = n.id.replace('sys_', '');
+      try {
+        await markNotificationRead(rawId);
+      } catch (err) {
+        console.error('Failed to mark system notification read', err);
+      }
+      setSystemNotifications((prev) => prev.map((sn) => (sn._id === rawId ? { ...sn, isRead: true } : sn)));
+      return;
+    }
+
     // Save read timestamp for thread so notification auto-clears
     const threadId = n.targetUrl.split('/').pop();
     if (threadId) {
       localStorage.setItem(`comments_read_${threadId}`, Date.now().toString());
     }
-    setNotifications(prev => prev.filter(item => item.id !== n.id));
+    setNotifications((prev) => prev.filter((item) => item.id !== n.id));
   };
 
   const formatTimeAgo = (iso: string) => {
@@ -221,7 +273,7 @@ export function NotificationDropdown() {
 
             {/* List */}
             <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-border/40">
-              {notifications.length === 0 ? (
+              {allNotifications.length === 0 ? (
                 <div className="py-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                   <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
                     <Bell className="w-5 h-5 opacity-50" />
@@ -229,7 +281,7 @@ export function NotificationDropdown() {
                   <span>No new notifications</span>
                 </div>
               ) : (
-                notifications.map(n => (
+                allNotifications.map((n) => (
                   <Link
                     key={n.id}
                     href={n.targetUrl}
@@ -238,7 +290,11 @@ export function NotificationDropdown() {
                   >
                     {/* Icon or Avatar */}
                     <div className="relative shrink-0 mt-0.5">
-                      {n.authorAvatar ? (
+                      {n.type === 'leave' ? (
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
+                          <Calendar className="w-4 h-4" />
+                        </div>
+                      ) : n.authorAvatar ? (
                         <img
                           src={n.authorAvatar}
                           alt={n.authorName}
@@ -252,7 +308,9 @@ export function NotificationDropdown() {
                         </div>
                       )}
                       <span className="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-card border border-border">
-                        {n.type === 'mention' ? (
+                        {n.type === 'leave' ? (
+                          <Calendar className="w-2.5 h-2.5 text-emerald-500" />
+                        ) : n.type === 'mention' ? (
                           <AtSign className="w-2.5 h-2.5 text-primary" />
                         ) : (
                           <MessageSquare className="w-2.5 h-2.5 text-blue-500" />
@@ -267,7 +325,7 @@ export function NotificationDropdown() {
                         <span className="text-[10px] text-muted-foreground shrink-0">{formatTimeAgo(n.createdAt)}</span>
                       </div>
                       <p className="text-muted-foreground line-clamp-2 leading-relaxed text-[11px]">
-                        <span className="font-medium text-foreground">{n.authorName}: </span>
+                        {n.type !== 'leave' && <span className="font-medium text-foreground">{n.authorName}: </span>}
                         {n.message}
                       </p>
                     </div>

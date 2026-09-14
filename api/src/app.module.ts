@@ -14,6 +14,7 @@ import { TeamsModule } from './teams/teams.module';
 import { UserGroupsModule } from './user-groups/user-groups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { DayOffModule } from './day-off/day-off.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     UserGroupsModule,
     DashboardModule,
     ChatbotModule,
+    DayOffModule,
   ],
   controllers: [AppController],
   providers: [AppService],

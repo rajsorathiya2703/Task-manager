@@ -424,6 +424,116 @@ export const fetchEmployeeActivity = async (range?: string, startDate?: string, 
   return res.data;
 };
 
+// --- Day Off Module Endpoints ---
+export const dayOffEndpoints = {
+  settings: '/day-off/settings',
+  leaveTypes: (activeOnly?: boolean) => activeOnly ? '/day-off/leave-types?activeOnly=true' : '/day-off/leave-types',
+  leaveType: (id: string) => `/day-off/leave-types/${id}`,
+  balances: (year?: number) => year ? `/day-off/balances?year=${year}` : '/day-off/balances',
+  applications: (params?: { status?: string; year?: number; scope?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.append('status', params.status);
+    if (params?.year) sp.append('year', params.year.toString());
+    if (params?.scope) sp.append('scope', params.scope);
+    const qs = sp.toString();
+    return qs ? `/day-off/applications?${qs}` : '/day-off/applications';
+  },
+  myApplications: (year?: number) => year ? `/day-off/applications/my?year=${year}` : '/day-off/applications/my',
+  apply: '/day-off/applications',
+  cancel: (id: string) => `/day-off/applications/${id}/cancel`,
+  updateStatus: (id: string) => `/day-off/applications/${id}/status`,
+  notifications: '/notifications',
+  markNotificationRead: (id: string) => `/notifications/${id}/read`,
+  markAllNotificationsRead: '/notifications/read-all',
+};
+
+export const fetchDayOffSettings = async () => {
+  const res = await api.get(dayOffEndpoints.settings);
+  return res.data;
+};
+
+export const updateDayOffSettings = async (data: any) => {
+  const res = await api.patch(dayOffEndpoints.settings, data);
+  return res.data;
+};
+
+export const fetchLeaveTypes = async (activeOnly?: boolean) => {
+  const res = await api.get(dayOffEndpoints.leaveTypes(activeOnly));
+  return res.data;
+};
+
+export const fetchLeaveTypeById = async (id: string) => {
+  const res = await api.get(dayOffEndpoints.leaveType(id));
+  return res.data;
+};
+
+export const createLeaveType = async (data: any) => {
+  const res = await api.post('/day-off/leave-types', data);
+  return res.data;
+};
+
+export const updateLeaveType = async (id: string, data: any) => {
+  const res = await api.patch(dayOffEndpoints.leaveType(id), data);
+  return res.data;
+};
+
+export const deleteLeaveType = async (id: string) => {
+  const res = await api.delete(dayOffEndpoints.leaveType(id));
+  return res.data;
+};
+
+export const fetchMyLeaveBalances = async (year?: number) => {
+  const res = await api.get(dayOffEndpoints.balances(year));
+  return res.data;
+};
+
+export const fetchMyLeaveApplications = async (year?: number) => {
+  const res = await api.get(dayOffEndpoints.myApplications(year));
+  return res.data;
+};
+
+export const fetchAllLeaveApplications = async (params?: { status?: string; year?: number }) => {
+  const res = await api.get(dayOffEndpoints.applications(params));
+  return res.data;
+};
+
+export const applyForDayOff = async (data: {
+  leaveTypeId: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  description?: string;
+  isHalfDay?: boolean;
+}) => {
+  const res = await api.post(dayOffEndpoints.apply, data);
+  return res.data;
+};
+
+export const cancelDayOffApplication = async (id: string) => {
+  const res = await api.patch(dayOffEndpoints.cancel(id));
+  return res.data;
+};
+
+export const updateDayOffStatus = async (id: string, status: 'approved' | 'rejected', reason?: string) => {
+  const res = await api.patch(dayOffEndpoints.updateStatus(id), { status, reason });
+  return res.data;
+};
+
+export const fetchNotifications = async () => {
+  const res = await api.get(dayOffEndpoints.notifications);
+  return res.data;
+};
+
+export const markNotificationRead = async (id: string) => {
+  const res = await api.patch(dayOffEndpoints.markNotificationRead(id));
+  return res.data;
+};
+
+export const markAllNotificationsRead = async () => {
+  const res = await api.post(dayOffEndpoints.markAllNotificationsRead);
+  return res.data;
+};
+
 
 
 
