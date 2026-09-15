@@ -16,6 +16,7 @@ const searchContexts: SearchContextItem[] = [
 const groupByOptions: GroupByOption[] = [
   { key: "none", label: "None" },
   { key: "accessLevel", label: "Access Level" },
+  { key: "operationAccess", label: "Operation Access" },
   { key: "fieldAccess", label: "Field Permissions" },
 ];
 
@@ -23,7 +24,7 @@ const filterFields: FilterFieldDefinition[] = [
   {
     field: "Access Level",
     label: "Access Level",
-    options: ["Modules Configured", "Permissions Configured", "Standard Access"],
+    options: ["Modules Configured", "Operations Configured", "Permissions Configured", "Standard Access"],
   },
   {
     field: "Field Permissions",
@@ -66,6 +67,8 @@ export default function UserGroupsConfigurationPage() {
           let currentLevel = "Standard Access";
           if (group.modulePermissions?.length > 0) {
             currentLevel = "Modules Configured";
+          } else if (group.operationPermissions?.length > 0) {
+            currentLevel = "Operations Configured";
           } else if (group.permissions?.length > 0) {
             currentLevel = "Permissions Configured";
           }
@@ -123,6 +126,8 @@ export default function UserGroupsConfigurationPage() {
         } else {
           key = "Standard Access";
         }
+      } else if (groupBy === "operationAccess") {
+        key = group.operationPermissions?.length > 0 ? "With Operation Permissions" : "Standard Operations";
       } else if (groupBy === "fieldAccess") {
         key = group.fieldPermissions?.length > 0 ? "With Field Permissions" : "Standard Field Access";
       }
@@ -164,24 +169,33 @@ export default function UserGroupsConfigurationPage() {
       </td>
       <td className="px-6 py-4">
         <div className="flex items-center gap-2 flex-wrap">
-          {group.modulePermissions?.length > 0 ? (
+          {group.modulePermissions?.length > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
               <Key className="w-2.5 h-2.5" />
-              {group.modulePermissions.length} Modules configured
+              {group.modulePermissions.length} Modules
             </span>
-          ) : group.permissions?.length > 0 ? (
-            <span className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+          )}
+          {group.operationPermissions?.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
               <Key className="w-2.5 h-2.5" />
-              {group.permissions.length} Permissions
+              {group.operationPermissions.length} Operations
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground/60">Standard Access</span>
           )}
           {group.fieldPermissions?.length > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-medium">
               <Key className="w-2.5 h-2.5" />
-              {group.fieldPermissions.length} Fields Access
+              {group.fieldPermissions.length} Fields
             </span>
+          )}
+          {!group.modulePermissions?.length && !group.operationPermissions?.length && !group.fieldPermissions?.length && (
+            group.permissions?.length > 0 ? (
+              <span className="inline-flex items-center gap-1 text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                <Key className="w-2.5 h-2.5" />
+                {group.permissions.length} Permissions
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground/60">Standard Access</span>
+            )
           )}
         </div>
       </td>

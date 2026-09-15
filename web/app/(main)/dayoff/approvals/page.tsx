@@ -161,7 +161,7 @@ export default function LeaveApprovalsPage() {
       <PageHeader
         title="Leave Approvals Queue"
         breadcrumbs={[
-          { label: "Time Off", href: "/dayoff/calendar" },
+          { label: "Configuration", href: "/configuration/team" },
           { label: "Approvals" },
         ]}
         searchQuery={searchQuery}

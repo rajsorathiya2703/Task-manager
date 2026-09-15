@@ -44,6 +44,29 @@ export class ModulePermission {
 
 export const ModulePermissionSchema = SchemaFactory.createForClass(ModulePermission);
 
+@Schema({ _id: false })
+export class OperationPermission {
+  @Prop({ required: true })
+  module: string; // 'tasks' | 'projects' | 'employees' | 'teams' | 'dayoff' | 'reports' | 'settings'
+
+  @Prop({ required: true })
+  operation: string; // e.g. 'tasks.comments', 'dayoff.approvals'
+
+  @Prop({ default: true })
+  read: boolean;
+
+  @Prop({ default: true })
+  write: boolean;
+
+  @Prop({ default: true })
+  update: boolean;
+
+  @Prop({ default: true })
+  delete: boolean;
+}
+
+export const OperationPermissionSchema = SchemaFactory.createForClass(OperationPermission);
+
 @Schema({ timestamps: true })
 export class UserGroup extends Document {
   @Prop({ required: true })
@@ -64,9 +87,13 @@ export class UserGroup extends Document {
   @Prop({ type: [ModulePermissionSchema], default: [] })
   modulePermissions?: ModulePermission[];
 
+  @Prop({ type: [OperationPermissionSchema], default: [] })
+  operationPermissions?: OperationPermission[];
+
   @Prop({ type: [FieldPermissionSchema], default: [] })
   fieldPermissions?: FieldPermission[];
 }
 
 export const UserGroupSchema = SchemaFactory.createForClass(UserGroup);
+
 

@@ -129,7 +129,7 @@ export default function LeavePoliciesPage() {
       <PageHeader
         title="Leave Policies & Settings"
         breadcrumbs={[
-          { label: "Time Off", href: "/dayoff/calendar" },
+          { label: "Configuration", href: "/configuration/team" },
           { label: "Leave Policies" },
         ]}
         showAdd={activeTab === "leaveTypes" && leaveTypeView === "list"}

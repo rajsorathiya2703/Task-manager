@@ -1,22 +1,55 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Calendar, AlertCircle, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import {
+  X,
+  Calendar,
+  CalendarDays,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  ChevronDown,
+  Check,
+} from "lucide-react";
+import { Popover } from "@headlessui/react";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { formatDisplayDate } from "../../lib/utils";
 import { applyForDayOff, fetchLeaveTypes, fetchMyLeaveBalances } from "../../lib/api";
 
 interface ApplyLeaveDialogProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: string | null; // format YYYY-MM-DD
+  initialLeaveTypeId?: string | null;
   onSuccess?: () => void;
 }
 
 type DurationType = "full" | "half_morning" | "half_afternoon" | "range";
 
+const formatDateToISO = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const parseISODate = (str?: string | null): Date | undefined => {
+  if (!str) return undefined;
+  const parts = str.split("-");
+  if (parts.length === 3) {
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? undefined : d;
+};
+
 export function ApplyLeaveDialog({
   isOpen,
   onClose,
   selectedDate,
+  initialLeaveTypeId,
   onSuccess,
 }: ApplyLeaveDialogProps) {
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
@@ -50,12 +83,14 @@ export function ApplyLeaveDialog({
       ]).then(([types, bals]) => {
         setLeaveTypes(types || []);
         setBalances(bals || []);
-        if (types && types.length > 0) {
+        if (initialLeaveTypeId && types?.some((t: any) => t._id === initialLeaveTypeId)) {
+          setSelectedLeaveTypeId(initialLeaveTypeId);
+        } else if (types && types.length > 0) {
           setSelectedLeaveTypeId(types[0]._id);
         }
       });
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen, selectedDate, initialLeaveTypeId]);
 
   const selectedLeaveType = useMemo(() => {
     return leaveTypes.find((lt) => lt._id === selectedLeaveTypeId);
@@ -63,7 +98,10 @@ export function ApplyLeaveDialog({
 
   const selectedBalance = useMemo(() => {
     if (!selectedLeaveTypeId) return null;
-    return balances.find((b) => b.leaveType?._id === selectedLeaveTypeId);
+    return balances.find((b: any) => {
+      const bId = b.leaveType?._id || b.leaveTypeId?._id || b.leaveTypeId;
+      return bId?.toString() === selectedLeaveTypeId.toString();
+    });
   }, [balances, selectedLeaveTypeId]);
 
   // Handle duration type presets
@@ -85,7 +123,7 @@ export function ApplyLeaveDialog({
       const diff = d.getDate() + (day === 0 ? 1 : 8 - day);
       d.setDate(diff);
     }
-    const dateStr = d.toISOString().split("T")[0];
+    const dateStr = formatDateToISO(d);
     setFromDate(dateStr);
     if (durationType !== "range") {
       setToDate(dateStr);
@@ -94,13 +132,17 @@ export function ApplyLeaveDialog({
 
   // Duration in days calculation
   const calculatedDays = useMemo(() => {
-    if (durationType === "half_morning" || durationType === "half_afternoon" || selectedLeaveType?.code === "HALF_DAY") {
+    if (
+      durationType === "half_morning" ||
+      durationType === "half_afternoon" ||
+      selectedLeaveType?.code === "HALF_DAY"
+    ) {
       return 0.5;
     }
     if (!fromDate || !toDate) return 1;
-    const start = new Date(fromDate);
-    const end = new Date(toDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
+    const start = parseISODate(fromDate);
+    const end = parseISODate(toDate);
+    if (!start || !end || start > end) return 0;
     const diffMs = end.getTime() - start.getTime();
     return Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
   }, [fromDate, toDate, durationType, selectedLeaveType]);
@@ -127,8 +169,16 @@ export function ApplyLeaveDialog({
       return;
     }
 
-    const isHalf = durationType === "half_morning" || durationType === "half_afternoon" || selectedLeaveType?.code === "HALF_DAY";
-    const sessionNote = durationType === "half_morning" ? " (Morning Half)" : durationType === "half_afternoon" ? " (Afternoon Half)" : "";
+    const isHalf =
+      durationType === "half_morning" ||
+      durationType === "half_afternoon" ||
+      selectedLeaveType?.code === "HALF_DAY";
+    const sessionNote =
+      durationType === "half_morning"
+        ? " (Morning Half)"
+        : durationType === "half_afternoon"
+        ? " (Afternoon Half)"
+        : "";
 
     try {
       setLoading(true);
@@ -141,13 +191,16 @@ export function ApplyLeaveDialog({
         isHalfDay: isHalf,
       });
 
-      setSuccessMessage("Your leave application has been submitted! An approval email has been sent to the administrator.");
+      setSuccessMessage(
+        "Your leave application has been submitted! An approval email has been sent to the administrator."
+      );
       setTimeout(() => {
         onSuccess?.();
         onClose();
       }, 1500);
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || "Failed to submit leave application.";
+      const msg =
+        err.response?.data?.message || err.message || "Failed to submit leave application.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -172,7 +225,7 @@ export function ApplyLeaveDialog({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors"
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -194,62 +247,189 @@ export function ApplyLeaveDialog({
             </div>
           )}
 
-          {/* Leave Type Selector (Card Pills) */}
+          {/* Styled Leave Type Dropdown Selector */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
-              Leave Type <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
-              {leaveTypes.map((lt) => {
-                const isSelected = lt._id === selectedLeaveTypeId;
-                const bal = balances.find((b) => b.leaveType?._id === lt._id);
-                const primaryColor = lt.color || "#3b82f6";
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                Leave Type <span className="text-red-500">*</span>
+              </label>
+              {selectedBalance && (
+                <span className="text-xs text-muted-foreground font-medium">
+                  Available: <strong className="text-primary font-bold">{selectedBalance.remaining}</strong> days left
+                </span>
+              )}
+            </div>
 
-                return (
-                  <button
-                    key={lt._id}
+            <Popover className="relative w-full">
+              {({ open, close }) => (
+                <>
+                  <Popover.Button
                     type="button"
-                    onClick={() => setSelectedLeaveTypeId(lt._id)}
-                    className={`
-                      p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between
-                      ${
-                        isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
-                          : "border-border/70 hover:border-border hover:bg-muted/40"
-                      }
-                    `}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border bg-background text-foreground transition-all outline-none text-left cursor-pointer ${
+                      open
+                        ? "border-primary ring-2 ring-primary/20 shadow-xs"
+                        : "border-border hover:border-border/80 hover:bg-muted/30"
+                    }`}
                   >
-                    <div className="flex items-center justify-between gap-1.5 mb-1">
-                      <span className="flex items-center gap-1.5 font-bold text-xs text-foreground truncate">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: primaryColor }}
-                        />
-                        {lt.name}
-                      </span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
-                          lt.salaryDeductionPercent === 0
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        }`}
-                      >
-                        {lt.salaryDeductionPercent === 0 ? "Paid" : `${lt.salaryDeductionPercent}% cut`}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1">
-                      <span>Refill: {lt.refillCycle}</span>
-                      {bal && (
-                        <span>
-                          <strong className="text-foreground">{bal.remaining}</strong>d left
-                        </span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {selectedLeaveType ? (
+                        <>
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0"
+                            style={{ backgroundColor: selectedLeaveType.color || "#3b82f6" }}
+                          />
+                          <span className="text-sm font-semibold text-foreground truncate">
+                            {selectedLeaveType.name}
+                          </span>
+                          {selectedLeaveType.code && (
+                            <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                              {selectedLeaveType.code}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Select a leave type...</span>
                       )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {selectedLeaveType && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            selectedLeaveType.salaryDeductionPercent === 0
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          }`}
+                        >
+                          {selectedLeaveType.salaryDeductionPercent === 0
+                            ? "Paid"
+                            : `${selectedLeaveType.salaryDeductionPercent}% cut`}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                          open ? "transform rotate-180 text-foreground" : ""
+                        }`}
+                      />
+                    </div>
+                  </Popover.Button>
+
+                  <Popover.Panel
+                    anchor="bottom start"
+                    className="w-[var(--button-width)] min-w-[280px] bg-card border border-border rounded-2xl shadow-2xl z-50 p-2 outline-none max-h-64 overflow-y-auto mt-1"
+                  >
+                    <div className="space-y-1">
+                      {leaveTypes.map((lt) => {
+                        const isSelected = lt._id === selectedLeaveTypeId;
+                        const bal = balances.find((b: any) => {
+                          const bId = b.leaveType?._id || b.leaveTypeId?._id || b.leaveTypeId;
+                          return bId?.toString() === lt._id?.toString();
+                        });
+                        const rem =
+                          bal?.remaining !== undefined ? bal.remaining : lt.defaultAllocation;
+                        const isPaid = lt.salaryDeductionPercent === 0;
+
+                        return (
+                          <button
+                            key={lt._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedLeaveTypeId(lt._id);
+                              close();
+                            }}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-primary/10 text-primary font-bold shadow-xs"
+                                : "hover:bg-muted/70 text-foreground"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: lt.color || "#3b82f6" }}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-semibold truncate">{lt.name}</span>
+                                  {lt.code && (
+                                    <span className="text-[10px] font-mono text-muted-foreground">
+                                      ({lt.code})
+                                    </span>
+                                  )}
+                                </div>
+                                {lt.rules && (
+                                  <div className="text-[10px] text-muted-foreground truncate max-w-xs mt-0.5">
+                                    {lt.rules}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isPaid
+                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                }`}
+                              >
+                                {isPaid ? "Paid" : `${lt.salaryDeductionPercent}% cut`}
+                              </span>
+                              <span className="text-[11px] font-semibold text-muted-foreground">
+                                {rem}d left
+                              </span>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-primary ml-0.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Popover.Panel>
+                </>
+              )}
+            </Popover>
+
+            {/* Selected Leave Type Context Pill */}
+            {selectedLeaveType && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border border-border/60 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: selectedLeaveType.color || "#3b82f6" }}
+                  />
+                  <span className="font-semibold text-foreground truncate">
+                    {selectedLeaveType.name}
+                  </span>
+                  {selectedLeaveType.code && (
+                    <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                      {selectedLeaveType.code}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      selectedLeaveType.salaryDeductionPercent === 0
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {selectedLeaveType.salaryDeductionPercent === 0
+                      ? "Paid Leave"
+                      : `${selectedLeaveType.salaryDeductionPercent}% Salary Cut`}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground bg-card border border-border px-2 py-0.5 rounded-full capitalize">
+                    Refill: {selectedLeaveType.refillCycle || "Yearly"}
+                  </span>
+                  {selectedBalance && (
+                    <span className="text-[11px] font-bold text-foreground">
+                      {selectedBalance.remaining}d left
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Duration Preset Chips */}
@@ -269,7 +449,7 @@ export function ApplyLeaveDialog({
                   type="button"
                   onClick={() => handleDurationChange(chip.id as DurationType)}
                   className={`
-                    py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all text-center
+                    py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all text-center cursor-pointer
                     ${
                       durationType === chip.id
                         ? "bg-foreground text-background border-foreground shadow-xs"
@@ -289,60 +469,181 @@ export function ApplyLeaveDialog({
             <button
               type="button"
               onClick={() => setQuickDate("today")}
-              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium"
+              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors cursor-pointer"
             >
               Today
             </button>
             <button
               type="button"
               onClick={() => setQuickDate("tomorrow")}
-              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium"
+              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors cursor-pointer"
             >
               Tomorrow
             </button>
             <button
               type="button"
               onClick={() => setQuickDate("next_week")}
-              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium"
+              className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors cursor-pointer"
             >
               Next Week
             </button>
           </div>
 
-          {/* Date Picker Range */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                {durationType === "range" ? "From Date" : "Date"} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  if (durationType !== "range" || new Date(e.target.value) > new Date(toDate)) {
-                    setToDate(e.target.value);
-                  }
-                }}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                required
-              />
-            </div>
+          {/* Styled Date Picker (Popover + DayPicker) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+              {durationType === "range" ? "Date Range" : "Leave Date"} <span className="text-red-500">*</span>
+            </label>
 
-            {durationType === "range" && (
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  To Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={toDate}
-                  min={fromDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                  required
-                />
-              </div>
+            {durationType !== "range" ? (
+              /* Single Date Picker */
+              <Popover className="relative w-full">
+                {({ open, close }) => (
+                  <>
+                    <Popover.Button
+                      type="button"
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border bg-background text-foreground transition-all outline-none text-left cursor-pointer ${
+                        open
+                          ? "border-primary ring-2 ring-primary/20 shadow-xs"
+                          : "border-border hover:border-border/80 hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-sm font-semibold text-foreground">
+                          {fromDate ? formatDisplayDate(fromDate) : "Select date..."}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-muted-foreground capitalize bg-muted px-2 py-0.5 rounded-md">
+                          {durationType === "half_morning"
+                            ? "Morning Half"
+                            : durationType === "half_afternoon"
+                            ? "Afternoon Half"
+                            : "Full Day"}
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                            open ? "transform rotate-180 text-foreground" : ""
+                          }`}
+                        />
+                      </div>
+                    </Popover.Button>
+
+                    <Popover.Panel
+                      anchor="bottom start"
+                      className="bg-card border border-border rounded-2xl shadow-2xl z-50 p-3 outline-none mt-1"
+                    >
+                      <div className="px-2 py-1 mb-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex items-center justify-between">
+                        <span>Select Leave Date</span>
+                        <span className="text-[10px] text-primary font-bold">
+                          {formatDisplayDate(fromDate)}
+                        </span>
+                      </div>
+                      <DayPicker
+                        mode="single"
+                        selected={parseISODate(fromDate)}
+                        onSelect={(date) => {
+                          if (date) {
+                            const dStr = formatDateToISO(date);
+                            setFromDate(dStr);
+                            setToDate(dStr);
+                            close();
+                          }
+                        }}
+                        className="!m-0 text-xs"
+                        style={
+                          {
+                            "--rdp-cell-size": "32px",
+                            "--rdp-caption-font-size": "13px",
+                            "--rdp-nav-height": "32px",
+                          } as React.CSSProperties
+                        }
+                        modifiersClassNames={{
+                          selected: "bg-primary text-primary-foreground font-bold rounded-full",
+                        }}
+                      />
+                    </Popover.Panel>
+                  </>
+                )}
+              </Popover>
+            ) : (
+              /* Date Range Picker */
+              <Popover className="relative w-full">
+                {({ open }) => (
+                  <>
+                    <Popover.Button
+                      type="button"
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border bg-background text-foreground transition-all outline-none text-left cursor-pointer ${
+                        open
+                          ? "border-primary ring-2 ring-primary/20 shadow-xs"
+                          : "border-border hover:border-border/80 hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-sm font-semibold text-foreground truncate">
+                          {formatDisplayDate(fromDate, toDate) || "Select timeline..."}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                          {calculatedDays} day{calculatedDays !== 1 ? "s" : ""}
+                        </span>
+                        <ChevronDown
+                          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                            open ? "transform rotate-180 text-foreground" : ""
+                          }`}
+                        />
+                      </div>
+                    </Popover.Button>
+
+                    <Popover.Panel
+                      anchor="bottom start"
+                      className="bg-card border border-border rounded-2xl shadow-2xl z-50 p-3 outline-none mt-1"
+                    >
+                      <div className="px-2 py-1 mb-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex items-center justify-between">
+                        <span>Select Start Date → End Date</span>
+                        <span className="text-[10px] text-primary font-bold">
+                          {calculatedDays} days selected
+                        </span>
+                      </div>
+                      <DayPicker
+                        mode="range"
+                        selected={{
+                          from: parseISODate(fromDate),
+                          to: parseISODate(toDate),
+                        }}
+                        onSelect={(range: any) => {
+                          if (range?.from) {
+                            const fromStr = formatDateToISO(range.from);
+                            setFromDate(fromStr);
+                            if (range.to) {
+                              setToDate(formatDateToISO(range.to));
+                            } else {
+                              setToDate(fromStr);
+                            }
+                          }
+                        }}
+                        className="!m-0 text-xs"
+                        style={
+                          {
+                            "--rdp-cell-size": "32px",
+                            "--rdp-caption-font-size": "13px",
+                            "--rdp-nav-height": "32px",
+                          } as React.CSSProperties
+                        }
+                        modifiersClassNames={{
+                          selected: "bg-primary text-primary-foreground font-bold rounded-full",
+                          range_start: "bg-primary text-primary-foreground font-bold rounded-l-full",
+                          range_end: "bg-primary text-primary-foreground font-bold rounded-r-full",
+                          range_middle: "bg-primary/10 text-foreground font-medium rounded-none",
+                        }}
+                      />
+                    </Popover.Panel>
+                  </>
+                )}
+              </Popover>
             )}
           </div>
 
@@ -382,7 +683,7 @@ export function ApplyLeaveDialog({
               placeholder="Mention any task handover or emergency contact info..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground resize-none"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-muted-foreground resize-none"
             />
           </div>
 
@@ -392,14 +693,14 @@ export function ApplyLeaveDialog({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || Boolean(successMessage)}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs flex items-center gap-2 disabled:opacity-50"
+              className="px-5 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {loading && <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />}
               Submit Leave Request

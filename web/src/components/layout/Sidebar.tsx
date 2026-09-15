@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders } from "lucide-react";
+import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders, History } from "lucide-react";
 import { UserProfile } from "./UserProfile";
 import { useSidebar } from "./SidebarContext";
 import { usePermissions } from "../../contexts/PermissionsContext";
@@ -41,7 +41,12 @@ export function Sidebar({ user }: SidebarProps) {
 
   const hasWorkspaceSection = isEmployee || hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
   const hasConfigurationSection =
-    hasTeamAccess || hasEmployeesAccess || hasUsersAccess || hasUserGroupsAccess;
+    hasTeamAccess ||
+    hasEmployeesAccess ||
+    hasUsersAccess ||
+    hasUserGroupsAccess ||
+    hasTimeOffApprovals ||
+    hasTimeOffPolicies;
 
   if (!isOpen) {
     return null; // The floating toggle button is now in PageHeader
@@ -210,33 +215,17 @@ export function Sidebar({ user }: SidebarProps) {
                   My Leaves
                 </Link>
 
-                {hasTimeOffApprovals && (
-                  <Link
-                    href="/dayoff/approvals"
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/dayoff/approvals")
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                    }`}
-                  >
-                    <ClipboardCheck className="w-4 h-4 shrink-0" />
-                    Approvals
-                  </Link>
-                )}
-
-                {hasTimeOffPolicies && (
-                  <Link
-                    href="/dayoff/policies"
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/dayoff/policies") || pathname.startsWith("/configuration/day-off")
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                    }`}
-                  >
-                    <Sliders className="w-4 h-4 shrink-0" />
-                    Leave Policies
-                  </Link>
-                )}
+                <Link
+                  href="/dayoff/history"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    pathname.startsWith("/dayoff/history") || pathname.startsWith("/dayoff/applications")
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <History className="w-4 h-4 shrink-0" />
+                  Application History
+                </Link>
               </nav>
             </div>
           )}
@@ -310,6 +299,32 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                     User Groups
+                  </Link>
+                )}
+                {hasTimeOffApprovals && (
+                  <Link
+                    href="/dayoff/approvals"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname.startsWith("/dayoff/approvals")
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <ClipboardCheck className="w-4 h-4 shrink-0" />
+                    Approvals
+                  </Link>
+                )}
+                {hasTimeOffPolicies && (
+                  <Link
+                    href="/dayoff/policies"
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      pathname.startsWith("/dayoff/policies") || pathname.startsWith("/configuration/day-off")
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <Sliders className="w-4 h-4 shrink-0" />
+                    Leave Policies
                   </Link>
                 )}
               </nav>

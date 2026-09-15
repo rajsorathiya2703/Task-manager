@@ -60,10 +60,11 @@ export class UserGroupsService {
     groups: string[];
     permissions: string[];
     modulePermissions: Record<string, { create: boolean; read: boolean; update: boolean; delete: boolean }>;
+    operationPermissions: Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>;
     fieldPermissions: Record<string, Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>>;
   }> {
     if (!userId) {
-      return { groups: [], permissions: [], modulePermissions: {}, fieldPermissions: {} };
+      return { groups: [], permissions: [], modulePermissions: {}, operationPermissions: {}, fieldPermissions: {} };
     }
 
     const userIdObj = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
@@ -75,6 +76,7 @@ export class UserGroupsService {
     const groupNames: string[] = [];
     const permissionsSet = new Set<string>();
     const moduleMap: Record<string, { create: boolean; read: boolean; update: boolean; delete: boolean }> = {};
+    const operationMap: Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }> = {};
     const fieldMap: Record<string, Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>> = {};
 
     for (const group of groups) {
@@ -92,6 +94,18 @@ export class UserGroupsService {
           if (mp.read) moduleMap[mp.module].read = true;
           if (mp.update) moduleMap[mp.module].update = true;
           if (mp.delete) moduleMap[mp.module].delete = true;
+        }
+      }
+
+      if (group.operationPermissions) {
+        for (const op of group.operationPermissions) {
+          if (!operationMap[op.operation]) {
+            operationMap[op.operation] = { read: false, write: false, update: false, delete: false };
+          }
+          if (op.read) operationMap[op.operation].read = true;
+          if (op.write) operationMap[op.operation].write = true;
+          if (op.update) operationMap[op.operation].update = true;
+          if (op.delete) operationMap[op.operation].delete = true;
         }
       }
 
@@ -116,6 +130,7 @@ export class UserGroupsService {
       groups: groupNames,
       permissions: Array.from(permissionsSet),
       modulePermissions: moduleMap,
+      operationPermissions: operationMap,
       fieldPermissions: fieldMap,
     };
   }

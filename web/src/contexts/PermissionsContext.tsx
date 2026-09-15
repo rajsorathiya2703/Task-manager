@@ -22,10 +22,15 @@ export interface FieldPerms {
 export interface PermissionsContextType {
   groups: string[];
   modulePermissions: Record<string, ActionPerms>;
+  operationPermissions: Record<string, ActionPerms>;
   fieldPermissions: Record<string, Record<string, FieldPerms>>;
   isLoading: boolean;
   refreshPermissions: () => Promise<void>;
   can: (module: string, action: "create" | "read" | "update" | "delete") => boolean;
+  canOperation: (
+    operation: string,
+    action: "create" | "read" | "update" | "delete" | "write"
+  ) => boolean;
   canField: (
     model: string,
     field: string,
@@ -40,6 +45,7 @@ const PermissionsContext = createContext<PermissionsContextType | undefined>(und
 export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [groups, setGroups] = useState<string[]>([]);
   const [modulePermissions, setModulePermissions] = useState<Record<string, ActionPerms>>({});
+  const [operationPermissions, setOperationPermissions] = useState<Record<string, ActionPerms>>({});
   const [fieldPermissions, setFieldPermissions] = useState<Record<string, Record<string, FieldPerms>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const pathname = usePathname();
@@ -87,6 +93,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (data) {
         setGroups(data.groups || []);
         setModulePermissions(data.modulePermissions || {});
+        setOperationPermissions(data.operationPermissions || {});
         setFieldPermissions(data.fieldPermissions || {});
       }
     } catch (err) {
@@ -110,13 +117,43 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       const mod = modulePermissions[module];
       if (!mod) {
-        // If module not explicitly restricted, check if any module permissions configured
+        // If module not explicitly restricted, default to allowed
         return true;
       }
 
       return mod[action] ?? true;
     },
     [groups, modulePermissions]
+  );
+
+  // Helper to check granular operation permission (e.g., "tasks.comments", "dayoff.approvals")
+  const canOperation = useCallback(
+    (
+      operation: string,
+      action: "create" | "read" | "update" | "delete" | "write"
+    ): boolean => {
+      if (!groups || groups.length === 0) {
+        return true;
+      }
+
+      const actionKey = (action === "write" ? "create" : action) as keyof ActionPerms;
+
+      // 1. Direct operation match
+      const op = operationPermissions[operation];
+      if (op && op[actionKey] !== undefined) {
+        return op[actionKey];
+      }
+
+      // 2. Fallback to parent module permission (e.g. "tasks.comments" -> "tasks")
+      const moduleKey = operation.split(".")[0];
+      const mod = modulePermissions[moduleKey];
+      if (mod && mod[actionKey] !== undefined) {
+        return mod[actionKey];
+      }
+
+      return true;
+    },
+    [groups, operationPermissions, modulePermissions]
   );
 
   // Helper to check field-level permission
@@ -151,10 +188,12 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       value={{
         groups,
         modulePermissions,
+        operationPermissions,
         fieldPermissions,
         isLoading,
         refreshPermissions,
         can,
+        canOperation,
         canField,
         showAccessDenied,
         closeAccessDenied,

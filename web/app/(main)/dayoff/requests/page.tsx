@@ -3,40 +3,29 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
-import { LeaveBalanceHeader } from "../../../../src/components/dayoff/LeaveBalanceHeader";
 import { ApplyLeaveDialog } from "../../../../src/components/dayoff/ApplyLeaveDialog";
 import { isDayOffModuleEnabled } from "../../../../src/lib/dayoff-feature";
 import {
-  fetchMyLeaveApplications,
   fetchLeaveTypes,
   fetchMyLeaveBalances,
-  cancelDayOffApplication,
 } from "../../../../src/lib/api";
 import {
-  Calendar,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Ban,
-  ChevronLeft,
-  ChevronRight,
   Type,
   Tag,
-  CalendarCheck,
+  Plus,
 } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 
 const searchContexts: SearchContextItem[] = [
-  { key: "reason", label: "Reason", icon: Type },
-  { key: "type", label: "Leave Type", icon: Tag },
+  { key: "name", label: "Policy Name", icon: Type },
+  { key: "code", label: "Code", icon: Tag },
 ];
 
 export default function MyLeavesPage() {
   const router = useRouter();
   const isEnabled = isDayOffModuleEnabled();
 
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [leaves, setLeaves] = useState<any[]>([]);
+  const [currentDate] = useState<Date>(new Date());
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,6 +37,7 @@ export default function MyLeavesPage() {
 
   // Apply Leave Dialog state
   const [isApplyOpen, setIsApplyOpen] = useState<boolean>(false);
+  const [selectedApplyLeaveTypeId, setSelectedApplyLeaveTypeId] = useState<string | null>(null);
 
   // Feature toggle redirect guard
   useEffect(() => {
@@ -62,17 +52,15 @@ export default function MyLeavesPage() {
     if (!isEnabled) return;
     try {
       setLoading(true);
-      const [leavesData, typesData, balancesData] = await Promise.all([
-        fetchMyLeaveApplications(year).catch(() => []),
+      const [typesData, balancesData] = await Promise.all([
         fetchLeaveTypes(true).catch(() => []),
         fetchMyLeaveBalances(year).catch(() => []),
       ]);
 
-      setLeaves(leavesData || []);
       setLeaveTypes(typesData || []);
       setBalances(balancesData || []);
     } catch (err) {
-      console.error("Failed loading leave requests data:", err);
+      console.error("Failed loading leave policies data:", err);
     } finally {
       setLoading(false);
     }
@@ -82,82 +70,91 @@ export default function MyLeavesPage() {
     loadData();
   }, [loadData]);
 
-  const handleCancelLeave = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this pending leave request?")) return;
-    try {
-      await cancelDayOffApplication(id);
-      loadData();
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to cancel leave application.");
-    }
+  const handleOpenApply = (typeId?: string) => {
+    setSelectedApplyLeaveTypeId(typeId || null);
+    setIsApplyOpen(true);
   };
 
   // Filter fields configuration
   const filterFields: FilterFieldDefinition[] = useMemo(
     () => [
       {
-        field: "Status",
-        label: "Status",
-        options: ["approved", "pending", "rejected", "cancelled"],
-      },
-      {
-        field: "LeaveType",
-        label: "Leave Type",
-        options: leaveTypes.map((lt) => lt.name),
+        field: "RefillCycle",
+        label: "Refill Cycle",
+        options: ["monthly", "quarterly", "yearly"],
       },
     ],
-    [leaveTypes]
+    []
   );
 
-  // Filter and search application data
-  const filteredLeaves = useMemo(() => {
-    return leaves.filter((leave) => {
+  // Leave policies matched with current user's balance records
+  const policyRows = useMemo(() => {
+    return leaveTypes.map((lt) => {
+      const b = balances.find((bal) => {
+        const balTypeId = bal.leaveType?._id || bal.leaveTypeId?._id || bal.leaveTypeId;
+        return balTypeId?.toString() === lt._id?.toString();
+      });
+
+      const total =
+        (b?.allocated !== undefined ? b.allocated : lt.defaultAllocation) +
+        (b?.carriedForward || 0);
+      const used = b?.used || 0;
+      const remaining =
+        b?.remaining !== undefined ? b.remaining : Math.max(0, total - used);
+
+      return {
+        ...lt,
+        balanceRecord: b,
+        totalAllocated: total,
+        used,
+        remaining,
+        carriedForward: b?.carriedForward || 0,
+      };
+    });
+  }, [leaveTypes, balances]);
+
+  // Filtered leave policy rows
+  const filteredPolicyRows = useMemo(() => {
+    return policyRows.filter((p) => {
       for (const filter of filters) {
-        if (filter.field === "Status") {
-          const s = (leave.status || "pending").toLowerCase();
+        if (filter.field === "RefillCycle") {
+          const rc = (p.refillCycle || "yearly").toLowerCase();
           const target = filter.value.toLowerCase();
-          if (filter.condition === "eq" && s !== target) return false;
-          if (filter.condition === "neq" && s === target) return false;
-        } else if (filter.field === "LeaveType") {
-          const typeName = (leave.leaveTypeId?.name || "").toLowerCase();
-          const target = filter.value.toLowerCase();
-          if (filter.condition === "eq" && typeName !== target) return false;
-          if (filter.condition === "neq" && typeName === target) return false;
+          if (filter.condition === "eq" && rc !== target) return false;
+          if (filter.condition === "neq" && rc === target) return false;
         }
       }
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const reason = (leave.reason || "").toLowerCase();
-        const typeName = (leave.leaveTypeId?.name || "").toLowerCase();
-        const desc = (leave.description || "").toLowerCase();
+        const name = (p.name || "").toLowerCase();
+        const code = (p.code || "").toLowerCase();
+        const rules = (p.rules || "").toLowerCase();
 
-        if (searchContext === "reason") {
-          if (!reason.includes(q)) return false;
-        } else if (searchContext === "type") {
-          if (!typeName.includes(q)) return false;
+        if (searchContext === "name") {
+          if (!name.includes(q)) return false;
+        } else if (searchContext === "code") {
+          if (!code.includes(q)) return false;
         } else {
-          if (!reason.includes(q) && !typeName.includes(q) && !desc.includes(q)) return false;
+          if (!name.includes(q) && !code.includes(q) && !rules.includes(q)) return false;
         }
       }
-
       return true;
     });
-  }, [leaves, filters, searchQuery, searchContext]);
+  }, [policyRows, filters, searchQuery, searchContext]);
 
   if (!isEnabled) return null;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <PageHeader
-        title="My Leave Requests"
+        title="My Leaves"
         breadcrumbs={[
           { label: "Time Off", href: "/dayoff/calendar" },
-          { label: "My Leaves" },
         ]}
         showAdd={true}
         addText="Apply for Leave"
-        onAddClick={() => setIsApplyOpen(true)}
+        onAddClick={() => handleOpenApply()}
         searchQuery={searchQuery}
         searchContext={searchContext}
         searchContexts={searchContexts}
@@ -174,163 +171,126 @@ export default function MyLeavesPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Top KPI Balance Cards */}
-          <LeaveBalanceHeader
-            balances={balances}
-            onApplyClick={() => setIsApplyOpen(true)}
-          />
-
-          {/* Subheader Toolbar with Year Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card p-4 rounded-2xl border border-border/60 shadow-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                <CalendarCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-foreground">Applications History</h3>
-                <p className="text-xs text-muted-foreground">Showing leave requests submitted for year {year}</p>
-              </div>
+          {/* Subheader Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-4 rounded-2xl border border-border/60 shadow-xs">
+            <div>
+              <h2 className="font-bold text-sm text-foreground">Leave Policies & Entitlements</h2>
+              <p className="text-xs text-muted-foreground">
+                Your leave allowances, refill cycles, deduction rules, and available balances for year {year}
+              </p>
             </div>
 
-            {/* Year Selector */}
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              <div className="flex items-center bg-card border border-border rounded-xl p-0.5 shadow-xs text-xs font-semibold">
-                <button
-                  onClick={() => setCurrentDate(new Date(year - 1, currentDate.getMonth(), 1))}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                  title="Previous Year"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="px-3 font-mono font-bold text-foreground">{year}</span>
-                <button
-                  onClick={() => setCurrentDate(new Date(year + 1, currentDate.getMonth(), 1))}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                  title="Next Year"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              <button
-                onClick={() => setCurrentDate(new Date())}
-                className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-xl border border-border transition-colors"
-              >
-                Current Year
-              </button>
-            </div>
+            <button
+              onClick={() => handleOpenApply()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs cursor-pointer self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Apply for Leave
+            </button>
           </div>
 
-          {/* Applications Table */}
+          {/* Leave Policies List View Table */}
           <div className="bg-card rounded-2xl border border-border shadow-xs overflow-hidden">
             {loading ? (
               <div className="flex justify-center items-center py-24">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
-            ) : filteredLeaves.length === 0 ? (
-              <div className="py-20 text-center text-sm text-muted-foreground space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto text-muted-foreground/50">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <div className="font-medium text-foreground">No leave requests found</div>
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  You haven&apos;t submitted any leave applications for {year} matching the current filters.
-                </p>
-                <button
-                  onClick={() => setIsApplyOpen(true)}
-                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
-                >
-                  Apply for Leave
-                </button>
+            ) : filteredPolicyRows.length === 0 ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No leave policies available matching the current search.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-border bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider">
-                      <th className="py-3.5 px-6 font-semibold">Leave Type</th>
-                      <th className="py-3.5 px-6 font-semibold">Date Range</th>
-                      <th className="py-3.5 px-6 font-semibold">Duration</th>
-                      <th className="py-3.5 px-6 font-semibold">Reason</th>
-                      <th className="py-3.5 px-6 font-semibold">Status</th>
+                    <tr className="border-b border-border bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider whitespace-nowrap">
+                      <th className="py-3.5 px-6 font-semibold">Policy Name</th>
+                      <th className="py-3.5 px-6 font-semibold">Code</th>
+                      <th className="py-3.5 px-6 font-semibold text-center">Allocation</th>
+                      <th className="py-3.5 px-6 font-semibold text-center">Used</th>
+                      <th className="py-3.5 px-6 font-semibold text-center min-w-[140px]">Available Balance</th>
+                      <th className="py-3.5 px-6 font-semibold text-center">Refill Cycle</th>
+                      <th className="py-3.5 px-6 font-semibold text-center">Salary Cut</th>
+                      <th className="py-3.5 px-6 font-semibold text-center">Carry Forward</th>
                       <th className="py-3.5 px-6 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50 text-foreground">
-                    {filteredLeaves.map((leave) => {
-                      const lt = leave.leaveTypeId;
-                      const fromStr = new Date(leave.fromDate).toISOString().split("T")[0];
-                      const toStr = new Date(leave.toDate).toISOString().split("T")[0];
-
-                      return (
-                        <tr key={leave._id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs"
-                                style={{
-                                  backgroundColor: `${lt?.color || "#3b82f6"}20`,
-                                  color: lt?.color || "#3b82f6",
-                                }}
-                              >
-                                {lt?.name?.charAt(0) || "L"}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-foreground">{lt?.name || "Leave"}</div>
-                                <div className="text-[10px] text-muted-foreground font-mono">
-                                  {lt?.code || "LEAVE"}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="font-medium text-foreground font-mono">
-                              {fromStr} {fromStr !== toStr ? `→ ${toStr}` : ""}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 font-semibold text-foreground">
-                            {leave.daysCount} day{leave.daysCount !== 1 ? "s" : ""}
-                          </td>
-                          <td className="px-6 py-4 max-w-xs">
-                            <div className="font-medium text-foreground truncate">{leave.reason}</div>
-                            {leave.description && (
-                              <div className="text-[11px] text-muted-foreground truncate">{leave.description}</div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 ${
-                                leave.status === "approved"
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : leave.status === "pending"
-                                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                                  : leave.status === "rejected"
-                                  ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                                  : "bg-muted text-muted-foreground"
-                              }`}
+                    {filteredPolicyRows.map((item) => (
+                      <tr
+                        key={item._id}
+                        className="border-b border-border/50 hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                              style={{
+                                backgroundColor: `${item.color || "#3b82f6"}20`,
+                                color: item.color || "#3b82f6",
+                              }}
                             >
-                              {leave.status === "approved" && <CheckCircle2 className="w-3.5 h-3.5" />}
-                              {leave.status === "pending" && <Clock className="w-3.5 h-3.5" />}
-                              {leave.status === "rejected" && <XCircle className="w-3.5 h-3.5" />}
-                              {leave.status === "cancelled" && <Ban className="w-3.5 h-3.5" />}
-                              <span className="capitalize">{leave.status}</span>
+                              {item.name?.charAt(0) || "L"}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground whitespace-nowrap">{item.name}</div>
+                              {item.rules && (
+                                <div className="text-[11px] text-muted-foreground truncate max-w-xs mt-0.5">
+                                  {item.rules}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-mono font-medium text-muted-foreground whitespace-nowrap">
+                          {item.code}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-foreground text-center whitespace-nowrap">
+                          {item.totalAllocated} days
+                        </td>
+                        <td className="px-6 py-4 font-medium text-muted-foreground text-center whitespace-nowrap">
+                          {item.used} days
+                        </td>
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          <span className="inline-flex items-center justify-center px-3.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary whitespace-nowrap shadow-xs">
+                            {item.remaining} days left
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 capitalize text-muted-foreground font-medium text-center whitespace-nowrap">
+                          {item.refillCycle || "Yearly"}
+                        </td>
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-block whitespace-nowrap ${
+                              item.salaryDeductionPercent === 0
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : item.salaryDeductionPercent === 100
+                                ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            {item.salaryDeductionPercent}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          {item.canCarryForward ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
+                              Yes {item.carryForwardLimit > 0 ? `(${item.carryForwardLimit}d)` : "(unlimited)"}
                             </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {leave.status === "pending" ? (
-                              <button
-                                onClick={() => handleCancelLeave(leave._id)}
-                                className="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline cursor-pointer"
-                              >
-                                Cancel Request
-                              </button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground italic">Completed</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          ) : (
+                            <span className="text-muted-foreground whitespace-nowrap">No</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => handleOpenApply(item._id)}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground transition-all shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            Apply
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -341,8 +301,12 @@ export default function MyLeavesPage() {
 
       <ApplyLeaveDialog
         isOpen={isApplyOpen}
-        onClose={() => setIsApplyOpen(false)}
+        onClose={() => {
+          setIsApplyOpen(false);
+          setSelectedApplyLeaveTypeId(null);
+        }}
         selectedDate={null}
+        initialLeaveTypeId={selectedApplyLeaveTypeId}
         onSuccess={() => loadData()}
       />
     </div>

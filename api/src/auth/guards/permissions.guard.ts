@@ -42,7 +42,20 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const { module: modKey, action, model: modelKey = requirement.module } = requirement;
+    const { module: modKey, action, model: modelKey = requirement.module, operation: opKey } = requirement;
+
+    // 0. ── Check Operation-Level CRUD Permission (if specified) ──
+    if (opKey) {
+      const opActionKey = action === 'create' ? 'write' : action;
+      const opPerm = (userPerms as any).operationPermissions?.[opKey];
+      if (opPerm !== undefined) {
+        if (opPerm[opActionKey] === false) {
+          throw new ForbiddenException(
+            `Access Denied: You do not have permission to ${action} for operation '${opKey}'.`,
+          );
+        }
+      }
+    }
 
     // 1. ── Check Module-Level CRUD Permission ──
     const modPerm = userPerms.modulePermissions?.[modKey];

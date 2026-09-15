@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   PanelLeft, Save, Check, X, Loader2,
   Users, Shield, Key, ArrowLeft, Trash2, Sliders,
-  Eye, Edit3, PlusCircle, Trash, CheckSquare, Layers
+  Eye, Edit3, PlusCircle, Trash, CheckSquare, Layers,
+  FolderKanban, UserCheck, CalendarOff, BarChart3, Settings,
+  Search, CheckCheck, Filter
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import {
@@ -30,13 +32,71 @@ const COLOR_PRESETS = [
   "#14b8a6", // Teal
 ];
 
-const MODULE_DEFS = [
-  { key: "tasks", label: "Tasks Management", desc: "Create, assign, track, and complete tasks" },
-  { key: "projects", label: "Projects Management", desc: "Organize project timelines, teams, and milestones" },
-  { key: "employees", label: "Employees & HR", desc: "Manage employee profiles, contact info, and compensation" },
-  { key: "teams", label: "Teams Management", desc: "Create teams, assign team leads, and coordinate members" },
-  { key: "reports", label: "Reports & Analytics", desc: "Access business reports, timeline summaries, and dashboards" },
-  { key: "settings", label: "System Administration", desc: "Configure users, user groups, and global preferences" },
+export interface ModuleDef {
+  key: string;
+  label: string;
+  desc: string;
+  icon: any;
+}
+
+const MODULE_DEFS: ModuleDef[] = [
+  { key: "tasks", label: "Tasks Management", desc: "Create, assign, track, and complete tasks", icon: CheckSquare },
+  { key: "projects", label: "Projects Management", desc: "Organize project timelines, teams, and milestones", icon: FolderKanban },
+  { key: "employees", label: "Employees & HR", desc: "Manage employee profiles, contact info, and compensation", icon: UserCheck },
+  { key: "teams", label: "Teams Management", desc: "Create teams, assign team leads, and coordinate members", icon: Users },
+  { key: "dayoff", label: "Time Off & Leaves", desc: "Manage leave policies, approvals, calendar, and applications", icon: CalendarOff },
+  { key: "reports", label: "Reports & Analytics", desc: "Access business reports, timeline summaries, and dashboards", icon: BarChart3 },
+  { key: "settings", label: "System Administration", desc: "Configure users, user groups, and global preferences", icon: Settings },
+];
+
+export interface OperationDef {
+  key: string;
+  module: string;
+  label: string;
+  desc: string;
+  category: string;
+}
+
+const OPERATION_DEFS: OperationDef[] = [
+  // Tasks Operations
+  { key: "tasks.core", module: "tasks", label: "Task Records", desc: "Create, view, update, and delete core task items", category: "Records" },
+  { key: "tasks.comments", module: "tasks", label: "Comments & Discussions", desc: "Post, view, edit, and delete discussion comments on tasks", category: "Collaboration" },
+  { key: "tasks.attachments", module: "tasks", label: "Attachments & Files", desc: "Upload, preview, download, and delete task document attachments", category: "Resources" },
+  { key: "tasks.time_tracking", module: "tasks", label: "Time Tracking & Timers", desc: "Start/stop task timers and log billable work hours", category: "Execution" },
+  { key: "tasks.assignment", module: "tasks", label: "Task Assignment & Members", desc: "Assign employees, change assignees, and invite members", category: "Workflow" },
+
+  // Projects Operations
+  { key: "projects.core", module: "projects", label: "Project Records", desc: "Create, view, modify, and delete projects", category: "Records" },
+  { key: "projects.milestones", module: "projects", label: "Milestones & Timelines", desc: "Configure project start dates, target deadlines, and status", category: "Planning" },
+  { key: "projects.team", module: "projects", label: "Team Allocation", desc: "Assign teams and project leaders to projects", category: "Resources" },
+  { key: "projects.documents", module: "projects", label: "Project Files & Notes", desc: "Manage project documentation, assets, and discussion notes", category: "Collaboration" },
+
+  // Employees Operations
+  { key: "employees.directory", module: "employees", label: "Employee Directory", desc: "Access the employee roster and search employee profiles", category: "Directory" },
+  { key: "employees.profile", module: "employees", label: "Profile Information", desc: "Manage personal details, contact numbers, and addresses", category: "Personal" },
+  { key: "employees.compensation", module: "employees", label: "Compensation & Payroll", desc: "View and edit confidential salaries, bank info, and tax IDs", category: "Payroll" },
+  { key: "employees.status", module: "employees", label: "Employment Lifecycle", desc: "Manage job roles, departments, active status, and termination", category: "Employment" },
+
+  // Teams Operations
+  { key: "teams.core", module: "teams", label: "Team Profiles", desc: "Create, view, edit, and delete teams", category: "Records" },
+  { key: "teams.members", module: "teams", label: "Team Members", desc: "Add, remove, and manage members within teams", category: "Membership" },
+  { key: "teams.leads", module: "teams", label: "Team Leadership", desc: "Assign and reassign designated team leads", category: "Leadership" },
+
+  // Time Off / Leaves Operations
+  { key: "dayoff.requests", module: "dayoff", label: "Leave Requests", desc: "Submit, view, edit, and cancel employee time off requests", category: "Requests" },
+  { key: "dayoff.approvals", module: "dayoff", label: "Leave Approvals", desc: "Review, approve, or reject employee leave applications", category: "Approvals" },
+  { key: "dayoff.policies", module: "dayoff", label: "Leave Policies & Types", desc: "Create, configure quotas, paid rules, and allocate balances", category: "Policies" },
+  { key: "dayoff.calendar", module: "dayoff", label: "Leave Calendar & Balances", desc: "View the team holiday calendar and available day-off balances", category: "Calendar" },
+
+  // Reports Operations
+  { key: "reports.view", module: "reports", label: "Analytics & Dashboards", desc: "View visual performance metrics, velocity charts, and summaries", category: "Analytics" },
+  { key: "reports.export", module: "reports", label: "Data Export", desc: "Export records and reports to CSV, Excel, or PDF", category: "Export" },
+  { key: "reports.timesheets", module: "reports", label: "Timesheet Logs", desc: "Audit employee work logs, tracked timers, and project hours", category: "Auditing" },
+
+  // System Administration Operations
+  { key: "settings.users", module: "settings", label: "User Accounts", desc: "Create, view, update, and manage user login credentials", category: "Security" },
+  { key: "settings.user_groups", module: "settings", label: "User Groups & Roles", desc: "Create and configure access groups and permission policies", category: "Access Control" },
+  { key: "settings.system", module: "settings", label: "System Preferences", desc: "Modify system-wide configurations, branding, and integrations", category: "Administration" },
 ];
 
 interface ModelFieldDef {
@@ -117,6 +177,13 @@ type ActionPermState = {
   delete: boolean;
 };
 
+type OperationPermState = {
+  read: boolean;
+  write: boolean;
+  update: boolean;
+  delete: boolean;
+};
+
 type FieldPermState = {
   read: boolean;
   write: boolean;
@@ -139,14 +206,23 @@ export default function UserGroupDetailPage({
   const [isDeleting, setIsDeleting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState<"modules" | "operations" | "fields" | "members">("modules");
+
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#6366f1");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
+
   // Module-Level CRUD Permissions: moduleKey -> { create, read, update, delete }
   const [modulePerms, setModulePerms] = useState<Record<string, ActionPermState>>({});
+
+  // Operation-Level CRUD Permissions: operationKey -> { read, write, update, delete }
+  const [operationPerms, setOperationPerms] = useState<Record<string, OperationPermState>>({});
+  const [opModuleFilter, setOpModuleFilter] = useState<string>("all");
+  const [opSearchQuery, setOpSearchQuery] = useState<string>("");
 
   // Field-Level Permissions State: model -> field -> { read, write, update, delete }
   const [fieldPerms, setFieldPerms] = useState<Record<string, Record<string, FieldPermState>>>({});
@@ -161,6 +237,20 @@ export default function UserGroupDetailPage({
       initial[mod.key] = {
         create: true,
         read: true,
+        update: true,
+        delete: true,
+      };
+    }
+    return initial;
+  };
+
+  // Helper to initialize default permissions for all operations
+  const getDefaultOperationPerms = () => {
+    const initial: Record<string, OperationPermState> = {};
+    for (const op of OPERATION_DEFS) {
+      initial[op.key] = {
+        read: true,
+        write: true,
         update: true,
         delete: true,
       };
@@ -193,6 +283,7 @@ export default function UserGroupDetailPage({
         setAvailableUsers(users || []);
 
         const initialModulePerms = getDefaultModulePerms();
+        const initialOperationPerms = getDefaultOperationPerms();
         const initialFieldPerms = getDefaultFieldPerms();
 
         if (!isNew) {
@@ -207,7 +298,7 @@ export default function UserGroupDetailPage({
           const memberIds = (group.members || []).map((m: any) => (m._id || m).toString());
           setSelectedMembers(memberIds);
 
-          // Populate existing module permissions if saved
+          // 1. Populate Module Permissions
           if (group.modulePermissions && Array.isArray(group.modulePermissions)) {
             for (const mp of group.modulePermissions) {
               if (initialModulePerms[mp.module]) {
@@ -220,7 +311,6 @@ export default function UserGroupDetailPage({
               }
             }
           } else if (group.permissions && Array.isArray(group.permissions)) {
-            // Backward compatibility mapping from permissions array
             for (const p of group.permissions) {
               const [mod, act] = p.split(":");
               if (initialModulePerms[mod]) {
@@ -233,7 +323,34 @@ export default function UserGroupDetailPage({
             }
           }
 
-          // Populate existing field permissions if saved
+          // 2. Populate Operation Permissions
+          if (group.operationPermissions && Array.isArray(group.operationPermissions)) {
+            for (const op of group.operationPermissions) {
+              if (initialOperationPerms[op.operation]) {
+                initialOperationPerms[op.operation] = {
+                  read: op.read ?? true,
+                  write: op.write ?? true,
+                  update: op.update ?? true,
+                  delete: op.delete ?? true,
+                };
+              }
+            }
+          } else {
+            // Default operations to match parent module permission if not explicitly configured
+            for (const opDef of OPERATION_DEFS) {
+              const parentMod = initialModulePerms[opDef.module];
+              if (parentMod) {
+                initialOperationPerms[opDef.key] = {
+                  read: parentMod.read,
+                  write: parentMod.create,
+                  update: parentMod.update,
+                  delete: parentMod.delete,
+                };
+              }
+            }
+          }
+
+          // 3. Populate Field Permissions
           if (group.fieldPermissions && Array.isArray(group.fieldPermissions)) {
             for (const fp of group.fieldPermissions) {
               if (initialFieldPerms[fp.model] && initialFieldPerms[fp.model][fp.field]) {
@@ -248,6 +365,7 @@ export default function UserGroupDetailPage({
           }
 
           setModulePerms(initialModulePerms);
+          setOperationPerms(initialOperationPerms);
           setFieldPerms(initialFieldPerms);
 
           setOriginalData({
@@ -256,10 +374,12 @@ export default function UserGroupDetailPage({
             color: group.color || "#6366f1",
             members: memberIds,
             modulePerms: JSON.parse(JSON.stringify(initialModulePerms)),
+            operationPerms: JSON.parse(JSON.stringify(initialOperationPerms)),
             fieldPerms: JSON.parse(JSON.stringify(initialFieldPerms)),
           });
         } else {
           setModulePerms(initialModulePerms);
+          setOperationPerms(initialOperationPerms);
           setFieldPerms(initialFieldPerms);
         }
       } catch (err) {
@@ -280,6 +400,7 @@ export default function UserGroupDetailPage({
       color !== originalData.color ||
       JSON.stringify(selectedMembers.sort()) !== JSON.stringify(originalData.members.sort()) ||
       JSON.stringify(modulePerms) !== JSON.stringify(originalData.modulePerms) ||
+      JSON.stringify(operationPerms) !== JSON.stringify(originalData.operationPerms) ||
       JSON.stringify(fieldPerms) !== JSON.stringify(originalData.fieldPerms));
 
   const [allGroupIds, setAllGroupIds] = useState<string[]>([]);
@@ -325,20 +446,21 @@ export default function UserGroupDetailPage({
     );
   };
 
-  // Module Action Toggle (create, read, update, delete)
+  // ── Module Action Toggles ──
   const handleToggleModuleAction = (
     moduleKey: string,
     action: "create" | "read" | "update" | "delete"
   ) => {
     setModulePerms((prev) => {
       const current = prev[moduleKey] || { create: true, read: true, update: true, delete: true };
-      return {
+      const updated = {
         ...prev,
         [moduleKey]: {
           ...current,
           [action]: !current[action],
         },
       };
+      return updated;
     });
   };
 
@@ -372,7 +494,58 @@ export default function UserGroupDetailPage({
     });
   };
 
-  // Field Action Toggle (read, write, update, delete)
+  // ── Operation Action Toggles ──
+  const handleToggleOperationAction = (
+    operationKey: string,
+    action: "read" | "write" | "update" | "delete"
+  ) => {
+    setOperationPerms((prev) => {
+      const current = prev[operationKey] || { read: true, write: true, update: true, delete: true };
+      return {
+        ...prev,
+        [operationKey]: {
+          ...current,
+          [action]: !current[action],
+        },
+      };
+    });
+  };
+
+  const handleSetOperationPreset = (operationKey: string, preset: "all" | "readonly" | "none") => {
+    setOperationPerms((prev) => {
+      const updated: OperationPermState =
+        preset === "all"
+          ? { read: true, write: true, update: true, delete: true }
+          : preset === "readonly"
+          ? { read: true, write: false, update: false, delete: false }
+          : { read: false, write: false, update: false, delete: false };
+      return {
+        ...prev,
+        [operationKey]: updated,
+      };
+    });
+  };
+
+  const handleSetAllOperationsPreset = (preset: "all" | "readonly" | "none", filterMod?: string) => {
+    setOperationPerms((prev) => {
+      const updated = { ...prev };
+      const targets = filterMod && filterMod !== "all"
+        ? OPERATION_DEFS.filter((op) => op.module === filterMod)
+        : OPERATION_DEFS;
+
+      for (const op of targets) {
+        updated[op.key] =
+          preset === "all"
+            ? { read: true, write: true, update: true, delete: true }
+            : preset === "readonly"
+            ? { read: true, write: false, update: false, delete: false }
+            : { read: false, write: false, update: false, delete: false };
+      }
+      return updated;
+    });
+  };
+
+  // ── Field Action Toggles ──
   const handleToggleFieldAction = (
     modelKey: string,
     fieldKey: string,
@@ -421,7 +594,7 @@ export default function UserGroupDetailPage({
       return;
     }
 
-    // Flatten modulePerms into array
+    // 1. Flatten Module Permissions
     const modulePermissionsArray: Array<{
       module: string;
       create: boolean;
@@ -441,7 +614,10 @@ export default function UserGroupDetailPage({
         delete: perms.delete,
       });
 
-      if (perms.create) legacyPermissionsArray.push(`${modKey}:create`);
+      if (perms.create) {
+        legacyPermissionsArray.push(`${modKey}:create`);
+        legacyPermissionsArray.push(`${modKey}:write`);
+      }
       if (perms.read) legacyPermissionsArray.push(`${modKey}:read`);
       if (perms.update) legacyPermissionsArray.push(`${modKey}:update`);
       if (perms.delete) legacyPermissionsArray.push(`${modKey}:delete`);
@@ -450,7 +626,37 @@ export default function UserGroupDetailPage({
       }
     }
 
-    // Flatten fieldPerms object into array for backend storage
+    // 2. Flatten Operation Permissions
+    const operationPermissionsArray: Array<{
+      module: string;
+      operation: string;
+      read: boolean;
+      write: boolean;
+      update: boolean;
+      delete: boolean;
+    }> = [];
+
+    for (const opDef of OPERATION_DEFS) {
+      const perms = operationPerms[opDef.key] || { read: true, write: true, update: true, delete: true };
+      operationPermissionsArray.push({
+        module: opDef.module,
+        operation: opDef.key,
+        read: perms.read,
+        write: perms.write,
+        update: perms.update,
+        delete: perms.delete,
+      });
+
+      if (perms.read) legacyPermissionsArray.push(`${opDef.key}:read`);
+      if (perms.write) {
+        legacyPermissionsArray.push(`${opDef.key}:write`);
+        legacyPermissionsArray.push(`${opDef.key}:create`);
+      }
+      if (perms.update) legacyPermissionsArray.push(`${opDef.key}:update`);
+      if (perms.delete) legacyPermissionsArray.push(`${opDef.key}:delete`);
+    }
+
+    // 3. Flatten Field Permissions
     const fieldPermissionsArray: Array<{
       model: string;
       field: string;
@@ -478,8 +684,9 @@ export default function UserGroupDetailPage({
       description: description.trim(),
       color,
       members: selectedMembers,
-      permissions: legacyPermissionsArray,
+      permissions: Array.from(new Set(legacyPermissionsArray)),
       modulePermissions: modulePermissionsArray,
+      operationPermissions: operationPermissionsArray,
       fieldPermissions: fieldPermissionsArray,
     };
 
@@ -498,9 +705,10 @@ export default function UserGroupDetailPage({
           color: updated.color || "#6366f1",
           members: memberIds,
           modulePerms: JSON.parse(JSON.stringify(modulePerms)),
+          operationPerms: JSON.parse(JSON.stringify(operationPerms)),
           fieldPerms: JSON.parse(JSON.stringify(fieldPerms)),
         });
-        setToastMessage("User group updated!");
+        setToastMessage("User group updated successfully!");
         setTimeout(() => setToastMessage(null), 3000);
       }
     } catch (err) {
@@ -534,6 +742,31 @@ export default function UserGroupDetailPage({
 
   const displayName = name.trim() || (isNew ? "New Group" : "User Group");
   const currentModelFields = MODEL_FIELDS[activeModelTab]?.fields || [];
+
+  // Filtered operations for Operation Access tab
+  const filteredOperations = OPERATION_DEFS.filter((op) => {
+    if (opModuleFilter !== "all" && op.module !== opModuleFilter) return false;
+    if (opSearchQuery.trim()) {
+      const q = opSearchQuery.toLowerCase();
+      return (
+        op.label.toLowerCase().includes(q) ||
+        op.desc.toLowerCase().includes(q) ||
+        op.key.toLowerCase().includes(q) ||
+        op.category.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Filtered users for Members tab
+  const filteredUsers = availableUsers.filter((u) => {
+    if (!memberSearchQuery.trim()) return true;
+    const q = memberSearchQuery.toLowerCase();
+    return (
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -588,6 +821,7 @@ export default function UserGroupDetailPage({
                   setColor(originalData.color);
                   setSelectedMembers(originalData.members);
                   setModulePerms(JSON.parse(JSON.stringify(originalData.modulePerms)));
+                  setOperationPerms(JSON.parse(JSON.stringify(originalData.operationPerms || {})));
                   setFieldPerms(JSON.parse(JSON.stringify(originalData.fieldPerms)));
                 }}
                 disabled={isSaving}
@@ -688,420 +922,809 @@ export default function UserGroupDetailPage({
             </div>
           </div>
 
-          {/* ── Module-Level Permissions Matrix (Create, Read, Update, Delete) ── */}
-          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-primary" />
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">Module-Level Permissions (CRUD)</h3>
-                  <p className="text-xs text-muted-foreground">Grant or restrict Create, Read, Update, and Delete access across entire modules</p>
-                </div>
-              </div>
-
-              {/* Global Quick Action Presets */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSetAllModulesPreset("all")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
-                >
-                  Grant All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetAllModulesPreset("readonly")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
-                >
-                  Read-Only All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetAllModulesPreset("none")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
-                >
-                  Clear All
-                </button>
-              </div>
-            </div>
-
-            {/* Module CRUD Matrix Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-[11px] text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
-                  <tr>
-                    <th className="px-5 py-3 font-semibold">Module</th>
-                    <th className="px-5 py-3 font-semibold">Description</th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Create (Add new records)">
-                        <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Create</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Read (View records & lists)">
-                        <Eye className="w-3.5 h-3.5 text-blue-500" />
-                        <span>Read</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Update / Write (Modify existing records)">
-                        <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Update</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Delete (Remove records)">
-                        <Trash className="w-3.5 h-3.5 text-red-500" />
-                        <span>Delete</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-right w-28">Quick Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {MODULE_DEFS.map((mod) => {
-                    const currentPerm = modulePerms[mod.key] || {
-                      create: true,
-                      read: true,
-                      update: true,
-                      delete: true,
-                    };
-
-                    const isAll = currentPerm.create && currentPerm.read && currentPerm.update && currentPerm.delete;
-                    const isReadOnly = !currentPerm.create && currentPerm.read && !currentPerm.update && !currentPerm.delete;
-                    const isNone = !currentPerm.create && !currentPerm.read && !currentPerm.update && !currentPerm.delete;
-
-                    return (
-                      <tr key={mod.key} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3.5 font-medium text-foreground text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-primary/70" />
-                            <span className="font-semibold text-sm">{mod.label}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-xs">
-                          {mod.desc}
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleModuleAction(mod.key, "create")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.create
-                                ? "bg-emerald-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Create for ${mod.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleModuleAction(mod.key, "read")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.read
-                                ? "bg-blue-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Read for ${mod.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleModuleAction(mod.key, "update")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.update
-                                ? "bg-amber-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Update for ${mod.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleModuleAction(mod.key, "delete")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.delete
-                                ? "bg-red-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Delete for ${mod.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <select
-                            value={isAll ? "all" : isReadOnly ? "readonly" : isNone ? "none" : "custom"}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v === "all" || v === "readonly" || v === "none") {
-                                handleSetModulePreset(mod.key, v);
-                              }
-                            }}
-                            className="text-[11px] bg-muted/30 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer"
-                          >
-                            <option value="all">Full (CRUD)</option>
-                            <option value="readonly">Read Only</option>
-                            <option value="none">No Access</option>
-                            <option value="custom" disabled>Custom</option>
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ── Field-Level Permissions Matrix (Read, Write, Update, Delete) ── */}
-          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-primary" />
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">Field-Level Access Control (CRUD)</h3>
-                  <p className="text-xs text-muted-foreground">Configure Read, Write, Update, and Delete permissions per field across models</p>
-                </div>
-              </div>
-
-              {/* Model Quick Actions */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSetModelPreset(activeModelTab, "all")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
-                >
-                  Full Access
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetModelPreset(activeModelTab, "readonly")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
-                >
-                  Read-Only
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetModelPreset(activeModelTab, "none")}
-                  className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
-                >
-                  No Access
-                </button>
-              </div>
-            </div>
-
-            {/* Model Tabs */}
-            <div className="flex items-center gap-2 px-5 pt-3 border-b border-border/50 overflow-x-auto">
-              {Object.entries(MODEL_FIELDS).map(([key, def]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActiveModelTab(key)}
-                  className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all shrink-0 ${
-                    activeModelTab === key
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {def.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Matrix Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-[11px] text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
-                  <tr>
-                    <th className="px-5 py-3 font-semibold">Field Name</th>
-                    <th className="px-5 py-3 font-semibold">Category</th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Read (View field value)">
-                        <Eye className="w-3.5 h-3.5 text-blue-500" />
-                        <span>Read</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Write (Set value when creating)">
-                        <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Write</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Update (Modify existing value)">
-                        <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Update</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 font-semibold text-center w-24">
-                      <div className="flex items-center justify-center gap-1" title="Delete (Clear / Remove value)">
-                        <Trash className="w-3.5 h-3.5 text-red-500" />
-                        <span>Delete</span>
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {currentModelFields.map((field) => {
-                    const currentPerm = (fieldPerms[activeModelTab] && fieldPerms[activeModelTab][field.key]) || {
-                      read: true,
-                      write: true,
-                      update: true,
-                      delete: true,
-                    };
-
-                    return (
-                      <tr key={field.key} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="font-medium text-foreground text-xs flex items-center gap-1.5">
-                            <span>{field.label}</span>
-                            {field.sensitive && (
-                              <span className="text-[10px] bg-red-500/10 text-red-500 border border-red-500/20 px-1.5 py-0.2 rounded font-semibold">
-                                Confidential
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                            {field.key}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground">
-                          {field.category || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFieldAction(activeModelTab, field.key, "read")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.read
-                                ? "bg-blue-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Read for ${field.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFieldAction(activeModelTab, field.key, "write")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.write
-                                ? "bg-emerald-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Write for ${field.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFieldAction(activeModelTab, field.key, "update")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.update
-                                ? "bg-amber-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Update for ${field.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFieldAction(activeModelTab, field.key, "delete")}
-                            className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
-                              currentPerm.delete
-                                ? "bg-red-500 text-white shadow-sm"
-                                : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
-                            }`}
-                            title={`Toggle Delete for ${field.label}`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Group Members Selector */}
-          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-3.5 h-3.5 text-primary" />
-                <h3 className="font-semibold text-foreground text-sm">Group Members</h3>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {selectedMembers.length} members
+          {/* ── Section Navigation Tabs ── */}
+          <div className="flex items-center gap-1.5 p-1 bg-muted/40 rounded-xl border border-border/60 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setActiveTab("modules")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "modules"
+                  ? "bg-card text-foreground shadow-sm border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-primary" />
+              <span>Module Access</span>
+              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.2 rounded-full font-bold">
+                {MODULE_DEFS.length}
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("operations")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "operations"
+                  ? "bg-card text-foreground shadow-sm border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Operation Access</span>
+              <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.2 rounded-full font-bold">
+                {OPERATION_DEFS.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("fields")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "fields"
+                  ? "bg-card text-foreground shadow-sm border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Field-Level Access</span>
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.2 rounded-full font-bold">
+                {Object.values(MODEL_FIELDS).reduce((acc, m) => acc + m.fields.length, 0)}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("members")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "members"
+                  ? "bg-card text-foreground shadow-sm border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-amber-500" />
+              <span>Group Members</span>
+              <span className="text-[10px] bg-amber-500/10 text-amber-500 px-1.5 py-0.2 rounded-full font-bold">
+                {selectedMembers.length}
+              </span>
+            </button>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* ── TAB 1: MODULE ACCESS (Read, Write, Update, Delete) ── */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {activeTab === "modules" && (
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden animate-in fade-in duration-200">
+              <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" />
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Module Access Control</h3>
+                    <p className="text-xs text-muted-foreground">Configure Read, Write, Update, and Delete permissions across entire modules</p>
+                  </div>
+                </div>
+
+                {/* Global Quick Action Presets */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllModulesPreset("all")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                  >
+                    Grant All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllModulesPreset("readonly")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
+                  >
+                    Read-Only All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllModulesPreset("none")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Module Matrix Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-[11px] text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Module Name</th>
+                      <th className="px-5 py-3 font-semibold">Description</th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Read (View module pages and records)">
+                          <Eye className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Read</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Write (Create / Add new records)">
+                          <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Write</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Update (Modify existing records)">
+                          <Edit3 className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Update</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Delete (Remove records)">
+                          <Trash className="w-3.5 h-3.5 text-red-500" />
+                          <span>Delete</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-right w-28">Quick Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {MODULE_DEFS.map((mod) => {
+                      const Icon = mod.icon;
+                      const currentPerm = modulePerms[mod.key] || {
+                        create: true,
+                        read: true,
+                        update: true,
+                        delete: true,
+                      };
+
+                      const isAll = currentPerm.create && currentPerm.read && currentPerm.update && currentPerm.delete;
+                      const isReadOnly = !currentPerm.create && currentPerm.read && !currentPerm.update && !currentPerm.delete;
+                      const isNone = !currentPerm.create && !currentPerm.read && !currentPerm.update && !currentPerm.delete;
+
+                      return (
+                        <tr key={mod.key} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-5 py-3.5 font-medium text-foreground text-xs">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <span className="font-semibold text-sm text-foreground">{mod.label}</span>
+                                <span className="block text-[10px] text-muted-foreground font-mono">{mod.key}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-xs">
+                            {mod.desc}
+                          </td>
+                          {/* Read Access Toggle */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleModuleAction(mod.key, "read")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.read
+                                  ? "bg-blue-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Read access for ${mod.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          {/* Write (Create) Access Toggle */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleModuleAction(mod.key, "create")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.create
+                                  ? "bg-emerald-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Write access for ${mod.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          {/* Update Access Toggle */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleModuleAction(mod.key, "update")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.update
+                                  ? "bg-amber-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Update access for ${mod.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          {/* Delete Access Toggle */}
+                          <td className="px-4 py-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleModuleAction(mod.key, "delete")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.delete
+                                  ? "bg-red-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Delete access for ${mod.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <select
+                              value={isAll ? "all" : isReadOnly ? "readonly" : isNone ? "none" : "custom"}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === "all" || v === "readonly" || v === "none") {
+                                  handleSetModulePreset(mod.key, v);
+                                }
+                              }}
+                              className="text-[11px] bg-muted/30 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer"
+                            >
+                              <option value="all">Full Access</option>
+                              <option value="readonly">Read Only</option>
+                              <option value="none">No Access</option>
+                              <option value="custom" disabled>Custom</option>
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="p-5">
-              {availableUsers.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {availableUsers.map((u) => {
-                    const isSelected = selectedMembers.includes(u._id);
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* ── TAB 2: OPERATION ACCESS (Read, Write, Update, Delete) ── */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {activeTab === "operations" && (
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden animate-in fade-in duration-200">
+              <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-indigo-500" />
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Operation Access Control</h3>
+                    <p className="text-xs text-muted-foreground">Fine-grained Read, Write, Update, and Delete permissions per functional operation</p>
+                  </div>
+                </div>
+
+                {/* Operation Bulk Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllOperationsPreset("all", opModuleFilter)}
+                    className="text-[11px] px-2.5 py-1 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors font-medium"
+                  >
+                    Grant {opModuleFilter === "all" ? "All" : "Filtered"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllOperationsPreset("readonly", opModuleFilter)}
+                    className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
+                  >
+                    Read-Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAllOperationsPreset("none", opModuleFilter)}
+                    className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Bar & Search */}
+              <div className="p-4 border-b border-border/50 bg-muted/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Module Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpModuleFilter("all")}
+                    className={`px-2.5 py-1 text-xs rounded-lg transition-colors shrink-0 font-medium ${
+                      opModuleFilter === "all"
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    All Modules ({OPERATION_DEFS.length})
+                  </button>
+                  {MODULE_DEFS.map((mod) => {
+                    const count = OPERATION_DEFS.filter((op) => op.module === mod.key).length;
                     return (
-                      <div
-                        key={u._id}
-                        onClick={() => handleToggleMember(u._id)}
-                        className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? "bg-primary/5 border-primary/40"
-                            : "bg-muted/10 border-border/60 hover:bg-muted/30"
+                      <button
+                        key={mod.key}
+                        type="button"
+                        onClick={() => setOpModuleFilter(mod.key)}
+                        className={`px-2.5 py-1 text-xs rounded-lg transition-colors shrink-0 font-medium ${
+                          opModuleFilter === mod.key
+                            ? "bg-primary text-primary-foreground font-semibold"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {u.avatarUrl ? (
-                            <img src={u.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-                          ) : (
-                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                              {u.name?.charAt(0) || u.email?.charAt(0)?.toUpperCase() || 'U'}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium text-foreground truncate">
-                              {u.name || (u.authType === 'guest' ? 'Guest User' : 'User')}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground truncate">
-                              {u.email || "No email"}
-                            </div>
-                          </div>
-                        </div>
-                        <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors shrink-0 ${
-                          isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"
-                        }`}>
-                          {isSelected && <Check className="w-3 h-3" />}
-                        </div>
-                      </div>
+                        {mod.label.replace(" Management", "").replace(" & Analytics", "")} ({count})
+                      </button>
                     );
                   })}
                 </div>
-              ) : (
-                <div className="text-center py-6 text-xs text-muted-foreground">
-                  No users found in the system.
+
+                {/* Operation Search */}
+                <div className="relative w-full sm:w-64 shrink-0">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={opSearchQuery}
+                    onChange={(e) => setOpSearchQuery(e.target.value)}
+                    placeholder="Search operations..."
+                    className="w-full pl-8 pr-3 py-1 text-xs bg-muted/40 border border-border/60 rounded-md outline-none focus:border-primary transition-colors"
+                  />
+                  {opSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setOpSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Operations Matrix Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-[11px] text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Operation</th>
+                      <th className="px-5 py-3 font-semibold">Category</th>
+                      <th className="px-5 py-3 font-semibold">Description</th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Read (View operation data)">
+                          <Eye className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Read</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Write (Create / perform operation)">
+                          <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Write</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Update (Modify operation records)">
+                          <Edit3 className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Update</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Delete (Remove / cancel operation records)">
+                          <Trash className="w-3.5 h-3.5 text-red-500" />
+                          <span>Delete</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-right w-28">Quick Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {filteredOperations.length > 0 ? (
+                      filteredOperations.map((op) => {
+                        const currentPerm = operationPerms[op.key] || {
+                          read: true,
+                          write: true,
+                          update: true,
+                          delete: true,
+                        };
+
+                        const isAll = currentPerm.read && currentPerm.write && currentPerm.update && currentPerm.delete;
+                        const isReadOnly = currentPerm.read && !currentPerm.write && !currentPerm.update && !currentPerm.delete;
+                        const isNone = !currentPerm.read && !currentPerm.write && !currentPerm.update && !currentPerm.delete;
+
+                        return (
+                          <tr key={op.key} className="hover:bg-muted/20 transition-colors">
+                            <td className="px-5 py-3">
+                              <div className="font-semibold text-foreground text-xs flex items-center gap-2">
+                                <span>{op.label}</span>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                {op.key}
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium text-[10px]">
+                                {op.category}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-xs text-muted-foreground max-w-xs">
+                              {op.desc}
+                            </td>
+                            {/* Read Access Toggle */}
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOperationAction(op.key, "read")}
+                                className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                  currentPerm.read
+                                    ? "bg-blue-500 text-white shadow-sm"
+                                    : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                                }`}
+                                title={`Toggle Read access for ${op.label}`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                            {/* Write Access Toggle */}
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOperationAction(op.key, "write")}
+                                className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                  currentPerm.write
+                                    ? "bg-emerald-500 text-white shadow-sm"
+                                    : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                                }`}
+                                title={`Toggle Write access for ${op.label}`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                            {/* Update Access Toggle */}
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOperationAction(op.key, "update")}
+                                className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                  currentPerm.update
+                                    ? "bg-amber-500 text-white shadow-sm"
+                                    : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                                }`}
+                                title={`Toggle Update access for ${op.label}`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                            {/* Delete Access Toggle */}
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOperationAction(op.key, "delete")}
+                                className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                  currentPerm.delete
+                                    ? "bg-red-500 text-white shadow-sm"
+                                    : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                                }`}
+                                title={`Toggle Delete access for ${op.label}`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <select
+                                value={isAll ? "all" : isReadOnly ? "readonly" : isNone ? "none" : "custom"}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (v === "all" || v === "readonly" || v === "none") {
+                                    handleSetOperationPreset(op.key, v);
+                                  }
+                                }}
+                                className="text-[11px] bg-muted/30 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer"
+                              >
+                                <option value="all">Full Access</option>
+                                <option value="readonly">Read Only</option>
+                                <option value="none">No Access</option>
+                                <option value="custom" disabled>Custom</option>
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="px-5 py-8 text-center text-xs text-muted-foreground">
+                          No operations found matching your filter or search query.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* ── TAB 3: FIELD-LEVEL ACCESS (Read, Write, Update, Delete) ── */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {activeTab === "fields" && (
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden animate-in fade-in duration-200">
+              <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-emerald-500" />
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Field-Level Access Control</h3>
+                    <p className="text-xs text-muted-foreground">Configure Read, Write, Update, and Delete permissions per field across models</p>
+                  </div>
+                </div>
+
+                {/* Model Quick Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSetModelPreset(activeModelTab, "all")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors font-medium"
+                  >
+                    Full Access
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetModelPreset(activeModelTab, "readonly")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
+                  >
+                    Read-Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetModelPreset(activeModelTab, "none")}
+                    className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
+                  >
+                    No Access
+                  </button>
+                </div>
+              </div>
+
+              {/* Model Tabs */}
+              <div className="flex items-center gap-2 px-5 pt-3 border-b border-border/50 overflow-x-auto">
+                {Object.entries(MODEL_FIELDS).map(([key, def]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveModelTab(key)}
+                    className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all shrink-0 ${
+                      activeModelTab === key
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {def.label} ({def.fields.length})
+                  </button>
+                ))}
+              </div>
+
+              {/* Matrix Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-[11px] text-muted-foreground uppercase bg-muted/10 border-b border-border/50">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Field Name</th>
+                      <th className="px-5 py-3 font-semibold">Category</th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Read (View field value)">
+                          <Eye className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Read</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Write (Set value when creating)">
+                          <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Write</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Update (Modify existing value)">
+                          <Edit3 className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Update</span>
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">
+                        <div className="flex items-center justify-center gap-1" title="Delete (Clear / Remove value)">
+                          <Trash className="w-3.5 h-3.5 text-red-500" />
+                          <span>Delete</span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {currentModelFields.map((field) => {
+                      const currentPerm = (fieldPerms[activeModelTab] && fieldPerms[activeModelTab][field.key]) || {
+                        read: true,
+                        write: true,
+                        update: true,
+                        delete: true,
+                      };
+
+                      return (
+                        <tr key={field.key} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-5 py-3">
+                            <div className="font-medium text-foreground text-xs flex items-center gap-1.5">
+                              <span>{field.label}</span>
+                              {field.sensitive && (
+                                <span className="text-[10px] bg-red-500/10 text-red-500 border border-red-500/20 px-1.5 py-0.2 rounded font-semibold">
+                                  Confidential
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                              {field.key}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-xs text-muted-foreground">
+                            {field.category || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldAction(activeModelTab, field.key, "read")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.read
+                                  ? "bg-blue-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Read for ${field.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldAction(activeModelTab, field.key, "write")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.write
+                                  ? "bg-emerald-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Write for ${field.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldAction(activeModelTab, field.key, "update")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.update
+                                  ? "bg-amber-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Update for ${field.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldAction(activeModelTab, field.key, "delete")}
+                              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors ${
+                                currentPerm.delete
+                                  ? "bg-red-500 text-white shadow-sm"
+                                  : "bg-muted/50 text-muted-foreground/40 hover:bg-muted"
+                              }`}
+                              title={`Toggle Delete for ${field.label}`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* ── TAB 4: GROUP MEMBERS ── */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {activeTab === "members" && (
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden animate-in fade-in duration-200">
+              <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-amber-500" />
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Group Members</h3>
+                    <p className="text-xs text-muted-foreground">Assign users to this group to grant all defined module and operation permissions</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium mr-2">
+                    {selectedMembers.length} of {availableUsers.length} assigned
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMembers(availableUsers.map((u) => u._id))}
+                    className="text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMembers([])}
+                    className="text-[11px] px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Member Search Bar */}
+              <div className="p-4 border-b border-border/50 bg-muted/5">
+                <div className="relative max-w-sm">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={memberSearchQuery}
+                    onChange={(e) => setMemberSearchQuery(e.target.value)}
+                    placeholder="Search users by name or email..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted/40 border border-border/60 rounded-md outline-none focus:border-primary transition-colors"
+                  />
+                  {memberSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setMemberSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-5">
+                {filteredUsers.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {filteredUsers.map((u) => {
+                      const isSelected = selectedMembers.includes(u._id);
+                      return (
+                        <div
+                          key={u._id}
+                          onClick={() => handleToggleMember(u._id)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isSelected
+                              ? "bg-primary/5 border-primary/40 shadow-xs"
+                              : "bg-muted/10 border-border/60 hover:bg-muted/30"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {u.avatarUrl ? (
+                              <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                {u.name?.charAt(0) || u.email?.charAt(0)?.toUpperCase() || 'U'}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-foreground truncate">
+                                {u.name || (u.authType === 'guest' ? 'Guest User' : 'User')}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground truncate">
+                                {u.email || "No email"}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ${
+                            isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40 bg-card"
+                          }`}>
+                            {isSelected && <Check className="w-3.5 h-3.5" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-xs text-muted-foreground">
+                    {memberSearchQuery ? "No users match your search query." : "No users found in the system."}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
