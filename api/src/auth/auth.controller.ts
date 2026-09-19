@@ -1,9 +1,9 @@
-import { Controller, Post, Body, Res, Req, Get, UnauthorizedException, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Res, Req, Get, UseGuards, UnauthorizedException, Logger } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
-import { Authenticated } from './decorators/authenticated.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { EmployeesService } from '../employees/employees.service';
@@ -69,7 +69,6 @@ export class AuthController {
     return { success: true };
   }
 
-  @Authenticated()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     this.logger.log('User logged out (cookies cleared)');
@@ -85,7 +84,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @Authenticated()
+  @UseGuards(JwtAuthGuard)
   async getMe(@Req() req: Request) {
     const user = (req as any).user;
     if (!user) return null;

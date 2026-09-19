@@ -20,7 +20,7 @@ const groupByOptions: GroupByOption[] = [
 ];
 
 export default function TasksPage() {
-  const { can, isFieldEditable, showAccessDenied } = usePermissions();
+  const { can } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [data, setData] = useState<Record<string, Task[]>>({
     "To Do": [],
@@ -162,15 +162,6 @@ export default function TasksPage() {
   }, [filters, searchQuery, searchContext, groupBy]);
 
   const handleTaskStatusChange = async (taskId: string, newGroupValue: string) => {
-    if (groupBy === "priority" && !isFieldEditable("tasks", "priority")) {
-      showAccessDenied("You do not have permission to edit task priority.", "Access Denied");
-      return;
-    }
-    if (groupBy === "stage" && !isFieldEditable("tasks", "status")) {
-      showAccessDenied("You do not have permission to edit task status.", "Access Denied");
-      return;
-    }
-
     // Optimistic UI update
     setData((prevData) => {
       const newData = { ...prevData };

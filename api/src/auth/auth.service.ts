@@ -6,7 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
 import { EmployeesService } from '../employees/employees.service';
-import { UserGroupsService } from '../user-groups/user-groups.service';
 
 @Injectable()
 export class AuthService {
@@ -16,7 +15,6 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private employeesService: EmployeesService,
-    private userGroupsService: UserGroupsService,
     private jwtService: JwtService,
     private configService: ConfigService,
   ) {
@@ -32,14 +30,6 @@ export class AuthService {
       lastLoginAt: new Date(),
     });
     this.logger.log(`New guest user created with ID: ${user._id}`);
-
-    // Auto-add to default "Employee" group
-    try {
-      await this.userGroupsService.addUserToDefaultGroup(user._id);
-    } catch (err) {
-      this.logger.warn(`Failed to auto-add guest to default group: ${err}`);
-    }
-
     const tokens = await this.issueTokens(user._id.toString());
     return { user, tokens };
   }
@@ -89,8 +79,6 @@ export class AuthService {
       }
     }
 
-    let isNewUser = false;
-
     if (user) {
       user.lastLoginAt = new Date();
       if (cleanEmail && !user.email) user.email = cleanEmail;
@@ -121,17 +109,7 @@ export class AuthService {
           avatarUrl,
           lastLoginAt: new Date(),
         });
-        isNewUser = true;
         this.logger.log(`New user registered via Google: ${user._id} (${cleanEmail})`);
-      }
-    }
-
-    // Auto-add new users to the default "Employee" group
-    if (isNewUser && user?._id) {
-      try {
-        await this.userGroupsService.addUserToDefaultGroup(user._id);
-      } catch (err) {
-        this.logger.warn(`Failed to auto-add new user to default group: ${err}`);
       }
     }
 

@@ -2,16 +2,18 @@ import {
   Controller,
   Post,
   Body,
+  UseGuards,
   Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChatbotService } from './chatbot.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { Throttle } from '@nestjs/throttler';
-import { Authenticated } from '../auth/decorators/authenticated.decorator';
 
 @Controller('chatbot')
+@UseGuards(JwtAuthGuard)
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 
@@ -24,7 +26,6 @@ export class ChatbotController {
    * Rate-limited to 30 requests per minute per user to prevent API quota abuse.
    */
   @Post('chat')
-  @Authenticated()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async chat(

@@ -1,8 +1,7 @@
 import { useState, useRef } from "react";
-import { Calendar, Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Clock, Video, Image as ImageIcon, Lock } from "lucide-react";
+import { Calendar, Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Clock, Video, Image as ImageIcon } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { uploadResource, fetchMe, API_URL, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
-import { usePermissions } from "../../contexts/PermissionsContext";
 
 import { formatDisplayDate } from "../../lib/utils";
 import { useEffect } from "react";
@@ -132,15 +131,11 @@ export function TaskHeader({
     return false;
   })();
 
-  const { isFieldEditable } = usePermissions();
-  const canEditTitle = isEditable && isFieldEditable('tasks', 'title');
-  const canEditDesc = isEditable && isFieldEditable('tasks', 'description');
-
   return (
     <div className="space-y-6 mb-8">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2 flex-1">
-          {canEditTitle ? (
+          {isEditable ? (
             <input 
               type="text" 
               value={title} 
@@ -149,15 +144,10 @@ export function TaskHeader({
               className="text-2xl font-bold text-foreground w-full bg-transparent border-none outline-none focus:ring-0 placeholder:text-muted-foreground/50 p-0"
             />
           ) : (
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-              {isEditable && !canEditTitle && (
-                <Lock className="w-4 h-4 text-muted-foreground/60 shrink-0" />
-              )}
-            </div>
+            <h1 className="text-2xl font-bold text-foreground">{title}</h1>
           )}
           
-          {canEditDesc ? (
+          {isEditable ? (
             <textarea 
               value={description} 
               onChange={handleDescChange}
@@ -165,12 +155,7 @@ export function TaskHeader({
               className="text-muted-foreground text-sm w-full bg-transparent border-none outline-none focus:ring-0 resize-none min-h-[60px] p-0"
             />
           ) : (
-            <div className="flex items-start gap-2">
-              <p className="text-muted-foreground text-sm flex-1">{description || "No description provided."}</p>
-              {isEditable && !canEditDesc && (
-                <Lock className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0 mt-0.5" />
-              )}
-            </div>
+            <p className="text-muted-foreground text-sm">{description}</p>
           )}
         </div>
 

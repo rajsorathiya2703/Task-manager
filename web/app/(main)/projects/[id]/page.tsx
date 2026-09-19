@@ -7,7 +7,6 @@ import { ListView } from "../../../../src/components/board/ListView";
 import { fetchTasks, fetchProjectById, updateTask } from "../../../../src/lib/api";
 import { Task, Project } from "../../../../src/lib/data";
 import { Loader2, ArrowLeft, ShieldAlert } from "lucide-react";
-import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 const emptyData: Record<string, Task[]> = {
@@ -19,7 +18,6 @@ const emptyData: Record<string, Task[]> = {
 
 export default function ProjectTasksPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { isFieldEditable, showAccessDenied } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [project, setProject] = useState<Project | null>(null);
   const [data, setData] = useState<Record<string, Task[]>>(emptyData);
@@ -84,11 +82,6 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
   }, [id]);
 
   const handleTaskStatusChange = async (taskId: string, newStatus: string) => {
-    if (!isFieldEditable("tasks", "status")) {
-      showAccessDenied("You do not have permission to edit task status.", "Access Denied");
-      return;
-    }
-
     // Optimistic UI update
     setData((prevData) => {
       const newData = { ...prevData };

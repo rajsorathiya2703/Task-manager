@@ -25,7 +25,7 @@ export const TOOL_MODULE_MAP: Record<string, string | null> = {
   // User Groups
   list_user_groups: 'user-groups', get_my_permissions: null, update_user_group: 'user-groups',
   // Dashboard
-  get_employee_activity: 'reports',
+  get_employee_activity: 'dashboard',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

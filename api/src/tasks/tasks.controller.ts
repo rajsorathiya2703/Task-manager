@@ -1,11 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Request, Query, UseInterceptors, UploadedFiles, BadRequestException, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, UseInterceptors, UploadedFiles, BadRequestException, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
-import { Authenticated } from '../auth/decorators/authenticated.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
@@ -50,17 +51,8 @@ function validateAttachmentFile(file: Express.Multer.File) {
   }
 }
 
-/** Validate that a URL is from Cloudinary (prevents open redirect). */
-function isCloudinaryUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.endsWith('.cloudinary.com') || parsed.hostname === 'res.cloudinary.com';
-  } catch {
-    return false;
-  }
-}
-
 @Controller('tasks')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
@@ -86,7 +78,6 @@ export class TasksController {
   }
 
   @Get('timer/active')
-  @Authenticated()
   async getActiveTimer(@Request() req) {
     const activeTask = await this.tasksService.getActiveTimer(req.user.email);
     return activeTask || null;
@@ -102,11 +93,6 @@ export class TasksController {
   ) {
     if (!fileUrl) {
       throw new BadRequestException('File URL is required');
-    }
-
-    // Validate URL is a Cloudinary URL to prevent open redirect
-    if (!isCloudinaryUrl(fileUrl)) {
-      throw new BadRequestException('Invalid file URL. Only Cloudinary-hosted files are supported.');
     }
 
     const isPdf =
@@ -164,7 +150,6 @@ export class TasksController {
   }
 
   @Post('upload')
-  @RequirePermission({ module: 'tasks', action: 'create', operation: 'tasks.upload' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files || files.length === 0) {
@@ -186,7 +171,7 @@ export class TasksController {
   }
 
   @Post(':id/upload')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.upload' })
+  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
     @Request() req,
@@ -225,7 +210,7 @@ export class TasksController {
   }
 
   @Post(':id/comments')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.comments' })
+  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async addComment(
     @Request() req,
     @Param('id') id: string,
@@ -242,7 +227,7 @@ export class TasksController {
   }
 
   @Patch(':id/comments/:commentId')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.comments' })
+  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async updateComment(
     @Request() req,
     @Param('id') id: string,
@@ -253,7 +238,7 @@ export class TasksController {
   }
 
   @Delete(':id/comments/:commentId')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.comments' })
+  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async deleteComment(
     @Request() req,
     @Param('id') id: string,
@@ -279,7 +264,6 @@ export class TasksController {
   }
 
   @Post(':id/timer/start')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.timer' })
   async startTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
@@ -290,7 +274,6 @@ export class TasksController {
   }
 
   @Post(':id/timer/stop')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.timer' })
   async stopTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',

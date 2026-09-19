@@ -13,7 +13,6 @@ import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, st
 import { useTimer } from "../../../../src/contexts/TimerContext";
 import { getUserDisplayName } from "../../../../src/components/common/Comments";
 import { RecordNavigator } from "../../../../src/components/common/RecordNavigator";
-import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +24,6 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const statusParam = searchParams.get('status');
   const { isOpen, toggleSidebar } = useSidebar();
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
-  const { isFieldEditable } = usePermissions();
   
   const { refreshTimer } = useTimer();
   const [isSaving, setIsSaving] = useState(false);
@@ -286,53 +284,19 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const handleUpdate = async () => {
     try {
       setIsSaving(true);
-      const dirtyPayload: any = {};
-
-      // Only include fields that have changed AND user has permission to update
-      if (taskData.title !== originalData?.title && isFieldEditable('tasks', 'title')) {
-        dirtyPayload.title = taskData.title;
-      }
-      if (taskData.description !== originalData?.description && isFieldEditable('tasks', 'description')) {
-        dirtyPayload.description = taskData.description;
-      }
-      if (taskData.status !== originalData?.status && isFieldEditable('tasks', 'status')) {
-        dirtyPayload.status = taskData.status;
-      }
-      if (taskData.priority !== originalData?.priority && isFieldEditable('tasks', 'priority')) {
-        dirtyPayload.priority = taskData.priority;
-      }
-      if (taskData.startDate !== originalData?.startDate && isFieldEditable('tasks', 'startDate')) {
-        dirtyPayload.startDate = taskData.startDate;
-      }
-      if (taskData.dueDate !== originalData?.dueDate && isFieldEditable('tasks', 'dueDate')) {
-        dirtyPayload.dueDate = taskData.dueDate;
-      }
-      if (taskData.estimatedHours !== originalData?.estimatedHours && isFieldEditable('tasks', 'estimatedHours')) {
-        dirtyPayload.estimatedHours = taskData.estimatedHours;
-      }
-
-      const origAssigneeId = originalData?.assignee?._id || originalData?.assignee?.id || originalData?.assignee;
-      const newAssigneeId = taskData?.assignee?._id || taskData?.assignee?.id || taskData?.assignee;
-      if (origAssigneeId !== newAssigneeId && isFieldEditable('tasks', 'assignee')) {
-        dirtyPayload.assignee = newAssigneeId || null;
-      }
-
-      if (JSON.stringify(taskData?.tags || []) !== JSON.stringify(originalData?.tags || []) && isFieldEditable('tasks', 'tags')) {
-        dirtyPayload.tags = taskData.tags;
-      }
-
-      if (JSON.stringify(taskData?.resources || []) !== JSON.stringify(originalData?.resources || []) && isFieldEditable('tasks', 'resources')) {
-        dirtyPayload.resources = taskData.resources;
-      }
-
-      // If no permitted changes were made, notify and exit
-      if (Object.keys(dirtyPayload).length === 0) {
-        setToastMessage("No changes to save");
-        setTimeout(() => setToastMessage(null), 2500);
-        return;
-      }
-
-      const updated = await updateTask(id, dirtyPayload);
+      const updatePayload: any = {
+        title: taskData.title,
+        ...(taskData.description !== undefined && { description: taskData.description }),
+        ...(taskData.status && { status: taskData.status }),
+        ...(taskData.priority && { priority: taskData.priority }),
+        ...(taskData.startDate ? { startDate: taskData.startDate } : {}),
+        ...(taskData.dueDate ? { dueDate: taskData.dueDate } : {}),
+        ...(taskData.estimatedHours !== undefined ? { estimatedHours: taskData.estimatedHours } : {}),
+        ...(taskData.assignee !== undefined ? { assignee: taskData.assignee ? (taskData.assignee._id || taskData.assignee) : null } : {}),
+        ...(taskData.tags ? { tags: taskData.tags } : {}),
+        ...(taskData.resources ? { resources: taskData.resources } : {}),
+      };
+      const updated = await updateTask(id, updatePayload);
       if (updated) {
         const mappedData = {
           title: updated.title || '',
@@ -357,14 +321,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         };
         setTaskData(mappedData);
         setOriginalData(mappedData);
-        setToastMessage("Task updated successfully");
-        setTimeout(() => setToastMessage(null), 2500);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Failed to update task", error);
-      const errorMsg = error?.response?.data?.message || error?.message || "Failed to update task";
-      setErrorMessage(Array.isArray(errorMsg) ? errorMsg.join(", ") : errorMsg);
-      setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setIsSaving(false);
     }

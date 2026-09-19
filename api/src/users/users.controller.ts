@@ -1,10 +1,13 @@
-import { Controller, Get, Patch, Delete, Param, Body, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Controller, Get, Patch, Delete, Param, Body, UseGuards, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
 import { EmployeesService } from '../employees/employees.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
@@ -13,13 +16,13 @@ export class UsersController {
   ) {}
 
   @Get()
-  @RequirePermission({ module: 'users', action: 'read' })
+  @RequirePermission({ module: 'settings', action: 'read' })
   async findAll() {
     return this.usersService.findAll();
   }
 
   @Get(':id')
-  @RequirePermission({ module: 'users', action: 'read' })
+  @RequirePermission({ module: 'settings', action: 'read' })
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
     if (!user) {
@@ -29,7 +32,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @RequirePermission({ module: 'users', action: 'update' })
+  @RequirePermission({ module: 'settings', action: 'update' })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     const updated = await this.usersService.updateUser(id, updateUserDto);
     if (!updated) {
@@ -44,7 +47,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @RequirePermission({ module: 'users', action: 'delete' })
+  @RequirePermission({ module: 'settings', action: 'delete' })
   async remove(@Param('id') id: string) {
     const deleted = await this.usersService.remove(id);
     if (!deleted) {
