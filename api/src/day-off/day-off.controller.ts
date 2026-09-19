@@ -9,73 +9,82 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
   Header,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { DayOffService } from './day-off.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { RequirePermission } from '../auth/decorators/permissions.decorator';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 
 @Controller('day-off')
-@UseGuards(JwtAuthGuard)
 export class DayOffController {
-  constructor(private readonly dayOffService: DayOffService) {}
+  constructor(
+    private readonly dayOffService: DayOffService,
+    private readonly userGroupsService: UserGroupsService,
+  ) {}
 
   // --- Settings ---
   @Get('settings')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.policies' })
   getSettings() {
     return this.dayOffService.getSettings();
   }
 
   @Patch('settings')
+  @RequirePermission({ module: 'dayoff', action: 'update', operation: 'dayoff.policies' })
   updateSettings(@Body() body: any) {
     return this.dayOffService.updateSettings(body);
   }
 
   // --- Leave Types ---
   @Get('leave-types')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.requests' })
   getLeaveTypes(@Query('activeOnly') activeOnly?: string) {
     return this.dayOffService.getLeaveTypes({ activeOnly: activeOnly === 'true' });
   }
 
   @Get('leave-types/:id')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.policies' })
   getLeaveTypeById(@Param('id') id: string) {
     return this.dayOffService.getLeaveTypeById(id);
   }
 
   @Post('leave-types')
+  @RequirePermission({ module: 'dayoff', action: 'create', operation: 'dayoff.policies' })
   createLeaveType(@Body() body: any) {
     return this.dayOffService.createLeaveType(body);
   }
 
   @Patch('leave-types/:id')
+  @RequirePermission({ module: 'dayoff', action: 'update', operation: 'dayoff.policies' })
   updateLeaveType(@Param('id') id: string, @Body() body: any) {
     return this.dayOffService.updateLeaveType(id, body);
   }
 
   @Delete('leave-types/:id')
+  @RequirePermission({ module: 'dayoff', action: 'delete', operation: 'dayoff.policies' })
   deleteLeaveType(@Param('id') id: string) {
     return this.dayOffService.deleteLeaveType(id);
   }
 
   // --- Balances ---
   @Get('balances')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.calendar' })
   async getMyBalances(@Req() req: any, @Query('year') year?: string) {
     const userId = req.user?.id || req.user?._id;
-    // We can resolve employee in service or pass employeeId
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
-    // Use user to get balances
     const myLeaves = await this.dayOffService.getMyApplications(req.user, y);
     const employeeId = myLeaves[0]?.employeeId?._id || (myLeaves[0]?.employeeId as any);
     if (!employeeId) {
-      // Find employee directly
       return this.dayOffService.getEmployeeBalances(userId, y);
     }
     return this.dayOffService.getEmployeeBalances(employeeId.toString(), y);
   }
 
   @Get('balances/:employeeId')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.approvals' })
   getEmployeeBalances(@Param('employeeId') employeeId: string, @Query('year') year?: string) {
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
     return this.dayOffService.getEmployeeBalances(employeeId, y);
@@ -83,18 +92,21 @@ export class DayOffController {
 
   // --- Applications ---
   @Post('applications')
+  @RequirePermission({ module: 'dayoff', action: 'create', operation: 'dayoff.requests' })
   applyLeave(@Req() req: any, @Body() body: any) {
     return this.dayOffService.applyLeave(req.user, body);
   }
 
   @Get('applications/my')
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.requests' })
   getMyApplications(@Req() req: any, @Query('year') year?: string) {
     const y = year ? parseInt(year, 10) : undefined;
     return this.dayOffService.getMyApplications(req.user, y);
   }
 
   @Get('applications')
-  getAllApplications(
+  @RequirePermission({ module: 'dayoff', action: 'read', operation: 'dayoff.requests' })
+  async getAllApplications(
     @Req() req: any,
     @Query('status') status?: string,
     @Query('year') year?: string,
@@ -104,15 +116,35 @@ export class DayOffController {
     if (scope === 'my') {
       return this.dayOffService.getMyApplications(req.user, y);
     }
+
+    // Viewing all employee applications requires dayoff.approvals or Administrators
+    const userId = req.user?.id || req.user?._id;
+    if (userId) {
+      const userPerms = await this.userGroupsService.getUserPermissions(userId.toString());
+      const isAdministrator = userPerms.groups?.some(
+        (g) => g.trim().toLowerCase() === 'administrators',
+      );
+      if (!isAdministrator) {
+        const opPerm = (userPerms as any).operationPermissions?.['dayoff.approvals'];
+        if (!opPerm || opPerm.read === false) {
+          throw new ForbiddenException(
+            'Access Denied: You do not have permission to view all leave applications.',
+          );
+        }
+      }
+    }
+
     return this.dayOffService.getAllApplications({ status, year: y });
   }
 
   @Patch('applications/:id/cancel')
+  @RequirePermission({ module: 'dayoff', action: 'update', operation: 'dayoff.requests' })
   cancelApplication(@Param('id') id: string, @Req() req: any) {
     return this.dayOffService.cancelApplication(id, req.user);
   }
 
   @Patch('applications/:id/status')
+  @RequirePermission({ module: 'dayoff', action: 'update', operation: 'dayoff.approvals' })
   updateApplicationStatus(
     @Param('id') id: string,
     @Body() body: { status: 'approved' | 'rejected'; reason?: string },

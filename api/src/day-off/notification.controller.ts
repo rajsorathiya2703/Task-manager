@@ -1,9 +1,9 @@
-import { Controller, Get, Patch, Post, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Param, Req } from '@nestjs/common';
 import { DayOffService } from './day-off.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@AllowAuthenticated()
 export class NotificationController {
   constructor(private readonly dayOffService: DayOffService) {}
 

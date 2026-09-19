@@ -2,18 +2,17 @@ import {
   Controller,
   Post,
   Body,
-  UseGuards,
   Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChatbotService } from './chatbot.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { Throttle } from '@nestjs/throttler';
+import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
 
 @Controller('chatbot')
-@UseGuards(JwtAuthGuard)
+@AllowAuthenticated()
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 

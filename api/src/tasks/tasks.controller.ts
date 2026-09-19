@@ -78,13 +78,14 @@ export class TasksController {
   }
 
   @Get('timer/active')
+  @RequirePermission({ module: 'tasks', action: 'read', operation: 'tasks.time_tracking', model: 'tasks' })
   async getActiveTimer(@Request() req) {
     const activeTask = await this.tasksService.getActiveTimer(req.user.email);
     return activeTask || null;
   }
 
-  @Public()
   @Get('file/view')
+  @RequirePermission({ module: 'tasks', action: 'read', operation: 'tasks.attachments', model: 'tasks' })
   async viewFile(
     @Query('url') fileUrl: string,
     @Query('name') fileName: string,
@@ -93,6 +94,22 @@ export class TasksController {
   ) {
     if (!fileUrl) {
       throw new BadRequestException('File URL is required');
+    }
+
+    // Validate that the URL is a trusted Cloudinary host or a safe relative path to prevent open redirect
+    let isAllowedHost = false;
+    try {
+      const parsed = new URL(fileUrl, 'http://localhost');
+      isAllowedHost =
+        parsed.hostname.endsWith('cloudinary.com') ||
+        parsed.hostname === 'localhost' ||
+        (fileUrl.startsWith('/') && !fileUrl.startsWith('//'));
+    } catch {
+      isAllowedHost = false;
+    }
+
+    if (!isAllowedHost) {
+      throw new BadRequestException('Invalid or untrusted file URL host for redirect');
     }
 
     const isPdf =
@@ -150,6 +167,7 @@ export class TasksController {
   }
 
   @Post('upload')
+  @RequirePermission({ module: 'tasks', action: 'create', operation: 'tasks.attachments', model: 'tasks' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files || files.length === 0) {
@@ -171,7 +189,7 @@ export class TasksController {
   }
 
   @Post(':id/upload')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
+  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.attachments', model: 'tasks' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
     @Request() req,
@@ -264,6 +282,7 @@ export class TasksController {
   }
 
   @Post(':id/timer/start')
+  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.time_tracking', model: 'tasks' })
   async startTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
@@ -274,6 +293,7 @@ export class TasksController {
   }
 
   @Post(':id/timer/stop')
+  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.time_tracking', model: 'tasks' })
   async stopTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',

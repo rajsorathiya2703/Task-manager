@@ -3,6 +3,7 @@ import { UserGroupsService } from './user-groups.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
+import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
 
 @Controller('user-groups')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -21,6 +22,7 @@ export class UserGroupsController {
     return this.userGroupsService.findAll();
   }
 
+  @AllowAuthenticated()
   @Get('my-permissions')
   getMyPermissions(@Req() req: any) {
     const userId = req.user?.id || req.user?._id;

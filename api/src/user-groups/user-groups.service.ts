@@ -29,6 +29,43 @@ export class UserGroupsService {
       `${m}:view`,
     ]);
 
+    const allOperations = [
+      { module: 'tasks', operation: 'tasks.core' },
+      { module: 'tasks', operation: 'tasks.comments' },
+      { module: 'tasks', operation: 'tasks.attachments' },
+      { module: 'tasks', operation: 'tasks.time_tracking' },
+      { module: 'tasks', operation: 'tasks.assignment' },
+      { module: 'projects', operation: 'projects.core' },
+      { module: 'projects', operation: 'projects.milestones' },
+      { module: 'projects', operation: 'projects.team' },
+      { module: 'projects', operation: 'projects.documents' },
+      { module: 'employees', operation: 'employees.directory' },
+      { module: 'employees', operation: 'employees.profile' },
+      { module: 'employees', operation: 'employees.compensation' },
+      { module: 'employees', operation: 'employees.status' },
+      { module: 'teams', operation: 'teams.core' },
+      { module: 'teams', operation: 'teams.members' },
+      { module: 'teams', operation: 'teams.leads' },
+      { module: 'dayoff', operation: 'dayoff.requests' },
+      { module: 'dayoff', operation: 'dayoff.approvals' },
+      { module: 'dayoff', operation: 'dayoff.policies' },
+      { module: 'dayoff', operation: 'dayoff.calendar' },
+      { module: 'reports', operation: 'reports.view' },
+      { module: 'reports', operation: 'reports.export' },
+      { module: 'reports', operation: 'reports.timesheets' },
+      { module: 'settings', operation: 'settings.users' },
+      { module: 'settings', operation: 'settings.user_groups' },
+      { module: 'settings', operation: 'settings.system' },
+    ];
+
+    const adminOperationPermissions = allOperations.map((op) => ({
+      ...op,
+      read: true,
+      write: true,
+      update: true,
+      delete: true,
+    }));
+
     let adminGroup = await this.userGroupModel.findOne({
       name: { $regex: /^administrators$/i },
     }).exec();
@@ -41,8 +78,15 @@ export class UserGroupsService {
         members: [],
         permissions: adminPermissions,
         modulePermissions: adminModulePermissions,
+        operationPermissions: adminOperationPermissions,
       });
       this.logger.log('Created default "Administrators" user group.');
+    } else if (!adminGroup.operationPermissions || adminGroup.operationPermissions.length === 0) {
+      adminGroup.operationPermissions = adminOperationPermissions;
+      if (typeof (adminGroup as any).save === 'function') {
+        await (adminGroup as any).save();
+      }
+      this.logger.log('Synchronized operationPermissions on existing "Administrators" user group.');
     }
 
     const employeeModulePermissions = [
@@ -63,6 +107,42 @@ export class UserGroupsService {
       'reports:read', 'reports:view',
     ];
 
+    const employeeOperationPermissions = [
+      // Tasks
+      { module: 'tasks', operation: 'tasks.core', read: true, write: true, update: true, delete: true },
+      { module: 'tasks', operation: 'tasks.comments', read: true, write: true, update: true, delete: true },
+      { module: 'tasks', operation: 'tasks.attachments', read: true, write: true, update: true, delete: true },
+      { module: 'tasks', operation: 'tasks.time_tracking', read: true, write: true, update: true, delete: true },
+      { module: 'tasks', operation: 'tasks.assignment', read: true, write: true, update: true, delete: true },
+      // Projects
+      { module: 'projects', operation: 'projects.core', read: true, write: true, update: true, delete: false },
+      { module: 'projects', operation: 'projects.milestones', read: true, write: true, update: true, delete: false },
+      { module: 'projects', operation: 'projects.team', read: true, write: true, update: true, delete: false },
+      { module: 'projects', operation: 'projects.documents', read: true, write: true, update: true, delete: false },
+      // Employees
+      { module: 'employees', operation: 'employees.directory', read: true, write: false, update: false, delete: false },
+      { module: 'employees', operation: 'employees.profile', read: true, write: false, update: false, delete: false },
+      { module: 'employees', operation: 'employees.compensation', read: false, write: false, update: false, delete: false },
+      { module: 'employees', operation: 'employees.status', read: true, write: false, update: false, delete: false },
+      // Teams
+      { module: 'teams', operation: 'teams.core', read: true, write: true, update: true, delete: false },
+      { module: 'teams', operation: 'teams.members', read: true, write: true, update: true, delete: false },
+      { module: 'teams', operation: 'teams.leads', read: true, write: true, update: true, delete: false },
+      // Day Off
+      { module: 'dayoff', operation: 'dayoff.requests', read: true, write: true, update: true, delete: true },
+      { module: 'dayoff', operation: 'dayoff.calendar', read: true, write: false, update: false, delete: false },
+      { module: 'dayoff', operation: 'dayoff.approvals', read: false, write: false, update: false, delete: false },
+      { module: 'dayoff', operation: 'dayoff.policies', read: false, write: false, update: false, delete: false },
+      // Reports
+      { module: 'reports', operation: 'reports.view', read: true, write: false, update: false, delete: false },
+      { module: 'reports', operation: 'reports.export', read: false, write: false, update: false, delete: false },
+      { module: 'reports', operation: 'reports.timesheets', read: true, write: false, update: false, delete: false },
+      // Settings
+      { module: 'settings', operation: 'settings.users', read: false, write: false, update: false, delete: false },
+      { module: 'settings', operation: 'settings.user_groups', read: false, write: false, update: false, delete: false },
+      { module: 'settings', operation: 'settings.system', read: false, write: false, update: false, delete: false },
+    ];
+
     let employeeGroup = await this.userGroupModel.findOne({
       name: { $regex: /^employee$/i },
     }).exec();
@@ -75,8 +155,18 @@ export class UserGroupsService {
         members: [],
         permissions: employeePermissions,
         modulePermissions: employeeModulePermissions,
+        operationPermissions: employeeOperationPermissions,
       });
       this.logger.log('Created default "Employee" user group.');
+    } else {
+      const hasApprovals = employeeGroup.operationPermissions?.some((op) => op.operation === 'dayoff.approvals');
+      if (!hasApprovals || !employeeGroup.operationPermissions || employeeGroup.operationPermissions.length === 0) {
+        employeeGroup.operationPermissions = employeeOperationPermissions;
+        if (typeof (employeeGroup as any).save === 'function') {
+          await (employeeGroup as any).save();
+        }
+        this.logger.log('Synchronized operationPermissions on existing "Employee" user group.');
+      }
     }
 
     return { adminGroup, employeeGroup };

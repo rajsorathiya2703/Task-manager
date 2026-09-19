@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
@@ -444,6 +445,18 @@ export class DayOffService implements OnModuleInit {
 
     if (!application) {
       throw new NotFoundException(`Application #${id} not found`);
+    }
+
+    // Prevent self-approval or self-rejection
+    const currentUserId = (adminUser?.id || adminUser?._id)?.toString();
+    const applicationUserId = application.userId?.toString();
+    const applicationEmployeeUserId = (application.employeeId as any)?.userId?.toString();
+
+    if (
+      currentUserId &&
+      (currentUserId === applicationUserId || currentUserId === applicationEmployeeUserId)
+    ) {
+      throw new ForbiddenException('You cannot approve or reject your own leave application.');
     }
 
     if (application.status === status) {
