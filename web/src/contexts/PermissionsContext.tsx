@@ -110,18 +110,23 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Helper to check module permission
   const can = useCallback(
     (module: string, action: "create" | "read" | "update" | "delete"): boolean => {
-      // If user is not assigned to any group, default to full access
-      if (!groups || groups.length === 0) {
+      // Full access comes ONLY from an "Administrators" group
+      if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
+      }
+
+      // Deny by default: If user is not assigned to any group, deny access
+      if (!groups || groups.length === 0) {
+        return false;
       }
 
       const mod = modulePermissions[module];
       if (!mod) {
-        // If module not explicitly restricted, default to allowed
-        return true;
+        // Module not explicitly permitted: deny by default
+        return false;
       }
 
-      return mod[action] ?? true;
+      return Boolean(mod[action]);
     },
     [groups, modulePermissions]
   );
@@ -132,8 +137,14 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       operation: string,
       action: "create" | "read" | "update" | "delete" | "write"
     ): boolean => {
-      if (!groups || groups.length === 0) {
+      // Full access comes ONLY from an "Administrators" group
+      if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
+      }
+
+      // Deny by default: If user is not assigned to any group, deny access
+      if (!groups || groups.length === 0) {
+        return false;
       }
 
       const actionKey = (action === "write" ? "create" : action) as keyof ActionPerms;
@@ -151,7 +162,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return mod[actionKey];
       }
 
-      return true;
+      return false;
     },
     [groups, operationPermissions, modulePermissions]
   );
@@ -163,9 +174,14 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       field: string,
       action: "read" | "write" | "update" | "delete"
     ): boolean => {
-      // If user is not assigned to any group, default to full access
-      if (!groups || groups.length === 0) {
+      // Full access comes ONLY from an "Administrators" group
+      if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
+      }
+
+      // Deny by default: If user is not assigned to any group, deny access
+      if (!groups || groups.length === 0) {
+        return false;
       }
 
       const modelPerms = fieldPermissions[model];

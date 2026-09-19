@@ -37,14 +37,24 @@ export class PermissionsGuard implements CanActivate {
 
     const userPerms = await this.userGroupsService.getUserPermissions(userId.toString());
 
-    // If user is not assigned to any user groups, grant full operational access
-    if (!userPerms.groups || userPerms.groups.length === 0) {
+    // 0. Full access comes ONLY from an "Administrators" group
+    const isAdministrator = userPerms.groups?.some(
+      (groupName) => groupName.trim().toLowerCase() === 'administrators',
+    );
+    if (isAdministrator) {
       return true;
+    }
+
+    // 1. Deny by default: If user is not assigned to any user groups, deny access
+    if (!userPerms.groups || userPerms.groups.length === 0) {
+      throw new ForbiddenException(
+        `Access Denied: You do not belong to any user group with access to ${requirement.module}.`,
+      );
     }
 
     const { module: modKey, action, model: modelKey = requirement.module, operation: opKey } = requirement;
 
-    // 0. ── Check Operation-Level CRUD Permission (if specified) ──
+    // 2. ── Check Operation-Level CRUD Permission (if specified) ──
     if (opKey) {
       const opActionKey = action === 'create' ? 'write' : action;
       const opPerm = (userPerms as any).operationPermissions?.[opKey];
@@ -57,28 +67,19 @@ export class PermissionsGuard implements CanActivate {
       }
     }
 
-    // 1. ── Check Module-Level CRUD Permission ──
+    // 3. ── Check Module-Level CRUD Permission (Deny by default) ──
     const modPerm = userPerms.modulePermissions?.[modKey];
-    if (modPerm !== undefined) {
-      if (modPerm[action] === false) {
-        throw new ForbiddenException(
-          `Access Denied: You do not have permission to ${action} records in ${modKey}.`,
-        );
-      }
-    } else {
-      // Check legacy permission string fallback
-      const hasLegacyManage = userPerms.permissions?.includes(`${modKey}:manage`);
-      const hasLegacyAction = userPerms.permissions?.includes(`${modKey}:${action}`);
-      const hasLegacyView = action === 'read' && userPerms.permissions?.includes(`${modKey}:view`);
+    const hasModulePermission = modPerm && modPerm[action] === true;
 
-      if (!hasLegacyManage && !hasLegacyAction && !hasLegacyView) {
-        // If user group has explicit permissions configured for other things but not this
-        if (Object.keys(userPerms.modulePermissions || {}).length > 0 || (userPerms.permissions && userPerms.permissions.length > 0)) {
-          throw new ForbiddenException(
-            `Access Denied: You do not have permission to ${action} records in ${modKey}.`,
-          );
-        }
-      }
+    const hasLegacyManage = userPerms.permissions?.includes(`${modKey}:manage`);
+    const hasLegacyAction = userPerms.permissions?.includes(`${modKey}:${action}`);
+    const hasLegacyView = action === 'read' && userPerms.permissions?.includes(`${modKey}:view`);
+    const hasLegacyPermission = hasLegacyManage || hasLegacyAction || hasLegacyView;
+
+    if (!hasModulePermission && !hasLegacyPermission) {
+      throw new ForbiddenException(
+        `Access Denied: You do not have permission to ${action} records in ${modKey}.`,
+      );
     }
 
     // 2. ── Check Field-Level CRUD Permissions for Create / Update ──

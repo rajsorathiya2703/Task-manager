@@ -1,13 +1,128 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserGroup } from './schemas/user-group.schema';
 
 @Injectable()
 export class UserGroupsService {
+  private readonly logger = new Logger(UserGroupsService.name);
+
   constructor(
     @InjectModel(UserGroup.name) private userGroupModel: Model<UserGroup>,
   ) {}
+
+  async ensureDefaultGroups(): Promise<{ adminGroup: UserGroup; employeeGroup: UserGroup }> {
+    const adminModules = ['tasks', 'projects', 'employees', 'teams', 'dayoff', 'reports', 'settings'];
+    const adminModulePermissions = adminModules.map((module) => ({
+      module,
+      create: true,
+      read: true,
+      update: true,
+      delete: true,
+    }));
+    const adminPermissions = adminModules.flatMap((m) => [
+      `${m}:manage`,
+      `${m}:create`,
+      `${m}:read`,
+      `${m}:update`,
+      `${m}:delete`,
+      `${m}:view`,
+    ]);
+
+    let adminGroup = await this.userGroupModel.findOne({
+      name: { $regex: /^administrators$/i },
+    }).exec();
+
+    if (!adminGroup) {
+      adminGroup = await this.userGroupModel.create({
+        name: 'Administrators',
+        description: 'System administrators with full unrestricted access to all modules and operations',
+        color: '#ef4444',
+        members: [],
+        permissions: adminPermissions,
+        modulePermissions: adminModulePermissions,
+      });
+      this.logger.log('Created default "Administrators" user group.');
+    }
+
+    const employeeModulePermissions = [
+      { module: 'tasks', create: true, read: true, update: true, delete: true },
+      { module: 'projects', create: true, read: true, update: true, delete: false },
+      { module: 'teams', create: true, read: true, update: true, delete: false },
+      { module: 'employees', create: false, read: true, update: false, delete: false },
+      { module: 'dayoff', create: true, read: true, update: true, delete: true },
+      { module: 'reports', create: false, read: true, update: false, delete: false },
+      { module: 'settings', create: false, read: false, update: false, delete: false },
+    ];
+    const employeePermissions = [
+      'tasks:create', 'tasks:read', 'tasks:update', 'tasks:delete',
+      'projects:create', 'projects:read', 'projects:update',
+      'teams:create', 'teams:read', 'teams:update',
+      'employees:read', 'employees:view',
+      'dayoff:create', 'dayoff:read', 'dayoff:update', 'dayoff:delete',
+      'reports:read', 'reports:view',
+    ];
+
+    let employeeGroup = await this.userGroupModel.findOne({
+      name: { $regex: /^employee$/i },
+    }).exec();
+
+    if (!employeeGroup) {
+      employeeGroup = await this.userGroupModel.create({
+        name: 'Employee',
+        description: 'Default employee group with standard access to tasks, projects, teams, and time-off',
+        color: '#3b82f6',
+        members: [],
+        permissions: employeePermissions,
+        modulePermissions: employeeModulePermissions,
+      });
+      this.logger.log('Created default "Employee" user group.');
+    }
+
+    return { adminGroup, employeeGroup };
+  }
+
+  async findByName(name: string): Promise<UserGroup | null> {
+    return this.userGroupModel.findOne({
+      name: { $regex: new RegExp(`^${name.trim()}$`, 'i') },
+    }).exec();
+  }
+
+  async addUserToGroup(userId: string | Types.ObjectId, groupName: string): Promise<UserGroup | null> {
+    if (!userId) return null;
+    const userIdObj = typeof userId === 'string' && Types.ObjectId.isValid(userId)
+      ? new Types.ObjectId(userId)
+      : userId;
+
+    await this.ensureDefaultGroups();
+
+    return this.userGroupModel.findOneAndUpdate(
+      { name: { $regex: new RegExp(`^${groupName.trim()}$`, 'i') } },
+      { $addToSet: { members: userIdObj } },
+      { new: true },
+    ).exec();
+  }
+
+  async ensureUserInEmployeeGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
+    return this.addUserToGroup(userId, 'Employee');
+  }
+
+  async ensureUserInAdminGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
+    return this.addUserToGroup(userId, 'Administrators');
+  }
+
+  async removeUserFromAdminGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
+    if (!userId) return null;
+    const userIdObj = typeof userId === 'string' && Types.ObjectId.isValid(userId)
+      ? new Types.ObjectId(userId)
+      : userId;
+
+    return this.userGroupModel.findOneAndUpdate(
+      { name: { $regex: /^administrators$/i } },
+      { $pull: { members: userIdObj } },
+      { new: true },
+    ).exec();
+  }
 
   async create(createUserGroupDto: any): Promise<UserGroup> {
     const newGroup = new this.userGroupModel(createUserGroupDto);
@@ -49,10 +164,17 @@ export class UserGroupsService {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
-    const deleted = await this.userGroupModel.findByIdAndDelete(id).exec();
-    if (!deleted) {
+    const group = await this.userGroupModel.findById(id).exec();
+    if (!group) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
+
+    const groupNameLower = group.name?.trim().toLowerCase();
+    if (groupNameLower === 'administrators' || groupNameLower === 'employee') {
+      throw new BadRequestException(`Cannot delete default system user group "${group.name}".`);
+    }
+
+    const deleted = await this.userGroupModel.findByIdAndDelete(id).exec();
     return deleted;
   }
 

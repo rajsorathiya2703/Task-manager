@@ -719,15 +719,21 @@ export default function UserGroupDetailPage({
     }
   };
 
+  const isSystemGroup = ["administrators", "employee"].includes(name.trim().toLowerCase());
+
   const handleDelete = async () => {
+    if (isSystemGroup) {
+      alert("Default system groups cannot be deleted.");
+      return;
+    }
     if (!confirm("Are you sure you want to delete this user group?")) return;
     try {
       setIsDeleting(true);
       await deleteUserGroup(id);
       router.push("/configuration/user-groups");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete group", err);
-      alert("Failed to delete group.");
+      alert(err.response?.data?.message || "Failed to delete group.");
       setIsDeleting(false);
     }
   };
@@ -849,7 +855,7 @@ export default function UserGroupDetailPage({
             </Link>
           )}
 
-          {!isNew && (
+          {!isNew && !isSystemGroup && (
             <button
               onClick={handleDelete}
               disabled={isDeleting}
@@ -858,6 +864,15 @@ export default function UserGroupDetailPage({
               <Trash2 className="w-3.5 h-3.5" />
               Delete
             </button>
+          )}
+          {!isNew && isSystemGroup && (
+            <span
+              title="System default groups cannot be deleted"
+              className="flex items-center gap-1.5 h-7 px-2.5 border border-border/80 text-muted-foreground bg-muted/40 rounded-md text-[11px] font-medium"
+            >
+              <Shield className="w-3 h-3 text-primary" />
+              System Group
+            </span>
           )}
         </div>
       </header>

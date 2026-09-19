@@ -31,6 +31,9 @@ export class ChatbotService {
   ): Promise<{ message: string; toolsUsed: string[] }> {
     // ── Step 1: Resolve user permissions ───────────────────────────────────
     const userPerms = await this.userGroupsService.getUserPermissions(userId);
+    const isAdministrator = userPerms.groups.some(
+      (g) => g.trim().toLowerCase() === 'administrators',
+    );
     const hasGroups = userPerms.groups.length > 0;
 
     // ── Step 2: Dynamic tool scoping (Layer 1 RBAC) ────────────────────────
@@ -39,19 +42,25 @@ export class ChatbotService {
       const moduleName = TOOL_MODULE_MAP[tool.name];
       if (!moduleName) return true; // tools not tied to a module (e.g. get_me) are always allowed
 
-      // If user has no groups, grant full access (admin/ungrouped user)
-      if (!hasGroups) return true;
+      // Full access comes ONLY from Administrators group
+      if (isAdministrator) return true;
+
+      // Deny by default: If user has no groups, deny access to module-tied tools
+      if (!hasGroups) return false;
 
       const modPerm = userPerms.modulePermissions?.[moduleName];
       if (!modPerm) {
-        // Module not explicitly configured in any group: deny access
-        // (user group has other explicit perms but not this module)
-        const hasAnyExplicitPerm = Object.keys(userPerms.modulePermissions || {}).length > 0;
-        return !hasAnyExplicitPerm;
+        const hasLegacy =
+          userPerms.permissions?.includes(`${moduleName}:manage`) ||
+          userPerms.permissions?.includes(`${moduleName}:read`) ||
+          userPerms.permissions?.includes(`${moduleName}:create`) ||
+          userPerms.permissions?.includes(`${moduleName}:update`) ||
+          userPerms.permissions?.includes(`${moduleName}:view`);
+        return Boolean(hasLegacy);
       }
 
       // Allow the tool if at least one relevant CRUD action is permitted
-      return modPerm.read || modPerm.create || modPerm.update || modPerm.delete;
+      return Boolean(modPerm.read || modPerm.create || modPerm.update || modPerm.delete);
     });
 
     const allowedModules = [...new Set(allowedTools.map((t) => TOOL_MODULE_MAP[t.name]).filter(Boolean))];

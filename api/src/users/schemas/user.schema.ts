@@ -29,7 +29,7 @@ export class User {
   @Prop({ default: false })
   is_employee: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   is_system_admin: boolean;
 }
 

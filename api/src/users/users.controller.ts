@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
 import { EmployeesService } from '../employees/employees.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
@@ -11,6 +12,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
+    private readonly userGroupsService: UserGroupsService,
     @Inject(forwardRef(() => EmployeesService))
     private readonly employeesService: EmployeesService,
   ) {}
@@ -43,6 +45,16 @@ export class UsersController {
     if (updated.is_employee) {
       await this.employeesService.createFromUser(updated);
     }
+
+    // Synchronize membership with "Administrators" group when is_system_admin is modified
+    if (updateUserDto.is_system_admin !== undefined) {
+      if (updateUserDto.is_system_admin) {
+        await this.userGroupsService.ensureUserInAdminGroup(updated._id);
+      } else {
+        await this.userGroupsService.removeUserFromAdminGroup(updated._id);
+      }
+    }
+
     return updated;
   }
 
