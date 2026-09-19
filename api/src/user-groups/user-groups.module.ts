@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { UserGroupsService } from './user-groups.service';
 import { UserGroupsController } from './user-groups.controller';
 import { UserGroup, UserGroupSchema } from './schemas/user-group.schema';
+import { SeedGroupsService } from './seed-groups.service';
 
 @Global()
 @Module({
@@ -10,8 +11,7 @@ import { UserGroup, UserGroupSchema } from './schemas/user-group.schema';
     MongooseModule.forFeature([{ name: UserGroup.name, schema: UserGroupSchema }]),
   ],
   controllers: [UserGroupsController],
-  providers: [UserGroupsService],
+  providers: [UserGroupsService, SeedGroupsService],
   exports: [UserGroupsService],
 })
 export class UserGroupsModule {}
-

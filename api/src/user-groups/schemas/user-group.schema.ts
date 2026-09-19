@@ -9,16 +9,16 @@ export class FieldPermission {
   @Prop({ required: true })
   field: string;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   read: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   write: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   update: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   delete: boolean;
 }
 
@@ -27,19 +27,22 @@ export const FieldPermissionSchema = SchemaFactory.createForClass(FieldPermissio
 @Schema({ _id: false })
 export class ModulePermission {
   @Prop({ required: true })
-  module: string; // 'tasks' | 'projects' | 'employees' | 'teams' | 'reports' | 'settings'
+  module: string; // Must match a key from PERMISSION_CATALOG
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   create: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   read: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   update: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   delete: boolean;
+
+  @Prop({ enum: ['own', 'team', 'all'], default: 'own' })
+  scope: string;
 }
 
 export const ModulePermissionSchema = SchemaFactory.createForClass(ModulePermission);
@@ -47,21 +50,21 @@ export const ModulePermissionSchema = SchemaFactory.createForClass(ModulePermiss
 @Schema({ _id: false })
 export class OperationPermission {
   @Prop({ required: true })
-  module: string; // 'tasks' | 'projects' | 'employees' | 'teams' | 'dayoff' | 'reports' | 'settings'
+  module: string; // Parent module key
 
   @Prop({ required: true })
   operation: string; // e.g. 'tasks.comments', 'dayoff.approvals'
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   read: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   write: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   update: boolean;
 
-  @Prop({ default: true })
+  @Prop({ default: false })
   delete: boolean;
 }
 
@@ -96,4 +99,5 @@ export class UserGroup extends Document {
 
 export const UserGroupSchema = SchemaFactory.createForClass(UserGroup);
 
-
+// Index on members for fast lookups by userId
+UserGroupSchema.index({ members: 1 });

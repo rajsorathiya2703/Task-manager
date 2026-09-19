@@ -1,11 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Request } from '@nestjs/common';
 import { TeamsService } from './teams.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
 
 @Controller('teams')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 

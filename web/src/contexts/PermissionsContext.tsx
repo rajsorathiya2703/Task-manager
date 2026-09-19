@@ -21,6 +21,7 @@ export interface FieldPerms {
 
 export interface PermissionsContextType {
   groups: string[];
+  isSystemAdmin: boolean;
   modulePermissions: Record<string, ActionPerms>;
   operationPermissions: Record<string, ActionPerms>;
   fieldPermissions: Record<string, Record<string, FieldPerms>>;
@@ -36,6 +37,7 @@ export interface PermissionsContextType {
     field: string,
     action: "read" | "write" | "update" | "delete"
   ) => boolean;
+  isFieldEditable: (model: string, field: string) => boolean;
   showAccessDenied: (message?: string, title?: string) => void;
   closeAccessDenied: () => void;
 }
@@ -44,6 +46,7 @@ const PermissionsContext = createContext<PermissionsContextType | undefined>(und
 
 export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [groups, setGroups] = useState<string[]>([]);
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
   const [modulePermissions, setModulePermissions] = useState<Record<string, ActionPerms>>({});
   const [operationPermissions, setOperationPermissions] = useState<Record<string, ActionPerms>>({});
   const [fieldPermissions, setFieldPermissions] = useState<Record<string, Record<string, FieldPerms>>>({});
@@ -92,6 +95,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const data = await fetchMyPermissions();
       if (data) {
         setGroups(data.groups || []);
+        setIsSystemAdmin(data.is_system_admin === true);
         setModulePermissions(data.modulePermissions || {});
         setOperationPermissions(data.operationPermissions || {});
         setFieldPermissions(data.fieldPermissions || {});
@@ -110,6 +114,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Helper to check module permission
   const can = useCallback(
     (module: string, action: "create" | "read" | "update" | "delete"): boolean => {
+      if (isSystemAdmin) {
+        return true;
+      }
       // If user is not assigned to any group, default to full access
       if (!groups || groups.length === 0) {
         return true;
@@ -123,7 +130,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       return mod[action] ?? true;
     },
-    [groups, modulePermissions]
+    [isSystemAdmin, groups, modulePermissions]
   );
 
   // Helper to check granular operation permission (e.g., "tasks.comments", "dayoff.approvals")
@@ -132,6 +139,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       operation: string,
       action: "create" | "read" | "update" | "delete" | "write"
     ): boolean => {
+      if (isSystemAdmin) {
+        return true;
+      }
       if (!groups || groups.length === 0) {
         return true;
       }
@@ -153,7 +163,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       return true;
     },
-    [groups, operationPermissions, modulePermissions]
+    [isSystemAdmin, groups, operationPermissions, modulePermissions]
   );
 
   // Helper to check field-level permission
@@ -163,6 +173,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
       field: string,
       action: "read" | "write" | "update" | "delete"
     ): boolean => {
+      if (isSystemAdmin) {
+        return true;
+      }
       // If user is not assigned to any group, default to full access
       if (!groups || groups.length === 0) {
         return true;
@@ -180,13 +193,33 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       return fieldPerm[action] ?? true;
     },
-    [groups, fieldPermissions]
+    [isSystemAdmin, groups, fieldPermissions]
+  );
+
+  // Helper to check if a field can be edited by the user
+  const isFieldEditable = useCallback(
+    (model: string, field: string): boolean => {
+      if (isSystemAdmin) {
+        return true;
+      }
+      if (!groups || groups.length === 0) {
+        return true;
+      }
+      // If user cannot update the parent module at all, field is not editable
+      if (!can(model, "update")) {
+        return false;
+      }
+      // Check specific field update permission
+      return canField(model, field, "update");
+    },
+    [isSystemAdmin, groups, can, canField]
   );
 
   return (
     <PermissionsContext.Provider
       value={{
         groups,
+        isSystemAdmin,
         modulePermissions,
         operationPermissions,
         fieldPermissions,
@@ -195,6 +228,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         can,
         canOperation,
         canField,
+        isFieldEditable,
         showAccessDenied,
         closeAccessDenied,
       }}

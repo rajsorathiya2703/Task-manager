@@ -6,17 +6,13 @@ import {
   Patch,
   Param,
   Delete,
-  UseGuards,
   Req,
   NotFoundException,
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
 
 @Controller('employees')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 

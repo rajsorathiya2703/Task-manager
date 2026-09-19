@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Popover } from "@headlessui/react";
-import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, Users, Lock, Clock, UserCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, Users, Lock, Clock, UserCheck, RotateCcw, X } from "lucide-react";
 
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { PriorityBadge } from "../board/PriorityBadge";
 import { formatDisplayDate } from "../../lib/utils";
+import { usePermissions } from "../../contexts/PermissionsContext";
 
 interface TaskDetailsPanelProps {
   taskId?: string;
@@ -16,7 +17,15 @@ interface TaskDetailsPanelProps {
 }
 
 export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsPanelProps) {
+  const { isFieldEditable } = usePermissions();
   const isOwner = taskData?.isOwner !== false;
+  const canEditStatus = isOwner && isFieldEditable('tasks', 'status');
+  const canEditPriority = isOwner && isFieldEditable('tasks', 'priority');
+  const canEditAssignee = isOwner && isFieldEditable('tasks', 'assignee');
+  const canEditDates = isOwner && isFieldEditable('tasks', 'dueDate');
+  const canEditEstimatedHours = isOwner && isFieldEditable('tasks', 'estimatedHours');
+  const canEditLabels = isOwner && isFieldEditable('tasks', 'tags');
+
   const priority = taskData?.priority || "High";
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -198,70 +207,85 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Status */}
           <div className="text-muted-foreground">Status</div>
           <div className="relative w-full">
-            <Popover>
-              <Popover.Button className="flex items-center gap-2 font-medium text-foreground outline-none">
+            {canEditStatus ? (
+              <Popover>
+                <Popover.Button className="flex items-center gap-2 font-medium text-foreground outline-none">
+                  <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
+                  {taskData?.status || "To Do"}
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                </Popover.Button>
+                <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
+                  {['To Do', 'Doing', 'Completed', 'On Hold'].map(status => (
+                    <button key={status} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => {
+                      if (setTaskData && taskData) setTaskData({ ...taskData, status });
+                    }}>
+                      <div className="flex items-center gap-2 font-medium text-foreground">
+                        <span className={`w-2 h-2 rounded-full ${status === 'Completed' ? 'bg-green-500' : status === 'Doing' ? 'bg-blue-500' : status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
+                        {status}
+                      </div>
+                      {taskData?.status === status && <Check className="w-3.5 h-3.5 text-foreground" />}
+                    </button>
+                  ))}
+                </Popover.Panel>
+              </Popover>
+            ) : (
+              <div className="flex items-center gap-2 font-medium text-foreground py-0.5">
                 <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
                 {taskData?.status || "To Do"}
-                <ChevronDown className="w-3 h-3 text-muted-foreground" />
-              </Popover.Button>
-              <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
-                {['To Do', 'Doing', 'Completed', 'On Hold'].map(status => (
-                  <button key={status} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => {
-                    if (setTaskData && taskData) setTaskData({ ...taskData, status });
-                  }}>
-                    <div className="flex items-center gap-2 font-medium text-foreground">
-                      <span className={`w-2 h-2 rounded-full ${status === 'Completed' ? 'bg-green-500' : status === 'Doing' ? 'bg-blue-500' : status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
-                      {status}
-                    </div>
-                    {taskData?.status === status && <Check className="w-3.5 h-3.5 text-foreground" />}
-                  </button>
-                ))}
-              </Popover.Panel>
-            </Popover>
+                <Lock className="w-3 h-3 text-muted-foreground/60 ml-0.5" />
+              </div>
+            )}
           </div>
 
           {/* Priority (Dropdown) */}
           <div className="text-muted-foreground">Priority</div>
           <div className="relative w-full">
-            <Popover>
-              <Popover.Button className="flex items-center gap-1.5 font-medium outline-none">
+            {canEditPriority ? (
+              <Popover>
+                <Popover.Button className="flex items-center gap-1.5 font-medium outline-none">
+                  <PriorityBadge priority={priority as any} />
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                </Popover.Button>
+                <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Priority</div>
+                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("No Priority")}>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Signal className="w-3.5 h-3.5" /> No Priority
+                    </div>
+                    {priority === "No Priority" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                  </button>
+                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("High")}>
+                    <div className="flex items-center gap-2 text-red-600">
+                      <SignalHigh className="w-3.5 h-3.5" /> Urgent
+                    </div>
+                    {priority === "High" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                  </button>
+                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Medium")}>
+                    <div className="flex items-center gap-2 text-orange-500">
+                      <SignalMedium className="w-3.5 h-3.5" /> Medium
+                    </div>
+                    {priority === "Medium" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                  </button>
+                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Low")}>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <SignalLow className="w-3.5 h-3.5" /> Low
+                    </div>
+                    {priority === "Low" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                  </button>
+                </Popover.Panel>
+              </Popover>
+            ) : (
+              <div className="flex items-center gap-1.5 font-medium py-0.5">
                 <PriorityBadge priority={priority as any} />
-                <ChevronDown className="w-3 h-3 text-muted-foreground" />
-              </Popover.Button>
-              <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Priority</div>
-                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("No Priority")}>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Signal className="w-3.5 h-3.5" /> No Priority
-                  </div>
-                  {priority === "No Priority" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                </button>
-                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("High")}>
-                  <div className="flex items-center gap-2 text-red-600">
-                    <SignalHigh className="w-3.5 h-3.5" /> Urgent
-                  </div>
-                  {priority === "High" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                </button>
-                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Medium")}>
-                  <div className="flex items-center gap-2 text-orange-500">
-                    <SignalMedium className="w-3.5 h-3.5" /> Medium
-                  </div>
-                  {priority === "Medium" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                </button>
-                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Low")}>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <SignalLow className="w-3.5 h-3.5" /> Low
-                  </div>
-                  {priority === "Low" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                </button>
-              </Popover.Panel>
-            </Popover>
+                <Lock className="w-3 h-3 text-muted-foreground/60 ml-0.5" />
+              </div>
+            )}
           </div>
 
           {/* Assigned Time (Hours) */}
           <div className="text-muted-foreground">Assign Time</div>
           <div className="flex items-center gap-2">
-            {isOwner ? (
+            {canEditEstimatedHours ? (
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -280,7 +304,10 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
                 <span className="text-xs text-muted-foreground font-medium">Hours</span>
               </div>
             ) : (
-              <span className="text-xs font-semibold text-foreground">{taskData?.estimatedHours || 0} Hours</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-foreground">{taskData?.estimatedHours || 0} Hours</span>
+                <Lock className="w-3 h-3 text-muted-foreground/60" />
+              </div>
             )}
           </div>
 
@@ -306,7 +333,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Member Assignment (Single Member) */}
           <div className="text-muted-foreground self-start mt-1">Assignee</div>
           <div className="relative w-full flex flex-col gap-2">
-            {isOwner ? (
+            {canEditAssignee ? (
               <Popover>
                 <Popover.Button className="flex items-center gap-1.5 text-muted-foreground font-medium outline-none hover:text-foreground transition-colors text-left">
                   <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -381,6 +408,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-1.5 font-medium text-foreground">
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name) : 'Unassigned'}</span>
+                <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" />
               </div>
             )}
 
@@ -401,7 +429,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Dates (Calendar Popover - Start & End Date Range) */}
           <div className="text-muted-foreground">Dates</div>
           <div className="relative w-full">
-            {isOwner ? (
+            {canEditDates ? (
               <Popover className="relative">
                 <Popover.Button className="flex items-center gap-2 px-2 py-1 bg-muted/50 border border-border/50 rounded-md font-medium text-foreground outline-none hover:bg-muted transition-colors">
                   <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
@@ -442,53 +470,69 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Labels */}
           <div className="text-muted-foreground">Labels</div>
           <div className="relative w-full">
-            <Popover>
-              <Popover.Button className="flex items-center gap-1.5 font-medium text-foreground outline-none hover:text-primary transition-colors text-xs">
-                {taskData?.tags?.length ? `${taskData.tags.length} Labels` : 'Add label...'}
-              </Popover.Button>
-              <Popover.Panel anchor="bottom end" className="w-56 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none origin-top-right mt-1">
-                <input
-                  type="text"
-                  placeholder="Type and press Enter..."
-                  className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary mb-2 text-foreground"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const newTag = e.currentTarget.value.trim();
-                      if (newTag && setTaskData && taskData) {
-                        const currentTags = taskData.tags || [];
-                        if (!currentTags.includes(newTag)) {
-                          setTaskData({ ...taskData, tags: [...currentTags, newTag] });
-                        }
-                        e.currentTarget.value = '';
-                      }
-                    }
-                  }}
-                />
-                <div className="flex flex-wrap gap-1.5">
-                  {(taskData?.tags || []).map((tag: string) => (
-                    <div key={tag} className="flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">
-                      {tag}
-                      <button
-                        className="hover:text-red-500 ml-1 font-bold"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (setTaskData && taskData) {
-                            setTaskData({
-                              ...taskData,
-                              tags: taskData.tags.filter((t: string) => t !== tag)
-                            });
+            {canEditLabels ? (
+              <Popover>
+                <Popover.Button className="flex items-center gap-1.5 font-medium text-foreground outline-none hover:text-primary transition-colors text-xs">
+                  {taskData?.tags?.length ? `${taskData.tags.length} Labels` : 'Add label...'}
+                </Popover.Button>
+                <Popover.Panel anchor="bottom end" className="w-56 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none origin-top-right mt-1">
+                  <input
+                    type="text"
+                    placeholder="Type and press Enter..."
+                    className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary mb-2 text-foreground"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const newTag = e.currentTarget.value.trim();
+                        if (newTag && setTaskData && taskData) {
+                          const currentTags = taskData.tags || [];
+                          if (!currentTags.includes(newTag)) {
+                            setTaskData({ ...taskData, tags: [...currentTags, newTag] });
                           }
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  {!(taskData?.tags?.length) && <span className="text-[10px] text-muted-foreground">No labels added yet.</span>}
-                </div>
-              </Popover.Panel>
-            </Popover>
+                          e.currentTarget.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {(taskData?.tags || []).map((tag: string) => (
+                      <div key={tag} className="flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (setTaskData && taskData) {
+                              setTaskData({
+                                ...taskData,
+                                tags: (taskData.tags || []).filter((t: string) => t !== tag),
+                              });
+                            }
+                          }}
+                          className="hover:text-red-500"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </Popover.Panel>
+              </Popover>
+            ) : (
+              <div className="flex items-center gap-1.5 py-0.5">
+                {taskData?.tags?.length ? (
+                  <div className="flex flex-wrap gap-1">
+                    {(taskData.tags || []).map((tag: string) => (
+                      <span key={tag} className="bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground/70 text-xs">No labels</span>
+                )}
+                <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" />
+              </div>
+            )}
           </div>
         </div>
       </div>
