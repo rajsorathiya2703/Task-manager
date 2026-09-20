@@ -847,14 +847,24 @@ export default function UserGroupDetailPage({
     }> = [];
 
     for (const [modelKey, fields] of Object.entries(fieldPerms)) {
+      // The model key matches the module key (e.g. "employees" model → "employees" module).
+      const parentMod = modulePerms[modelKey];
+
       for (const [fieldKey, perms] of Object.entries(fields)) {
+        // Clamp field permissions to not exceed the parent module's permissions.
+        // Backend enforces: fp.read requires parentMod.read, fp.write requires parentMod.create, etc.
+        const clampedRead   = perms.read   && (parentMod?.read   !== false);
+        const clampedWrite  = perms.write  && (parentMod?.create !== false);
+        const clampedUpdate = perms.update && (parentMod?.update !== false);
+        const clampedDelete = perms.delete && (parentMod?.delete !== false);
+
         fieldPermissionsArray.push({
           model: modelKey,
           field: fieldKey,
-          read: perms.read,
-          write: perms.write,
-          update: perms.update,
-          delete: perms.delete,
+          read:   clampedRead,
+          write:  clampedWrite,
+          update: clampedUpdate,
+          delete: clampedDelete,
         });
       }
     }
