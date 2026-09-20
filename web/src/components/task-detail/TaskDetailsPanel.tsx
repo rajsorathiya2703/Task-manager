@@ -234,7 +234,11 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                 <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
                 {taskData?.status || "To Do"}
-                {isOwner && !canEditStatus && <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" title="Read-only field" />}
+                {isOwner && !canEditStatus && (
+                  <span title="Read-only field" className="inline-flex items-center ml-1">
+                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -279,7 +283,11 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
             ) : (
               <div className="flex items-center gap-1.5 font-medium">
                 <PriorityBadge priority={priority as any} />
-                {isOwner && !canEditPriority && <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" title="Read-only field" />}
+                {isOwner && !canEditPriority && (
+                  <span title="Read-only field" className="inline-flex items-center ml-1">
+                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -308,7 +316,11 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
             ) : (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold text-foreground">{taskData?.estimatedHours || 0} Hours</span>
-                {isOwner && !canEditHours && <Lock className="w-3 h-3 text-muted-foreground/60" title="Read-only field" />}
+                {isOwner && !canEditHours && (
+                  <span title="Read-only field" className="inline-flex items-center">
+                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -410,7 +422,11 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-1.5 font-medium text-foreground">
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name) : 'Unassigned'}</span>
-                {isOwner && !canEditAssignee && <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" title="Read-only field" />}
+                {isOwner && !canEditAssignee && (
+                  <span title="Read-only field" className="inline-flex items-center ml-1">
+                    <Lock className="w-3 h-3 text-muted-foreground/60" />
+                  </span>
+                )}
               </div>
             )}
 
@@ -464,7 +480,9 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/30 border border-border/30 rounded-md text-xs font-medium text-muted-foreground cursor-not-allowed">
                 <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
                 <span>{formatDisplayDate(taskData?.startDate, taskData?.dueDate) || "No date set"}</span>
-                <Lock className="w-3 h-3 ml-auto opacity-50" title="Read-only field" />
+                <span title="Read-only field" className="inline-flex items-center ml-auto opacity-50">
+                  <Lock className="w-3 h-3" />
+                </span>
               </div>
             )}
           </div>
@@ -526,7 +544,9 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
                   <span key={tag} className="bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">{tag}</span>
                 ))}
                 {!(taskData?.tags?.length) && <span className="text-[10px] text-muted-foreground italic">No labels</span>}
-                <Lock className="w-3 h-3 text-muted-foreground/60 ml-1" title="Read-only field" />
+                <span title="Read-only field" className="inline-flex items-center ml-1">
+                  <Lock className="w-3 h-3 text-muted-foreground/60" />
+                </span>
               </div>
             )}
           </div>
