@@ -13,6 +13,13 @@ export class DashboardController {
   @Get('employee-activity')
   @RequirePermission({ module: 'reports', action: 'read' })
   getEmployeeActivity(@Request() req, @Query() query: EmployeeActivityQueryDto) {
-    return this.dashboardService.getEmployeeActivity(query, req.user?.id, req.user?.email);
+    const userId = req.user?.id || req.user?._id;
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.dashboardService.getEmployeeActivity(
+      query,
+      userId?.toString(),
+      req.user?.email,
+      isSystemAdmin,
+    );
   }
 }

@@ -19,19 +19,24 @@ export class TeamsController {
   @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
   findAll(@Request() req) {
     const userId = req.user?.id || req.user?._id;
-    return this.teamsService.findAll(userId?.toString(), req.user?.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.teamsService.findAll(userId?.toString(), req.user?.email, isSystemAdmin);
   }
 
   @Get(':id')
   @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
-  findOne(@Param('id') id: string) {
-    return this.teamsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req) {
+    const userId = req.user?.id || req.user?._id;
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.teamsService.findOne(id, userId?.toString(), req.user?.email, isSystemAdmin);
   }
 
   @Patch(':id')
   @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
-  update(@Param('id') id: string, @Body() updateTeamDto: any) {
-    return this.teamsService.update(id, updateTeamDto);
+  update(@Param('id') id: string, @Body() updateTeamDto: any, @Request() req) {
+    const userId = req.user?.id || req.user?._id;
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.teamsService.update(id, updateTeamDto, userId?.toString(), req.user?.email, isSystemAdmin);
   }
 
   @Delete(':id')
@@ -42,8 +47,10 @@ export class TeamsController {
 
   @Get(':id/active-tasks')
   @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
-  getActiveTasks(@Param('id') id: string) {
-    return this.teamsService.getActiveTasks(id);
+  getActiveTasks(@Param('id') id: string, @Request() req) {
+    const userId = req.user?.id || req.user?._id;
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.teamsService.getActiveTasks(id, userId?.toString(), req.user?.email, isSystemAdmin);
   }
 
   // ── Comment Endpoints ──

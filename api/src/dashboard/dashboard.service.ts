@@ -66,30 +66,51 @@ export class DashboardService {
     return 4;
   }
 
-  async getEmployeeActivity(query: EmployeeActivityQueryDto, userId?: string, email?: string) {
+  async getEmployeeActivity(
+    query: EmployeeActivityQueryDto,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+  ) {
     const { currentStart, currentEnd, prevStart, prevEnd } = this.getDateRange(query);
     const now = new Date();
 
-    // 1. Fetch employee list for selector
-    const allEmployees = await this.employeeModel
-      .find({}, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
-      .sort({ 'fullName.firstName': 1 })
-      .exec();
-
-    // 2. Resolve selected employee
-    let selectedEmployee: any = null;
-    if (query.employeeId && Types.ObjectId.isValid(query.employeeId)) {
-      selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
-    }
-    if (!selectedEmployee && userId) {
+    // 1. Resolve calling user's own employee record
+    let callingUserEmployee: any = null;
+    if (userId) {
       if (Types.ObjectId.isValid(userId)) {
-        selectedEmployee = await this.employeeModel.findOne({ userId: new Types.ObjectId(userId) }).exec();
+        callingUserEmployee = await this.employeeModel.findOne({ userId: new Types.ObjectId(userId) }).exec();
+      }
+      if (!callingUserEmployee) {
+        callingUserEmployee = await this.employeeModel.findOne({ userId: userId.toString() }).exec();
       }
     }
-    if (!selectedEmployee && email) {
-      selectedEmployee = await this.employeeModel
+    if (!callingUserEmployee && email) {
+      callingUserEmployee = await this.employeeModel
         .findOne({ email: { $regex: new RegExp(`^${email.trim()}$`, 'i') } })
         .exec();
+    }
+
+    // 2. Resolve selected employee with row-level authorization
+    let selectedEmployee: any = null;
+    if (query.employeeId && Types.ObjectId.isValid(query.employeeId)) {
+      if (isSystemAdmin) {
+        selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
+      } else {
+        // Non-admin can ONLY view their own employee activity
+        if (
+          !callingUserEmployee ||
+          callingUserEmployee._id.toString() !== query.employeeId.toString()
+        ) {
+          throw new ForbiddenException(
+            "Access Denied: You do not have permission to view other employees' activity data.",
+          );
+        }
+        selectedEmployee = callingUserEmployee;
+      }
+    } else {
+      // Default to calling user's own employee
+      selectedEmployee = callingUserEmployee;
     }
 
     // Require an active employee profile: do NOT fall back to other users' employee records
@@ -97,6 +118,17 @@ export class DashboardService {
       throw new ForbiddenException(
         'No employee profile found for your account. An active employee profile is required to access the activity dashboard.',
       );
+    }
+
+    // 3. Fetch employee list for selector (only admins see full list; non-admins only see themselves)
+    let allEmployees: any[] = [];
+    if (isSystemAdmin) {
+      allEmployees = await this.employeeModel
+        .find({}, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
+        .sort({ 'fullName.firstName': 1 })
+        .exec();
+    } else if (callingUserEmployee) {
+      allEmployees = [callingUserEmployee];
     }
 
     // 3. Facet Aggregation on Task model for overall workspace metrics

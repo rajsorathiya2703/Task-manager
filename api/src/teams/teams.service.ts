@@ -71,7 +71,15 @@ export class TeamsService {
     return newTeam.save();
   }
 
-  async findAll(userId?: string, email?: string): Promise<Team[]> {
+  async findAll(userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team[]> {
+    if (isSystemAdmin) {
+      return this.teamModel
+        .find()
+        .populate('members')
+        .populate('teamLead')
+        .exec();
+    }
+
     if (!userId && !email) {
       return [];
     }
@@ -108,7 +116,7 @@ export class TeamsService {
       .exec();
   }
 
-  async findOne(id: string): Promise<Team> {
+  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
     }
@@ -116,22 +124,40 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException(`Team #${id} not found`);
     }
+
+    if (!isSystemAdmin && userId) {
+      const hasAccess = await this.isUserInTeam(team, userId, email);
+      if (!hasAccess) {
+        throw new ForbiddenException('Access Denied: You are not a member of this team.');
+      }
+    }
+
     return team;
   }
 
-  async update(id: string, updateTeamDto: any): Promise<Team> {
+  async update(id: string, updateTeamDto: any, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
     }
-    const existingTeam = await this.teamModel.findByIdAndUpdate(
+    const existingTeam = await this.teamModel.findById(id).populate('members').populate('teamLead').exec();
+    if (!existingTeam) {
+      throw new NotFoundException(`Team #${id} not found`);
+    }
+
+    if (!isSystemAdmin && userId) {
+      const hasAccess = await this.isUserInTeam(existingTeam, userId, email);
+      if (!hasAccess) {
+        throw new ForbiddenException('Access Denied: You do not have permission to update this team.');
+      }
+    }
+
+    const updatedTeam = await this.teamModel.findByIdAndUpdate(
       id,
       { $set: updateTeamDto },
       { new: true },
     ).populate('members').populate('teamLead').exec();
-    if (!existingTeam) {
-      throw new NotFoundException(`Team #${id} not found`);
-    }
-    return existingTeam;
+
+    return updatedTeam!;
   }
 
   async remove(id: string): Promise<any> {
@@ -145,13 +171,20 @@ export class TeamsService {
     return deletedTeam;
   }
 
-  async getActiveTasks(teamId: string): Promise<Task[]> {
+  async getActiveTasks(teamId: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Task[]> {
     if (!Types.ObjectId.isValid(teamId)) {
       throw new NotFoundException(`Team #${teamId} not found`);
     }
-    const team = await this.teamModel.findById(teamId).exec();
+    const team = await this.teamModel.findById(teamId).populate('members').populate('teamLead').exec();
     if (!team) {
       throw new NotFoundException(`Team #${teamId} not found`);
+    }
+
+    if (!isSystemAdmin && userId) {
+      const hasAccess = await this.isUserInTeam(team, userId, email);
+      if (!hasAccess) {
+        throw new ForbiddenException('Access Denied: You are not a member of this team.');
+      }
     }
     
     // Find all active tasks assigned to any team member
