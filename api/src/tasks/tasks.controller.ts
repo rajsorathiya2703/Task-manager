@@ -61,13 +61,15 @@ export class TasksController {
   @Post()
   @RequirePermission({ module: 'tasks', action: 'create', model: 'tasks' })
   create(@Request() req, @Body() createTaskDto: CreateTaskDto) {
-    return this.tasksService.create(req.user.id, createTaskDto, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, isSystemAdmin);
   }
 
   @Get()
   @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findAll(@Request() req, @Query('projectId') projectId?: string) {
-    return this.tasksService.findAll(req.user.id, req.user.email, projectId);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin);
   }
 
   @Get('timeline')
@@ -139,7 +141,8 @@ export class TasksController {
   @Get(':id')
   @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findOne(@Request() req, @Param('id') id: string) {
-    return this.tasksService.findOne(id, req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin);
   }
 
   @Patch(':id')
@@ -150,13 +153,15 @@ export class TasksController {
       avatarUrl: req.user?.avatarUrl,
       email: req.user?.email,
     };
-    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin);
   }
 
   @Delete(':id')
   @RequirePermission({ module: 'tasks', action: 'delete', model: 'tasks' })
   remove(@Request() req, @Param('id') id: string) {
-    return this.tasksService.remove(id, req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin);
   }
 
   @Post(':id/duplicate')
@@ -265,7 +270,7 @@ export class TasksController {
   }
 
   @Post(':id/invite')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
+  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.assignment', model: 'tasks' })
   async inviteMember(
     @Request() req,
     @Param('id') id: string,
@@ -273,7 +278,8 @@ export class TasksController {
   ) {
     try {
       const inviterName = req.user?.name || 'A team member';
-      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email);
+      const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, isSystemAdmin);
     } catch (e) {
       require('fs').writeFileSync('invite-error.log', e.stack || e.message);
       throw e;

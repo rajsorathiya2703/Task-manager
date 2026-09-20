@@ -44,7 +44,11 @@ export class ProjectsService {
     return createdProject.save();
   }
 
-  async findAll(userId: string, email?: string): Promise<Project[]> {
+  async findAll(userId: string, email?: string, isSystemAdmin?: boolean): Promise<Project[]> {
+    if (isSystemAdmin) {
+      return this.projectModel.find().populate('teamId').sort({ createdAt: -1 }).exec();
+    }
+
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
     const employeeIdObjs = employeeIds.map((e) => (Types.ObjectId.isValid(e) ? new Types.ObjectId(e) : e));
     const employeeIdStrs = employeeIds.map((e) => e.toString());
@@ -107,12 +111,16 @@ export class ProjectsService {
     return this.projectModel.find({ $or: orConditions }).populate('teamId').sort({ createdAt: -1 }).exec();
   }
 
-  async findOne(id: string, userId?: string, email?: string): Promise<Project | null> {
+  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
     const project = await this.projectModel.findById(id).populate('teamId').exec();
     if (!project) return null;
+
+    if (isSystemAdmin) {
+      return project;
+    }
 
     if (userId) {
       const employeeIds = await this.getEmployeeIdsForUser(userId, email);
@@ -162,27 +170,23 @@ export class ProjectsService {
     return project;
   }
 
-  async update(id: string, updateProjectDto: UpdateProjectDto, userId?: string, email?: string): Promise<Project | null> {
-    const project = await this.findOne(id, userId, email);
+  async update(id: string, updateProjectDto: UpdateProjectDto, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
+    const project = await this.findOne(id, userId, email, isSystemAdmin);
     if (!project) {
       throw new NotFoundException('Project not found');
-    }
-
-    if (userId && project.userId.toString() !== userId) {
-      throw new ForbiddenException('Only the project owner can update project details');
     }
 
     return this.projectModel.findByIdAndUpdate(id, updateProjectDto, { new: true }).populate('teamId').exec();
   }
 
-  async remove(id: string, userId?: string, email?: string): Promise<Project | null> {
-    const project = await this.findOne(id, userId, email);
+  async remove(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
+    const project = await this.findOne(id, userId, email, isSystemAdmin);
     if (!project) {
       throw new NotFoundException('Project not found');
     }
 
-    if (userId && project.userId.toString() !== userId) {
-      throw new ForbiddenException('Only the project owner can delete this project');
+    if (!isSystemAdmin && userId && project.userId.toString() !== userId) {
+      throw new ForbiddenException('Only the project owner or administrator can delete this project');
     }
 
     return this.projectModel.findByIdAndDelete(id).exec();

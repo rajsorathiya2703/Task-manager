@@ -61,7 +61,8 @@ export class TasksService {
   }
 
 
-  async hasTaskAccess(task: Task, userId?: string, email?: string): Promise<boolean> {
+  async hasTaskAccess(task: Task, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<boolean> {
+    if (isSystemAdmin) return true;
     if (!userId) return true;
 
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
@@ -106,34 +107,37 @@ export class TasksService {
     return false;
   }
 
-  async create(userId: string, createTaskDto: CreateTaskDto, email?: string): Promise<Task> {
+  async create(userId: string, createTaskDto: CreateTaskDto, email?: string, isSystemAdmin?: boolean): Promise<Task> {
     if (createTaskDto.projectId) {
       const project = await this.projectModel.findById(createTaskDto.projectId).exec();
       if (!project) {
         const { BadRequestException } = require('@nestjs/common');
         throw new BadRequestException('Project not found');
       }
-      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
-      const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
 
-      let isProjectMember =
-        project.userId?.toString() === userId ||
-        (email && (project as any).members && (project as any).members.some((m: any) => m.email?.toLowerCase() === email.toLowerCase()));
+      if (!isSystemAdmin) {
+        const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+        const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
 
-      if (!isProjectMember && project.teamId) {
-        const team = await this.teamModel.findById(project.teamId).exec();
-        if (team) {
-          if (team.teamLead && employeeIdStrs.has(team.teamLead.toString())) {
-            isProjectMember = true;
-          } else if (team.members && team.members.some((m) => employeeIdStrs.has(m.toString()))) {
-            isProjectMember = true;
+        let isProjectMember =
+          project.userId?.toString() === userId ||
+          (email && (project as any).members && (project as any).members.some((m: any) => m.email?.toLowerCase() === email.toLowerCase()));
+
+        if (!isProjectMember && project.teamId) {
+          const team = await this.teamModel.findById(project.teamId).exec();
+          if (team) {
+            if (team.teamLead && employeeIdStrs.has(team.teamLead.toString())) {
+              isProjectMember = true;
+            } else if (team.members && team.members.some((m) => employeeIdStrs.has(m.toString()))) {
+              isProjectMember = true;
+            }
           }
         }
-      }
 
-      if (!isProjectMember) {
-        const { ForbiddenException } = require('@nestjs/common');
-        throw new ForbiddenException('You do not have access to this project');
+        if (!isProjectMember) {
+          const { ForbiddenException } = require('@nestjs/common');
+          throw new ForbiddenException('You do not have access to this project');
+        }
       }
     }
 
@@ -184,7 +188,7 @@ export class TasksService {
     return savedTask;
   }
 
-  async findAll(userId: string, email?: string, projectId?: string): Promise<Task[]> {
+  async findAll(userId: string, email?: string, projectId?: string, isSystemAdmin?: boolean): Promise<Task[]> {
     const { Types } = require('mongoose');
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
     const employeeIdObjs = employeeIds.map((id) => (Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id));
@@ -197,7 +201,7 @@ export class TasksService {
       const project = await this.projectModel.findById(projIdObj).exec();
       if (!project) return [];
 
-      let isOwnerOrLead = project.userId?.toString() === userId;
+      let isOwnerOrLead = Boolean(isSystemAdmin || project.userId?.toString() === userId);
       if (!isOwnerOrLead && project.teamId) {
         const team = await this.teamModel.findById(project.teamId).exec();
         const teamLeadStr = team?.teamLead ? team.teamLead.toString() : null;
@@ -242,6 +246,9 @@ export class TasksService {
         }).populate('projectId', 'name color').populate('assignee').populate('assignedBy').exec();
       }
     } else {
+      if (isSystemAdmin) {
+        return this.taskModel.find({}).populate('projectId', 'name color').populate('assignee').populate('assignedBy').sort({ createdAt: -1 }).exec();
+      }
       // Main tasks page view (no projectId specified):
       const userIdObj = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
 
@@ -275,7 +282,7 @@ export class TasksService {
     return tasks;
   }
 
-  async findOne(id: string, userId?: string, email?: string): Promise<any | null> {
+  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<any | null> {
     const { Types } = require('mongoose');
     if (!Types.ObjectId.isValid(id)) {
       return null;
@@ -284,7 +291,7 @@ export class TasksService {
     if (!task) return null;
 
     if (userId) {
-      const hasAccess = await this.hasTaskAccess(task, userId, email);
+      const hasAccess = await this.hasTaskAccess(task, userId, email, isSystemAdmin);
       if (!hasAccess) {
         const { ForbiddenException } = require('@nestjs/common');
         throw new ForbiddenException('You do not have access to this task');
@@ -315,7 +322,7 @@ export class TasksService {
           }
           return {
             ...updatedObj,
-            isOwner: userId ? autoStoppedTask.userId?.toString() === userId : true,
+            isOwner: Boolean(isSystemAdmin || (userId && autoStoppedTask.userId?.toString() === userId)),
           };
         }
       }
@@ -346,7 +353,7 @@ export class TasksService {
 
     return {
       ...taskObj,
-      isOwner: userId ? task.userId?.toString() === userId : true,
+      isOwner: Boolean(isSystemAdmin || (userId && task.userId?.toString() === userId)),
     };
   }
 
@@ -385,24 +392,56 @@ export class TasksService {
     updateTaskDto: UpdateTaskDto,
     userId?: string,
     email?: string,
-    user?: { name: string; avatarUrl?: string; email?: string }
+    user?: { name: string; avatarUrl?: string; email?: string },
+    isSystemAdmin?: boolean,
   ): Promise<Task | null> {
     let existingTask: any = null;
     if (userId) {
-      existingTask = await this.findOne(id, userId, email);
+      existingTask = await this.findOne(id, userId, email, isSystemAdmin);
     } else {
       existingTask = await this.taskModel.findById(id).exec();
     }
     if (!existingTask) return null;
 
-    // Rule 3: Invited members cannot change start/due date
-    const isOwner = existingTask.userId?.toString() === userId;
+    const isOwner = Boolean(isSystemAdmin || (userId && existingTask.userId?.toString() === userId));
     const isModifyingStartDate = updateTaskDto.startDate !== undefined && updateTaskDto.startDate !== existingTask.startDate;
     const isModifyingDueDate = updateTaskDto.dueDate !== undefined && updateTaskDto.dueDate !== existingTask.dueDate;
 
     if ((isModifyingStartDate || isModifyingDueDate) && !isOwner) {
-      const { ForbiddenException } = require('@nestjs/common');
-      throw new ForbiddenException('Only task owners can modify task dates');
+      let canModifyDates = false;
+      if (existingTask.projectId) {
+        const project = await this.projectModel.findById(existingTask.projectId).exec();
+        if (project) {
+          if (project.userId?.toString() === userId) {
+            canModifyDates = true;
+          } else if (project.teamId) {
+            const team = await this.teamModel.findById(project.teamId).exec();
+            if (team && team.teamLead) {
+              const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+              const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+              if (employeeIdStrs.has(team.teamLead.toString())) {
+                canModifyDates = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (!canModifyDates) {
+        const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+        const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+        const assigneeId = (existingTask.assignee as any)?._id
+          ? (existingTask.assignee as any)._id.toString()
+          : existingTask.assignee?.toString();
+        if (assigneeId && employeeIdStrs.has(assigneeId)) {
+          canModifyDates = true;
+        }
+      }
+
+      if (!canModifyDates) {
+        const { ForbiddenException } = require('@nestjs/common');
+        throw new ForbiddenException('Only task owners, assignees, project leads, or administrators can modify task dates');
+      }
     }
 
     const newUpdates: any[] = [];
@@ -603,18 +642,39 @@ export class TasksService {
     }
     return {
       ...taskObj,
-      isOwner: userId ? updatedTask.userId?.toString() === userId : true,
+      isOwner: Boolean(isSystemAdmin || (userId && updatedTask.userId?.toString() === userId)),
     } as any;
   }
 
-  async remove(id: string, userId?: string, _email?: string): Promise<Task | null> {
-    if (userId) {
-      // Verify ownership — only the task owner can delete
+  async remove(id: string, userId?: string, _email?: string, isSystemAdmin?: boolean): Promise<Task | null> {
+    if (userId && !isSystemAdmin) {
       const task = await this.taskModel.findById(id).exec();
       if (!task) return null;
-      if (task.userId?.toString() !== userId) {
+
+      const isOwner = task.userId?.toString() === userId;
+      let canDelete = isOwner;
+
+      if (!canDelete && task.projectId) {
+        const project = await this.projectModel.findById(task.projectId).exec();
+        if (project) {
+          if (project.userId?.toString() === userId) {
+            canDelete = true;
+          } else if (project.teamId) {
+            const team = await this.teamModel.findById(project.teamId).exec();
+            if (team && team.teamLead) {
+              const employeeIds = await this.getEmployeeIdsForUser(userId, _email);
+              const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+              if (employeeIdStrs.has(team.teamLead.toString())) {
+                canDelete = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (!canDelete) {
         const { ForbiddenException } = require('@nestjs/common');
-        throw new ForbiddenException('Only the task owner can delete this task');
+        throw new ForbiddenException('Only task owners, project leads, or administrators can delete this task');
       }
     }
     return this.taskModel.findByIdAndDelete(id).exec();
@@ -712,22 +772,44 @@ export class TasksService {
     ).exec();
   }
 
-  async inviteMember(taskId: string, inviteEmail: string, name: string, inviterName: string, userId?: string, email?: string) {
+  async inviteMember(taskId: string, inviteEmail: string, name: string, inviterName: string, userId?: string, email?: string, isSystemAdmin?: boolean) {
     const { Types } = require('mongoose');
     if (!Types.ObjectId.isValid(taskId)) {
       const { BadRequestException } = require('@nestjs/common');
       throw new BadRequestException('Invalid task ID');
     }
-    const task = await this.findOne(taskId, userId, email);
+    const task = await this.findOne(taskId, userId, email, isSystemAdmin);
     if (!task) {
       const { BadRequestException } = require('@nestjs/common');
       throw new BadRequestException('Task not found');
     }
 
-    // Rule 2: Only task owners can invite members
-    if (userId && task.userId?.toString() !== userId) {
-      const { ForbiddenException } = require('@nestjs/common');
-      throw new ForbiddenException('Only task owners can invite members');
+    if (userId && !isSystemAdmin && task.userId?.toString() !== userId) {
+      let canInvite = false;
+      if (task.projectId) {
+        const project = await this.projectModel.findById(task.projectId).exec();
+        if (project) {
+          if (project.userId?.toString() === userId) {
+            canInvite = true;
+          } else if (project.teamId) {
+            const team = await this.teamModel.findById(project.teamId).exec();
+            if (team && team.teamLead) {
+              const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+              const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+              if (employeeIdStrs.has(team.teamLead.toString())) {
+                canInvite = true;
+              }
+            }
+          }
+        }
+      }
+      // Authorized by PermissionsGuard (which verified 'tasks:update' / 'tasks.assignment') and user has access to task
+      canInvite = true;
+
+      if (!canInvite) {
+        const { ForbiddenException } = require('@nestjs/common');
+        throw new ForbiddenException('Only task owners, project leads, or administrators can invite members');
+      }
     }
 
     const cleanInviteEmail = inviteEmail ? inviteEmail.trim().toLowerCase() : '';

@@ -20,24 +20,28 @@ export class ProjectsController {
   @Get()
   @RequirePermission({ module: 'projects', action: 'read', model: 'projects' })
   findAll(@Request() req) {
-    return this.projectsService.findAll(req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.projectsService.findAll(req.user.id, req.user.email, isSystemAdmin);
   }
 
   @Get(':id')
   @RequirePermission({ module: 'projects', action: 'read', model: 'projects' })
   findOne(@Request() req, @Param('id') id: string) {
-    return this.projectsService.findOne(id, req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.projectsService.findOne(id, req.user.id, req.user.email, isSystemAdmin);
   }
 
   @Patch(':id')
   @RequirePermission({ module: 'projects', action: 'update', model: 'projects' })
   update(@Request() req, @Param('id') id: string, @Body() updateProjectDto: UpdateProjectDto) {
-    return this.projectsService.update(id, updateProjectDto, req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.projectsService.update(id, updateProjectDto, req.user.id, req.user.email, isSystemAdmin);
   }
 
   @Delete(':id')
   @RequirePermission({ module: 'projects', action: 'delete', model: 'projects' })
   remove(@Request() req, @Param('id') id: string) {
-    return this.projectsService.remove(id, req.user.id, req.user.email);
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    return this.projectsService.remove(id, req.user.id, req.user.email, isSystemAdmin);
   }
 }
