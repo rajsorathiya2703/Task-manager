@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Popover } from "@headlessui/react";
-import { Search, Filter, Plus, Columns, LayoutGrid, List, Menu, X, Tag, Type, AlignLeft, Bot, LucideIcon } from "lucide-react";
+import { Search, Filter, Plus, LayoutGrid, List, Menu, X, Tag, Type, AlignLeft, Bot } from "lucide-react";
 import { Button } from "../ui/Button";
 import { useSidebar } from "./SidebarContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
@@ -213,7 +212,7 @@ export function PageHeader({
                     onKeyDown={(e) => e.stopPropagation()}
                     onKeyUp={(e) => e.stopPropagation()}
                     autoFocus
-                    onBlur={(e) => {
+                    onBlur={() => {
                       setTimeout(() => {
                         if (!localQuery) setIsSearchOpen(false);
                       }, 200);

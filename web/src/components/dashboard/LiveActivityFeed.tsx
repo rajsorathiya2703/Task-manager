@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
-  Radio, 
   Activity, 
   Clock, 
   Play, 
@@ -13,11 +12,10 @@ import {
   CheckCircle2, 
   MessageSquare, 
   Tag, 
-  AlertCircle, 
-  Sparkles,
-  Users,
-  ChevronDown,
-  ChevronUp
+  Sparkles, 
+  Users, 
+  ChevronDown, 
+  ChevronUp 
 } from "lucide-react";
 import { formatDistanceToNow, parseISO, format } from "date-fns";
 import { useTimer } from "@/src/contexts/TimerContext";

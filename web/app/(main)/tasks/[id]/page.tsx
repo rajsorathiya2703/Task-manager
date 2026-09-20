@@ -31,7 +31,6 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [isTimerLoading, setIsTimerLoading] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   const [originalData, setOriginalData] = useState<any>(null);
   const [projectTitle, setProjectTitle] = useState<string | null>(null);
@@ -73,7 +72,6 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         try {
           setIsLoading(true);
           setAccessDenied(false);
-          setErrorMessage(null);
           const data = await fetchTaskById(id);
           if (!data) {
             console.error("Task not found");

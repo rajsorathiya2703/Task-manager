@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { LeaveTypeList } from "../../../../src/components/dayoff/config/LeaveTypeList";
@@ -25,7 +25,6 @@ export default function LeavePoliciesPage() {
   const [editingLeaveType, setEditingLeaveType] = useState<any | null>(null);
 
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -42,13 +41,10 @@ export default function LeavePoliciesPage() {
   const loadLeaveTypes = useCallback(async () => {
     if (!isEnabled) return;
     try {
-      setLoading(true);
       const data = await fetchLeaveTypes();
       setLeaveTypes(data || []);
     } catch (err) {
       console.error("Failed to load leave types:", err);
-    } finally {
-      setLoading(false);
     }
   }, [isEnabled]);
 

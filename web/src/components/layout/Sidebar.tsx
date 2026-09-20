@@ -31,8 +31,8 @@ export function Sidebar({ user }: SidebarProps) {
   const isSystemAdmin = user?.is_system_admin !== false;
   const hasTeamAccess = can("teams", "read");
   const hasEmployeesAccess = isSystemAdmin && can("employees", "read");
-  const hasUsersAccess = isSystemAdmin && can("settings", "read");
-  const hasUserGroupsAccess = isSystemAdmin && can("settings", "read");
+  const hasUsersAccess = isSystemAdmin && (can("users", "read") || can("settings", "read"));
+  const hasUserGroupsAccess = isSystemAdmin && (can("user-groups", "read") || can("settings", "read"));
 
   // Time Off permissions
   const hasTimeOffSection = dayOffEnabled;

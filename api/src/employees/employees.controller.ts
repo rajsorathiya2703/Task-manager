@@ -66,7 +66,7 @@ export class EmployeesController {
    */
   @Post(':id/link-user')
   @RequirePermission({ module: 'employees', action: 'update', model: 'employees' })
-  async linkUser(@Param('id') id: string, @Req() req: any) {
+  async linkUser(@Param('id') _id: string, @Req() req: any) {
     const userId = req.user?.id || req.user?._id;
     const userEmail = req.user?.email;
 

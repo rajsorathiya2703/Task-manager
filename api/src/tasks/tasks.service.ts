@@ -607,7 +607,7 @@ export class TasksService {
     } as any;
   }
 
-  async remove(id: string, userId?: string, email?: string): Promise<Task | null> {
+  async remove(id: string, userId?: string, _email?: string): Promise<Task | null> {
     if (userId) {
       // Verify ownership — only the task owner can delete
       const task = await this.taskModel.findById(id).exec();
@@ -957,7 +957,7 @@ export class TasksService {
     return updatedTask;
   }
 
-  async getTimeline(userId: string, email: string, filterParams: any) {
+  async getTimeline(_userId: string, email: string, filterParams: any) {
     const { startDate, endDate, page = 1 } = filterParams;
     const limit = 80;
     const skip = (Number(page) - 1) * limit;

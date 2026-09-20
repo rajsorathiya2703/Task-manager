@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { fetchUsers } from "../../../../src/lib/api";
-import { User, Mail, Shield, Sparkles, Clock, Globe, Briefcase, Type } from "lucide-react";
+import { Mail, Shield, Sparkles, Clock, Globe, Briefcase, Type } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../../src/components/common/GroupByDropdown";
 

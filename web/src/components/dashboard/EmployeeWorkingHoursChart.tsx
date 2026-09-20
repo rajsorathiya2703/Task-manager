@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, TrendingUp, BarChart3, Target, Calendar } from "lucide-react";
+import { Clock, BarChart3, Target, Calendar } from "lucide-react";
 
 interface EmployeeWorkingHoursChartProps {
   data?: Array<{

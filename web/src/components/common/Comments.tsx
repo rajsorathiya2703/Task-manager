@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
-import { uploadGenericResource, fetchMe, fetchEmployees, API_URL, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
+import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 
 export interface CommentUser {
   name: string;

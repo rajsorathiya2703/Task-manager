@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useChatbot } from "./ChatbotContext";
 
 export function ChatbotTrigger() {

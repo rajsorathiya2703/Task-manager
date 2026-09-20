@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -18,6 +18,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissions.interceptor';
 
 @Module({
   imports: [
@@ -55,6 +56,10 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: FieldPermissionsInterceptor,
     },
   ],
 })

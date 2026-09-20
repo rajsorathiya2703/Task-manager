@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "../../../../src/components/layout/PageHeader";
 import { MonthViewCalendar } from "../../../../src/components/dayoff/MonthViewCalendar";

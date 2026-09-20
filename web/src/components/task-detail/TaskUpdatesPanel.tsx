@@ -8,7 +8,6 @@ import {
   UserPlus, 
   Edit3, 
   AlignLeft, 
-  Sliders, 
   Activity 
 } from "lucide-react";
 

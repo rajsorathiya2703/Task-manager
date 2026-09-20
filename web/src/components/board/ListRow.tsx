@@ -6,7 +6,6 @@ import { Task } from "../../lib/data";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDisplayDate } from "../../lib/utils";
 import { startTaskTimer, stopTaskTimer, deleteTask, duplicateTask } from "../../lib/api";
-import { format } from "date-fns";
 import { useTimer } from "../../contexts/TimerContext";
 import { ProjectCapsule } from "./ProjectCapsule";
 

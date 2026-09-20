@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Save, AlertCircle, CheckCircle2, Mail, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Save, AlertCircle, CheckCircle2, Mail } from "lucide-react";
 import { fetchDayOffSettings, updateDayOffSettings } from "../../../lib/api";
 
 export function DayOffSettingsForm() {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Popover } from "@headlessui/react";
-import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, Users, Lock, Clock, UserCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, Lock, UserCheck, RotateCcw } from "lucide-react";
 
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";

@@ -184,6 +184,25 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return false;
       }
 
+      // Check compensation operation permissions for employee payroll fields
+      const PAYROLL_FIELDS = [
+        "baseSalary",
+        "currency",
+        "payFrequency",
+        "bankAccountNumber",
+        "bankRoutingNumber",
+        "taxId",
+      ];
+      if (model === "employees" && PAYROLL_FIELDS.includes(field)) {
+        const compPerm = operationPermissions["employees.compensation"];
+        if (compPerm) {
+          const actKey = (action === "write" ? "create" : action) as keyof ActionPerms;
+          if (compPerm[actKey] === false) {
+            return false;
+          }
+        }
+      }
+
       const modelPerms = fieldPermissions[model];
       if (!modelPerms) {
         return true;
@@ -196,7 +215,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       return fieldPerm[action] ?? true;
     },
-    [groups, fieldPermissions]
+    [groups, fieldPermissions, operationPermissions]
   );
 
   return (

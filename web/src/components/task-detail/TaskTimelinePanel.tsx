@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDown, Clock, Play } from "lucide-react";
-import { TimeEntry } from "../../lib/data";
 
 interface TaskTimelinePanelProps {
   timeEntries?: any[];

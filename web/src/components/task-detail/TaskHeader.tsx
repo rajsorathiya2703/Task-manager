@@ -1,9 +1,7 @@
 import { useState, useRef } from "react";
-import { Calendar, Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Clock, Video, Image as ImageIcon } from "lucide-react";
+import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon } from "lucide-react";
 import { Popover } from "@headlessui/react";
-import { uploadResource, fetchMe, API_URL, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
-
-import { formatDisplayDate } from "../../lib/utils";
+import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 import { useEffect } from "react";
 
 interface TaskHeaderProps {

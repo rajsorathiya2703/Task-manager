@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import {
-  User,
   Flame,
-  Clock,
   Calendar,
   Building2,
   Briefcase,
@@ -50,10 +48,8 @@ export function EmployeeProfileStreakCard({
   } | null>(null);
 
   const days = yearlyActivity?.days || [];
-  const currentStreak = yearlyActivity?.currentStreak || 0;
   const longestStreak = yearlyActivity?.longestStreak || 0;
   const totalYearHours = yearlyActivity?.totalYearHours || 0;
-  const activeDays = yearlyActivity?.activeDays || 0;
 
   // Organize days into 52/53 columns (weeks) of 7 rows (Mon-Sun)
   const weeks: Array<Array<{ date: string; hours: number; count: number; level: 0 | 1 | 2 | 3 | 4 }>> = [];

@@ -86,4 +86,78 @@ describe('UserGroupsService', () => {
       expect(mockUserGroupModel.findByIdAndDelete).toHaveBeenCalledWith(validId);
     });
   });
+
+  describe('validateGroupAgainstCatalog', () => {
+    it('should reject invalid module in modulePermissions', () => {
+      expect(() =>
+        service.validateGroupAgainstCatalog({
+          modulePermissions: [
+            { module: 'invalid_module', create: true, read: true, update: true, delete: true },
+          ],
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('should reject invalid operation in operationPermissions', () => {
+      expect(() =>
+        service.validateGroupAgainstCatalog({
+          operationPermissions: [
+            { module: 'tasks', operation: 'tasks.invalid_op' },
+          ],
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('should reject invalid field in fieldPermissions', () => {
+      expect(() =>
+        service.validateGroupAgainstCatalog({
+          fieldPermissions: [
+            { model: 'tasks', field: 'non_existent_field' },
+          ],
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('should accept valid catalog module, operation, and field permissions', () => {
+      expect(() =>
+        service.validateGroupAgainstCatalog({
+          modulePermissions: [
+            { module: 'users', create: true, read: true, update: true, delete: true },
+            { module: 'user-groups', create: true, read: true, update: true, delete: true },
+          ],
+          operationPermissions: [
+            { module: 'users', operation: 'users.manage' },
+            { module: 'user-groups', operation: 'user-groups.manage' },
+          ],
+          fieldPermissions: [
+            { model: 'tasks', field: 'title' },
+          ],
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('update', () => {
+    it('should prevent renaming default Administrators group', async () => {
+      const validId = new Types.ObjectId().toString();
+      mockUserGroupModel.findById.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: validId, name: 'Administrators' }),
+      });
+
+      await expect(
+        service.update(validId, { name: 'Renamed Admins' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should prevent renaming default Employee group', async () => {
+      const validId = new Types.ObjectId().toString();
+      mockUserGroupModel.findById.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: validId, name: 'Employee' }),
+      });
+
+      await expect(
+        service.update(validId, { name: 'Renamed Employee' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });

@@ -7,22 +7,17 @@ import {
   Send, 
   X, 
   RotateCcw, 
-  CheckCircle2, 
-  Clock, 
   Calendar, 
   User, 
-  Tag, 
   ArrowRight, 
   Layers, 
   ChevronRight,
-  ChevronLeft,
   Flame,
   Check,
   Zap,
-  SlidersHorizontal,
-  FolderGit2
+  SlidersHorizontal
 } from "lucide-react";
-import { useChatbot, ChatMessage, TaskItemAction } from "./ChatbotContext";
+import { useChatbot, TaskItemAction } from "./ChatbotContext";
 
 const SUGGESTED_OPERATIONS = [
   { label: "⚡ Create urgent task", prompt: "Create urgent task: Fix OAuth Google token expiration" },

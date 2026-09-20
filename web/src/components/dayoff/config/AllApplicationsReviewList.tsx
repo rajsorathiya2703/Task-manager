@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Check, X, Clock, CheckCircle2, XCircle, Ban, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Check, X, Clock, CheckCircle2, XCircle, Ban } from "lucide-react";
 import { fetchAllLeaveApplications, updateDayOffStatus } from "../../../lib/api";
 
 export function AllApplicationsReviewList() {

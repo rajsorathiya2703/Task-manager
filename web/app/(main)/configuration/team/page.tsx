@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { fetchTeams } from "../../../../src/lib/api";
 import { usePermissions } from "../../../../src/contexts/PermissionsContext";
-import { Users, Shield, User, Type, AlignLeft } from "lucide-react";
+import { Users, Shield, Type, AlignLeft } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../../src/components/common/GroupByDropdown";
 

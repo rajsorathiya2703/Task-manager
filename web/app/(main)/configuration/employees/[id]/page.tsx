@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   PanelLeft, PanelRight, Save, Check, X, Loader2,
   User, Banknote, Briefcase, Phone, Mail, MapPin,
-  Calendar, Hash, ChevronDown, ArrowLeft
+  Calendar, Hash, ArrowLeft
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import { fetchEmployeeById, fetchEmployees, createEmployee, api } from "../../../../../src/lib/api";
 import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
+import { usePermissions } from "../../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 const EMPTY_EMPLOYEE = {
@@ -45,6 +46,8 @@ export default function EmployeeDetailPage({
   const isNew = id === "new";
   const router = useRouter();
   const { isOpen, toggleSidebar } = useSidebar();
+  const { canField, canOperation } = usePermissions();
+  const canReadPayroll = canField("employees", "baseSalary", "read") && canOperation("employees.compensation", "read");
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
@@ -416,82 +419,84 @@ export default function EmployeeDetailPage({
             </div>
 
             {/* ── Payroll Details ── */}
-            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex items-center gap-2">
-                <Banknote className="w-3.5 h-3.5 text-emerald-500" />
-                <h3 className="font-semibold text-foreground text-sm">Payroll & Compensation</h3>
-                <span className="ml-auto text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Confidential</span>
-              </div>
-              <div className="p-5 space-y-5">
-                <div className="grid grid-cols-3 gap-4">
-                  <Field label="Base Salary" required>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
-                        {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
-                      </span>
+            {canReadPayroll && (
+              <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-border bg-muted/20 flex items-center gap-2">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-500" />
+                  <h3 className="font-semibold text-foreground text-sm">Payroll & Compensation</h3>
+                  <span className="ml-auto text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Confidential</span>
+                </div>
+                <div className="p-5 space-y-5">
+                  <div className="grid grid-cols-3 gap-4">
+                    <Field label="Base Salary" required>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
+                          {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
+                        </span>
+                        <input
+                          type="number"
+                          value={employeeData.baseSalary || 0}
+                          onChange={(e) => set("baseSalary", parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm pl-7 pr-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
+                        />
+                      </div>
+                    </Field>
+                    <Field label="Currency">
+                      <select
+                        value={employeeData.currency || "USD"}
+                        onChange={(e) => set("currency", e.target.value)}
+                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
+                      >
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="INR">INR (₹)</option>
+                      </select>
+                    </Field>
+                    <Field label="Pay Frequency">
+                      <select
+                        value={employeeData.payFrequency || "Monthly"}
+                        onChange={(e) => set("payFrequency", e.target.value)}
+                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
+                      >
+                        <option value="Weekly">Weekly</option>
+                        <option value="Bi-weekly">Bi-weekly</option>
+                        <option value="Monthly">Monthly</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Field label="Bank Account Number">
                       <input
-                        type="number"
-                        value={employeeData.baseSalary || 0}
-                        onChange={(e) => set("baseSalary", parseFloat(e.target.value) || 0)}
-                        className="w-full text-sm pl-7 pr-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
+                        type="text"
+                        value={employeeData.bankAccountNumber || ""}
+                        onChange={(e) => set("bankAccountNumber", e.target.value)}
+                        placeholder="•••• •••• ••••"
+                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
                       />
-                    </div>
-                  </Field>
-                  <Field label="Currency">
-                    <select
-                      value={employeeData.currency || "USD"}
-                      onChange={(e) => set("currency", e.target.value)}
-                      className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
-                    >
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                      <option value="GBP">GBP (£)</option>
-                      <option value="INR">INR (₹)</option>
-                    </select>
-                  </Field>
-                  <Field label="Pay Frequency">
-                    <select
-                      value={employeeData.payFrequency || "Monthly"}
-                      onChange={(e) => set("payFrequency", e.target.value)}
-                      className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
-                    >
-                      <option value="Weekly">Weekly</option>
-                      <option value="Bi-weekly">Bi-weekly</option>
-                      <option value="Monthly">Monthly</option>
-                    </select>
-                  </Field>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Bank Account Number">
-                    <input
-                      type="text"
-                      value={employeeData.bankAccountNumber || ""}
-                      onChange={(e) => set("bankAccountNumber", e.target.value)}
-                      placeholder="•••• •••• ••••"
-                      className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                    />
-                  </Field>
-                  <Field label="Bank Routing Number">
-                    <input
-                      type="text"
-                      value={employeeData.bankRoutingNumber || ""}
-                      onChange={(e) => set("bankRoutingNumber", e.target.value)}
-                      placeholder="•••••••••"
-                      className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                    />
-                  </Field>
-                  <Field label="Tax ID / SSN">
-                    <input
-                      type="password"
-                      value={employeeData.taxId || ""}
-                      onChange={(e) => set("taxId", e.target.value)}
-                      placeholder="•••-••-••••"
-                      className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                    />
-                  </Field>
+                    </Field>
+                    <Field label="Bank Routing Number">
+                      <input
+                        type="text"
+                        value={employeeData.bankRoutingNumber || ""}
+                        onChange={(e) => set("bankRoutingNumber", e.target.value)}
+                        placeholder="•••••••••"
+                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
+                      />
+                    </Field>
+                    <Field label="Tax ID / SSN">
+                      <input
+                        type="password"
+                        value={employeeData.taxId || ""}
+                        onChange={(e) => set("taxId", e.target.value)}
+                        placeholder="•••-••-••••"
+                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
+                      />
+                    </Field>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
           </div>
         </div>
@@ -533,27 +538,29 @@ export default function EmployeeDetailPage({
             </div>
 
             {/* Compensation Summary */}
-            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-center gap-2">
-                <Banknote className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-xs font-semibold text-foreground">Compensation</span>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3 text-center">
-                  <div className="text-xl font-bold text-foreground">
-                    {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
-                    {(employeeData.baseSalary || 0).toLocaleString()}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{employeeData.payFrequency} · {employeeData.currency}</div>
+            {canReadPayroll && (
+              <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-center gap-2">
+                  <Banknote className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-xs font-semibold text-foreground">Compensation</span>
                 </div>
-                {employeeData.bankAccountNumber && (
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/70">Bank:</span>{" "}
-                    ••••{employeeData.bankAccountNumber.slice(-4)}
+                <div className="p-4 space-y-3">
+                  <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold text-foreground">
+                      {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
+                      {(employeeData.baseSalary || 0).toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{employeeData.payFrequency} · {employeeData.currency}</div>
                   </div>
-                )}
+                  {employeeData.bankAccountNumber && (
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground/70">Bank:</span>{" "}
+                      ••••{employeeData.bankAccountNumber.slice(-4)}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Quick Stats */}
             {!isNew && (

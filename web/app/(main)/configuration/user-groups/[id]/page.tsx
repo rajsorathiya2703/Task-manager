@@ -4,10 +4,10 @@ import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   PanelLeft, Save, Check, X, Loader2,
-  Users, Shield, Key, ArrowLeft, Trash2, Sliders,
+  Users, Shield, ArrowLeft, Trash2, Sliders,
   Eye, Edit3, PlusCircle, Trash, CheckSquare, Layers,
   FolderKanban, UserCheck, CalendarOff, BarChart3, Settings,
-  Search, CheckCheck, Filter
+  Search
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import {
@@ -46,7 +46,9 @@ const MODULE_DEFS: ModuleDef[] = [
   { key: "teams", label: "Teams Management", desc: "Create teams, assign team leads, and coordinate members", icon: Users },
   { key: "dayoff", label: "Time Off & Leaves", desc: "Manage leave policies, approvals, calendar, and applications", icon: CalendarOff },
   { key: "reports", label: "Reports & Analytics", desc: "Access business reports, timeline summaries, and dashboards", icon: BarChart3 },
-  { key: "settings", label: "System Administration", desc: "Configure users, user groups, and global preferences", icon: Settings },
+  { key: "users", label: "Users Management", desc: "Manage user logins, authentication, and accounts", icon: UserCheck },
+  { key: "user-groups", label: "User Groups & Roles", desc: "Configure access groups and permission policies", icon: Users },
+  { key: "settings", label: "System Administration", desc: "Configure global preferences and settings", icon: Settings },
 ];
 
 export interface OperationDef {
@@ -93,9 +95,17 @@ const OPERATION_DEFS: OperationDef[] = [
   { key: "reports.export", module: "reports", label: "Data Export", desc: "Export records and reports to CSV, Excel, or PDF", category: "Export" },
   { key: "reports.timesheets", module: "reports", label: "Timesheet Logs", desc: "Audit employee work logs, tracked timers, and project hours", category: "Auditing" },
 
+  // Users Operations
+  { key: "users.manage", module: "users", label: "User Accounts", desc: "Create, view, update, and manage user login credentials", category: "Security" },
+  { key: "users.core", module: "users", label: "User Records", desc: "Core user account operations", category: "Security" },
+
+  // User Groups Operations
+  { key: "user-groups.manage", module: "user-groups", label: "User Groups & Roles", desc: "Create and configure access groups and permission policies", category: "Access Control" },
+  { key: "user-groups.core", module: "user-groups", label: "Group Records", desc: "Core user group operations", category: "Access Control" },
+
   // System Administration Operations
-  { key: "settings.users", module: "settings", label: "User Accounts", desc: "Create, view, update, and manage user login credentials", category: "Security" },
-  { key: "settings.user_groups", module: "settings", label: "User Groups & Roles", desc: "Create and configure access groups and permission policies", category: "Access Control" },
+  { key: "settings.users", module: "settings", label: "User Accounts (Legacy)", desc: "Create, view, update, and manage user login credentials", category: "Security" },
+  { key: "settings.user_groups", module: "settings", label: "User Groups & Roles (Legacy)", desc: "Create and configure access groups and permission policies", category: "Access Control" },
   { key: "settings.system", module: "settings", label: "System Preferences", desc: "Modify system-wide configurations, branding, and integrations", category: "Administration" },
 ];
 

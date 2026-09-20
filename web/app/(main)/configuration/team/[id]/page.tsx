@@ -1,11 +1,11 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   PanelLeft, PanelRight, Save, Check, X, Loader2,
   Shield, Users, Trash, Plus, Calendar, Clock,
-  ArrowLeft, Hash, UserCheck, ChevronDown, Search
+  ArrowLeft, Hash, ChevronDown, Search
 } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";

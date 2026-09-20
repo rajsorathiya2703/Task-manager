@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useTimer } from '../../contexts/TimerContext';
-import { Square, Loader2, Play } from 'lucide-react';
+import { Square, Loader2 } from 'lucide-react';
 import { stopTaskTimer } from '../../lib/api';
 import Link from 'next/link';
 

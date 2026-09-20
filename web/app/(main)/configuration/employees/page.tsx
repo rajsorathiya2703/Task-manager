@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { fetchEmployees } from "../../../../src/lib/api";
 import { usePermissions } from "../../../../src/contexts/PermissionsContext";
-import { Plus, User, Building, Mail, Type, CheckCircle } from "lucide-react";
+import { User, Building, Mail, Type, CheckCircle } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../../src/components/common/GroupByDropdown";
 

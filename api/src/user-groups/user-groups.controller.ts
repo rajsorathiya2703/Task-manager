@@ -3,7 +3,10 @@ import { UserGroupsService } from './user-groups.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermission } from '../auth/decorators/permissions.decorator';
+import { RequireSystemAdmin } from '../auth/decorators/system-admin.decorator';
 import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
+import { CreateUserGroupDto } from './dto/create-user-group.dto';
+import { UpdateUserGroupDto } from './dto/update-user-group.dto';
 
 @Controller('user-groups')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -11,13 +14,14 @@ export class UserGroupsController {
   constructor(private readonly userGroupsService: UserGroupsService) {}
 
   @Post()
-  @RequirePermission({ module: 'settings', action: 'create' })
-  create(@Body() createUserGroupDto: any) {
+  @RequireSystemAdmin()
+  @RequirePermission({ module: 'user-groups', action: 'create' })
+  create(@Body() createUserGroupDto: CreateUserGroupDto) {
     return this.userGroupsService.create(createUserGroupDto);
   }
 
   @Get()
-  @RequirePermission({ module: 'settings', action: 'read' })
+  @RequirePermission({ module: 'user-groups', action: 'read' })
   findAll() {
     return this.userGroupsService.findAll();
   }
@@ -30,19 +34,21 @@ export class UserGroupsController {
   }
 
   @Get(':id')
-  @RequirePermission({ module: 'settings', action: 'read' })
+  @RequirePermission({ module: 'user-groups', action: 'read' })
   findOne(@Param('id') id: string) {
     return this.userGroupsService.findOne(id);
   }
 
   @Patch(':id')
-  @RequirePermission({ module: 'settings', action: 'update' })
-  update(@Param('id') id: string, @Body() updateUserGroupDto: any) {
+  @RequireSystemAdmin()
+  @RequirePermission({ module: 'user-groups', action: 'update' })
+  update(@Param('id') id: string, @Body() updateUserGroupDto: UpdateUserGroupDto) {
     return this.userGroupsService.update(id, updateUserGroupDto);
   }
 
   @Delete(':id')
-  @RequirePermission({ module: 'settings', action: 'delete' })
+  @RequireSystemAdmin()
+  @RequirePermission({ module: 'user-groups', action: 'delete' })
   remove(@Param('id') id: string) {
     return this.userGroupsService.remove(id);
   }

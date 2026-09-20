@@ -92,6 +92,10 @@ export class UsersService implements OnApplicationBootstrap {
     return this.userModel.findByIdAndUpdate(id, { $set: userDto }, { new: true }).exec();
   }
 
+  async countSystemAdmins(): Promise<number> {
+    return this.userModel.countDocuments({ is_system_admin: true }).exec();
+  }
+
   async remove(id: string): Promise<UserDocument | null> {
     return this.userModel.findByIdAndDelete(id).exec();
   }

@@ -1,16 +1,15 @@
 "use client";
 
-import React from "react";
-import { CalendarCheck, HeartPulse, Clock, ShieldAlert, Sparkles } from "lucide-react";
+import { CalendarCheck, HeartPulse, Clock, ShieldAlert } from "lucide-react";
 
 interface LeaveBalanceHeaderProps {
   balances: any[];
-  onApplyClick: () => void;
+  onApplyClick?: () => void;
 }
 
 export function LeaveBalanceHeader({
   balances,
-  onApplyClick,
+  onApplyClick: _onApplyClick,
 }: LeaveBalanceHeaderProps) {
   // Select icon based on leave type code/name
   const getLeaveIcon = (lt: any) => {

@@ -2,6 +2,13 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserGroup } from './schemas/user-group.schema';
+import {
+  CATALOG_MODULES,
+  CATALOG_OPERATIONS,
+  CATALOG_MODELS_AND_FIELDS,
+} from '../permissions/permissions.catalog';
+import { CreateUserGroupDto } from './dto/create-user-group.dto';
+import { UpdateUserGroupDto } from './dto/update-user-group.dto';
 
 @Injectable()
 export class UserGroupsService {
@@ -12,7 +19,7 @@ export class UserGroupsService {
   ) {}
 
   async ensureDefaultGroups(): Promise<{ adminGroup: UserGroup; employeeGroup: UserGroup }> {
-    const adminModules = ['tasks', 'projects', 'employees', 'teams', 'dayoff', 'reports', 'settings'];
+    const adminModules = ['tasks', 'projects', 'employees', 'teams', 'dayoff', 'reports', 'settings', 'users', 'user-groups'];
     const adminModulePermissions = adminModules.map((module) => ({
       module,
       create: true,
@@ -53,6 +60,10 @@ export class UserGroupsService {
       { module: 'reports', operation: 'reports.view' },
       { module: 'reports', operation: 'reports.export' },
       { module: 'reports', operation: 'reports.timesheets' },
+      { module: 'users', operation: 'users.manage' },
+      { module: 'users', operation: 'users.core' },
+      { module: 'user-groups', operation: 'user-groups.manage' },
+      { module: 'user-groups', operation: 'user-groups.core' },
       { module: 'settings', operation: 'settings.users' },
       { module: 'settings', operation: 'settings.user_groups' },
       { module: 'settings', operation: 'settings.system' },
@@ -81,12 +92,17 @@ export class UserGroupsService {
         operationPermissions: adminOperationPermissions,
       });
       this.logger.log('Created default "Administrators" user group.');
-    } else if (!adminGroup.operationPermissions || adminGroup.operationPermissions.length === 0) {
-      adminGroup.operationPermissions = adminOperationPermissions;
-      if (typeof (adminGroup as any).save === 'function') {
-        await (adminGroup as any).save();
+    } else {
+      const hasUsers = adminGroup.modulePermissions?.some((mp) => mp.module === 'users');
+      if (!hasUsers || !adminGroup.operationPermissions || adminGroup.operationPermissions.length === 0) {
+        adminGroup.permissions = adminPermissions;
+        adminGroup.modulePermissions = adminModulePermissions;
+        adminGroup.operationPermissions = adminOperationPermissions;
+        if (typeof (adminGroup as any).save === 'function') {
+          await (adminGroup as any).save();
+        }
+        this.logger.log('Synchronized permissions on existing "Administrators" user group.');
       }
-      this.logger.log('Synchronized operationPermissions on existing "Administrators" user group.');
     }
 
     const employeeModulePermissions = [
@@ -97,6 +113,8 @@ export class UserGroupsService {
       { module: 'dayoff', create: true, read: true, update: true, delete: true },
       { module: 'reports', create: false, read: true, update: false, delete: false },
       { module: 'settings', create: false, read: false, update: false, delete: false },
+      { module: 'users', create: false, read: false, update: false, delete: false },
+      { module: 'user-groups', create: false, read: false, update: false, delete: false },
     ];
     const employeePermissions = [
       'tasks:create', 'tasks:read', 'tasks:update', 'tasks:delete',
@@ -137,10 +155,24 @@ export class UserGroupsService {
       { module: 'reports', operation: 'reports.view', read: true, write: false, update: false, delete: false },
       { module: 'reports', operation: 'reports.export', read: false, write: false, update: false, delete: false },
       { module: 'reports', operation: 'reports.timesheets', read: true, write: false, update: false, delete: false },
+      // Users & User-groups (Strictly no access for standard employees)
+      { module: 'users', operation: 'users.manage', read: false, write: false, update: false, delete: false },
+      { module: 'users', operation: 'users.core', read: false, write: false, update: false, delete: false },
+      { module: 'user-groups', operation: 'user-groups.manage', read: false, write: false, update: false, delete: false },
+      { module: 'user-groups', operation: 'user-groups.core', read: false, write: false, update: false, delete: false },
       // Settings
       { module: 'settings', operation: 'settings.users', read: false, write: false, update: false, delete: false },
       { module: 'settings', operation: 'settings.user_groups', read: false, write: false, update: false, delete: false },
       { module: 'settings', operation: 'settings.system', read: false, write: false, update: false, delete: false },
+    ];
+
+    const employeeFieldPermissions = [
+      { model: 'employees', field: 'baseSalary', read: false, write: false, update: false, delete: false },
+      { model: 'employees', field: 'currency', read: false, write: false, update: false, delete: false },
+      { model: 'employees', field: 'payFrequency', read: false, write: false, update: false, delete: false },
+      { model: 'employees', field: 'bankAccountNumber', read: false, write: false, update: false, delete: false },
+      { model: 'employees', field: 'bankRoutingNumber', read: false, write: false, update: false, delete: false },
+      { model: 'employees', field: 'taxId', read: false, write: false, update: false, delete: false },
     ];
 
     let employeeGroup = await this.userGroupModel.findOne({
@@ -156,16 +188,23 @@ export class UserGroupsService {
         permissions: employeePermissions,
         modulePermissions: employeeModulePermissions,
         operationPermissions: employeeOperationPermissions,
+        fieldPermissions: employeeFieldPermissions,
       });
       this.logger.log('Created default "Employee" user group.');
     } else {
       const hasApprovals = employeeGroup.operationPermissions?.some((op) => op.operation === 'dayoff.approvals');
-      if (!hasApprovals || !employeeGroup.operationPermissions || employeeGroup.operationPermissions.length === 0) {
+      const hasUsers = employeeGroup.modulePermissions?.some((mp) => mp.module === 'users');
+      const hasFieldPermissions = employeeGroup.fieldPermissions && employeeGroup.fieldPermissions.length > 0;
+      if (!hasApprovals || !hasUsers || !hasFieldPermissions || !employeeGroup.operationPermissions || employeeGroup.operationPermissions.length === 0) {
+        employeeGroup.modulePermissions = employeeModulePermissions;
         employeeGroup.operationPermissions = employeeOperationPermissions;
+        if (!hasFieldPermissions) {
+          employeeGroup.fieldPermissions = employeeFieldPermissions as any;
+        }
         if (typeof (employeeGroup as any).save === 'function') {
           await (employeeGroup as any).save();
         }
-        this.logger.log('Synchronized operationPermissions on existing "Employee" user group.');
+        this.logger.log('Synchronized permissions on existing "Employee" user group.');
       }
     }
 
@@ -214,7 +253,45 @@ export class UserGroupsService {
     ).exec();
   }
 
-  async create(createUserGroupDto: any): Promise<UserGroup> {
+  validateGroupAgainstCatalog(dto: Partial<CreateUserGroupDto | UpdateUserGroupDto>): void {
+    if (dto.modulePermissions) {
+      for (const mp of dto.modulePermissions) {
+        if (!CATALOG_MODULES.includes(mp.module as any)) {
+          throw new BadRequestException(`Invalid module "${mp.module}" in modulePermissions.`);
+        }
+      }
+    }
+
+    if (dto.operationPermissions) {
+      for (const op of dto.operationPermissions) {
+        const match = CATALOG_OPERATIONS.find(
+          (co) => co.operation === op.operation && co.module === op.module,
+        );
+        if (!match) {
+          throw new BadRequestException(
+            `Invalid operation "${op.operation}" for module "${op.module}". Must match system permissions catalog.`,
+          );
+        }
+      }
+    }
+
+    if (dto.fieldPermissions) {
+      for (const fp of dto.fieldPermissions) {
+        const allowedFields = CATALOG_MODELS_AND_FIELDS[fp.model];
+        if (!allowedFields) {
+          throw new BadRequestException(`Invalid model "${fp.model}" in fieldPermissions.`);
+        }
+        if (!allowedFields.includes(fp.field)) {
+          throw new BadRequestException(
+            `Invalid field "${fp.field}" for model "${fp.model}". Allowed fields: ${allowedFields.join(', ')}.`,
+          );
+        }
+      }
+    }
+  }
+
+  async create(createUserGroupDto: CreateUserGroupDto): Promise<UserGroup> {
+    this.validateGroupAgainstCatalog(createUserGroupDto);
     const newGroup = new this.userGroupModel(createUserGroupDto);
     return newGroup.save();
   }
@@ -234,10 +311,28 @@ export class UserGroupsService {
     return group;
   }
 
-  async update(id: string, updateUserGroupDto: any): Promise<UserGroup> {
+  async update(id: string, updateUserGroupDto: UpdateUserGroupDto): Promise<UserGroup> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
+
+    this.validateGroupAgainstCatalog(updateUserGroupDto);
+
+    const existing = await this.userGroupModel.findById(id).exec();
+    if (!existing) {
+      throw new NotFoundException(`User Group #${id} not found`);
+    }
+
+    const existingNameLower = existing.name?.trim().toLowerCase();
+    const isSystemGroup = existingNameLower === 'administrators' || existingNameLower === 'employee';
+    if (
+      isSystemGroup &&
+      updateUserGroupDto.name &&
+      updateUserGroupDto.name.trim().toLowerCase() !== existingNameLower
+    ) {
+      throw new BadRequestException(`Cannot rename default system user group "${existing.name}".`);
+    }
+
     const updated = await this.userGroupModel.findByIdAndUpdate(
       id,
       { $set: updateUserGroupDto },

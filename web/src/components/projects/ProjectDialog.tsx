@@ -8,15 +8,12 @@ import {
   Check, 
   Trash2, 
   ExternalLink, 
-  Sparkles, 
   Folder, 
   Shield, 
-  Users, 
   Search, 
   ChevronDown 
 } from "lucide-react";
 import { Project } from "../../lib/data";
-import { PriorityBadge } from "../board/PriorityBadge";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { formatDisplayDate } from "../../lib/utils";

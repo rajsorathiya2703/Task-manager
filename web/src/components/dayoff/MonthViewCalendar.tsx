@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { ChevronLeft, ChevronRight, Plus, Calendar, CheckCircle2, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, CheckCircle2, Clock } from "lucide-react";
 
 interface MonthViewCalendarProps {
   currentDate: Date;

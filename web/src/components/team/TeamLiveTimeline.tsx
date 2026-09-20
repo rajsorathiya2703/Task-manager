@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchTeamActiveTasks } from "../../../src/lib/api";
-import { Clock, Play, User } from "lucide-react";
+import { fetchTeamActiveTasks } from "../../lib/api";
+import { Clock, Play } from "lucide-react";
 
 export function TeamLiveTimeline({ teamId }: { teamId: string }) {
   const [activeTasks, setActiveTasks] = useState<any[]>([]);

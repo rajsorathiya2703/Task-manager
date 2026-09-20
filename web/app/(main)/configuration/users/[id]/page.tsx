@@ -3,7 +3,7 @@
 import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  PanelLeft, Save, Check, X, Loader2,
+  PanelLeft, Check, X, Loader2,
   User as UserIcon, Mail, Shield, ShieldCheck, Globe, Sparkles,
   Calendar, ArrowLeft, Trash2, Briefcase, UserCheck
 } from "lucide-react";

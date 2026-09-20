@@ -1,5 +1,3 @@
-import React from 'react';
-
 export const metadata = {
   title: 'Settings - Task Manager',
   description: 'Manage your Task Manager preferences and settings.',

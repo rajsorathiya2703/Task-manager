@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { ShieldAlert, X, Lock, AlertTriangle } from "lucide-react";
+import { ShieldAlert, X, Lock } from "lucide-react";
 
 interface AccessDeniedModalProps {
   isOpen: boolean;

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
@@ -28,7 +27,6 @@ const PyramidLogo = () => (
 );
 
 export function LoginCard() {
-  const router = useRouter();
   const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
   const [error, setError] = useState<string | null>(null);

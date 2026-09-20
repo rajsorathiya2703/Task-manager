@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { Plus, Edit2, Trash2, CheckCircle, XCircle, Tag } from "lucide-react";
+import { Plus, CheckCircle, XCircle } from "lucide-react";
 import { deleteLeaveType } from "../../../lib/api";
 
 interface LeaveTypeListProps {

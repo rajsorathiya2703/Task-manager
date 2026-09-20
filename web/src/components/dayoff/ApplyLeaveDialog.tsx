@@ -8,7 +8,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Sparkles,
   ChevronDown,
   Check,
 } from "lucide-react";

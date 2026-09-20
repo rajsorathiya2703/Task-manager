@@ -58,11 +58,6 @@ export class DashboardService {
     return { currentStart, currentEnd, prevStart, prevEnd };
   }
 
-  private calcDeltaPct(current: number, prev: number): number {
-    if (prev === 0) return current > 0 ? 100 : 0;
-    return Math.round(((current - prev) / prev) * 100 * 10) / 10;
-  }
-
   private getLevel(hours: number): 0 | 1 | 2 | 3 | 4 {
     if (hours <= 0) return 0;
     if (hours <= 2) return 1;
@@ -364,9 +359,6 @@ export class DashboardService {
       },
     ]);
 
-    // 4. Active employees query (kept for internal use, removed from KPI cards)
-    const activeEmployeesCount = await this.employeeModel.countDocuments({ status: 'Active' }).exec();
-
     // 5. Per-employee KPIs: tasks completed & open tasks for the selected (current-user) employee
     let userTasksCompleted = 0;
     let userOpenTasks = 0;
@@ -476,14 +468,6 @@ export class DashboardService {
         pct: statusTotal > 0 ? Math.round((r.count / statusTotal) * 1000) / 10 : 0,
       }));
     }
-    // 6. Status distribution
-    const statusCounts: { _id: string; count: number }[] = facetResults?.statusDistribution || [];
-    const totalStatusCount = statusCounts.reduce((sum, s) => sum + s.count, 0);
-    const statusDistribution = statusCounts.map((s) => ({
-      status: s._id,
-      count: s.count,
-      pct: totalStatusCount > 0 ? Math.round((s.count / totalStatusCount) * 1000) / 10 : 0,
-    }));
 
     // 7. Top performers
     const completedByAssignee = new Map<string, number>();
