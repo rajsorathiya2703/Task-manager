@@ -302,6 +302,13 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
         return false;
       }
 
+      const actKey = (action === "write" ? "create" : action) as ActionKey;
+
+      // Fail-closed: User cannot perform field action if parent module permission is not granted
+      if (!can(model, actKey)) {
+        return false;
+      }
+
       // Check compensation operation permissions for employee payroll fields
       const PAYROLL_FIELDS = [
         "baseSalary",
@@ -314,10 +321,18 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (model === "employees" && PAYROLL_FIELDS.includes(field)) {
         const compPerm = operationPermissions["employees.compensation"];
         if (compPerm) {
-          const actKey = (action === "write" ? "create" : action) as keyof ActionPerms;
           if (compPerm[actKey] === false) {
             return false;
           }
+        }
+      }
+
+      // Check core operation permissions if applicable (e.g. tasks.core for tasks)
+      const coreOpKey = `${model}.core`;
+      if (operationPermissions[coreOpKey]) {
+        const opActionKey = (action === "write" ? "write" : action) as keyof ActionPerms;
+        if (operationPermissions[coreOpKey][opActionKey] === false) {
+          return false;
         }
       }
 
@@ -334,7 +349,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       const fieldActionKey = action as keyof FieldPerms;
       return fieldPerm[fieldActionKey] ?? true;
     },
-    [status, groups, fieldPermissions, operationPermissions]
+    [status, groups, fieldPermissions, operationPermissions, can]
   );
 
   // FAIL-CLOSED: Helper to resolve scope for a module

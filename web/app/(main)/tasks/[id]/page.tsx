@@ -13,6 +13,7 @@ import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, st
 import { useTimer } from "../../../../src/contexts/TimerContext";
 import { getUserDisplayName } from "../../../../src/components/common/Comments";
 import { RecordNavigator } from "../../../../src/components/common/RecordNavigator";
+import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -53,6 +54,12 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     timeEntries: [],
     isOwner: true,
   });
+
+  const { can, status: permStatus } = usePermissions();
+  const isOwner = taskData?.isOwner !== false;
+  const canUpdateTask = isNew 
+    ? (permStatus === 'ready' ? can('tasks', 'create') : true) 
+    : (isOwner && (permStatus === 'ready' ? can('tasks', 'update') : false));
 
   const [allTaskIds, setAllTaskIds] = useState<string[]>([]);
 
@@ -280,20 +287,26 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   const handleUpdate = async () => {
+    if (!canUpdateTask) return;
     try {
       setIsSaving(true);
-      const updatePayload: any = {
-        title: taskData.title,
-        ...(taskData.description !== undefined && { description: taskData.description }),
-        ...(taskData.status && { status: taskData.status }),
-        ...(taskData.priority && { priority: taskData.priority }),
-        ...(taskData.startDate ? { startDate: taskData.startDate } : {}),
-        ...(taskData.dueDate ? { dueDate: taskData.dueDate } : {}),
-        ...(taskData.estimatedHours !== undefined ? { estimatedHours: taskData.estimatedHours } : {}),
-        ...(taskData.assignee !== undefined ? { assignee: taskData.assignee ? (taskData.assignee._id || taskData.assignee) : null } : {}),
-        ...(taskData.tags ? { tags: taskData.tags } : {}),
-        ...(taskData.resources ? { resources: taskData.resources } : {}),
-      };
+      const updatePayload: any = {};
+      if (taskData.title !== originalData?.title) updatePayload.title = taskData.title;
+      if (taskData.description !== originalData?.description) updatePayload.description = taskData.description;
+      if (taskData.status !== originalData?.status) updatePayload.status = taskData.status;
+      if (taskData.priority !== originalData?.priority) updatePayload.priority = taskData.priority;
+      if (taskData.startDate !== originalData?.startDate) updatePayload.startDate = taskData.startDate;
+      if (taskData.dueDate !== originalData?.dueDate) updatePayload.dueDate = taskData.dueDate;
+      if (taskData.estimatedHours !== originalData?.estimatedHours) updatePayload.estimatedHours = taskData.estimatedHours;
+      if (taskData.assignee !== originalData?.assignee) {
+        updatePayload.assignee = taskData.assignee ? (taskData.assignee._id || taskData.assignee) : null;
+      }
+      if (JSON.stringify(taskData.tags) !== JSON.stringify(originalData?.tags)) updatePayload.tags = taskData.tags;
+      if (JSON.stringify(taskData.resources) !== JSON.stringify(originalData?.resources)) updatePayload.resources = taskData.resources;
+
+      if (Object.keys(updatePayload).length === 0) {
+        return;
+      }
       const updated = await updateTask(id, updatePayload);
       if (updated) {
         const mappedData = {
@@ -428,7 +441,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               </button>
               <button 
                 onClick={handleUpdate}
-                disabled={isSaving || !taskData.title?.trim()}
+                disabled={isSaving || !taskData.title?.trim() || !canUpdateTask}
                 className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -455,7 +468,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               taskId={id}
               taskData={taskData} 
               setTaskData={setTaskData} 
-              isEditable={true} 
+              isEditable={canUpdateTask} 
               onStartTimer={handleStartTimer}
               onStopTimer={handleStopTimer}
               isTimerLoading={isTimerLoading}

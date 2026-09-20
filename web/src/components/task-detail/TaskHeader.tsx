@@ -99,11 +99,14 @@ export function TaskHeader({
 
   const [currentUser, setCurrentUser] = useState<any>(null);
 
+  const isOwner = isNew || taskData?.isOwner !== false;
+
   // Field-level permission checks
   const { canField, status: permStatus } = usePermissions();
-  const canEditTitle       = permStatus === 'ready' ? canField('tasks', 'title',       'update') : true;
-  const canEditDescription = permStatus === 'ready' ? canField('tasks', 'description', 'update') : true;
-  const canEditResources   = permStatus === 'ready' ? canField('tasks', 'resources',   'update') : true;
+  const actionKey = isNew ? 'create' : 'update';
+  const canEditTitle       = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'title',       actionKey) : isNew);
+  const canEditDescription = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'description', actionKey) : isNew);
+  const canEditResources   = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'resources',   actionKey) : isNew);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -140,7 +143,7 @@ export function TaskHeader({
     <div className="space-y-6 mb-8">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2 flex-1">
-          {isEditable && canEditTitle ? (
+          {canEditTitle ? (
             <input 
               type="text" 
               value={title} 
@@ -151,15 +154,15 @@ export function TaskHeader({
           ) : (
             <div className="flex items-start gap-2">
               <h1 className="text-2xl font-bold text-foreground flex-1">{title || 'Untitled Task'}</h1>
-              {isEditable && !canEditTitle && (
-                <span title="Read-only field" className="mt-1.5 shrink-0">
+              {!canEditTitle && (
+                <span title="Read-only field" className="mt-1.5 shrink-0 inline-flex items-center">
                   <Lock className="w-4 h-4 text-muted-foreground/60" />
                 </span>
               )}
             </div>
           )}
           
-          {isEditable && canEditDescription ? (
+          {canEditDescription ? (
             <textarea 
               value={description} 
               onChange={handleDescChange}
@@ -169,8 +172,8 @@ export function TaskHeader({
           ) : (
             <div className="flex items-start gap-1.5">
               <p className="text-muted-foreground text-sm flex-1">{description || <span className="italic opacity-50">No description</span>}</p>
-              {isEditable && !canEditDescription && (
-                <span title="Read-only field" className="mt-0.5 shrink-0">
+              {!canEditDescription && (
+                <span title="Read-only field" className="mt-0.5 shrink-0 inline-flex items-center">
                   <Lock className="w-3.5 h-3.5 text-muted-foreground/60" />
                 </span>
               )}
