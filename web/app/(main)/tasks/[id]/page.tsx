@@ -59,7 +59,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const isOwner = taskData?.isOwner !== false;
   const canUpdateTask = isNew 
     ? (permStatus === 'ready' ? can('tasks', 'create') : true) 
-    : (isOwner && (permStatus === 'ready' ? can('tasks', 'update') : false));
+    : (isOwner || (permStatus === 'ready' ? can('tasks', 'update') : true));
 
   const [allTaskIds, setAllTaskIds] = useState<string[]>([]);
 

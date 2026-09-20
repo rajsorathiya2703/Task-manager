@@ -102,11 +102,12 @@ export function TaskHeader({
   const isOwner = isNew || taskData?.isOwner !== false;
 
   // Field-level permission checks
-  const { canField, status: permStatus } = usePermissions();
+  const { can, canField, status: permStatus } = usePermissions();
   const actionKey = isNew ? 'create' : 'update';
-  const canEditTitle       = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'title',       actionKey) : isNew);
-  const canEditDescription = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'description', actionKey) : isNew);
-  const canEditResources   = isEditable !== false && isOwner && (permStatus === 'ready' ? canField('tasks', 'resources',   actionKey) : isNew);
+  const hasUpdateAccess = isOwner || (permStatus === 'ready' ? can('tasks', actionKey) : true);
+  const canEditTitle       = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'title',       actionKey) : true);
+  const canEditDescription = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'description', actionKey) : true);
+  const canEditResources   = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'resources',   actionKey) : true);
 
   useEffect(() => {
     const loadUser = async () => {

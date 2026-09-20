@@ -24,14 +24,15 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
   const [isAssigningBack, setIsAssigningBack] = useState(false);
 
   // Field-level permission checks (tasks model)
-  const { canField, status: permStatus } = usePermissions();
-  const canEditStatus   = permStatus === 'ready' ? canField('tasks', 'status',         'update') : true;
-  const canEditPriority = permStatus === 'ready' ? canField('tasks', 'priority',       'update') : true;
-  const canEditHours    = permStatus === 'ready' ? canField('tasks', 'estimatedHours', 'update') : true;
-  const canEditAssignee = permStatus === 'ready' ? canField('tasks', 'assignee',       'update') : true;
-  const canEditDates    = permStatus === 'ready' ?
-    (canField('tasks', 'startDate', 'update') && canField('tasks', 'dueDate', 'update')) : true;
-  const canEditTags     = permStatus === 'ready' ? canField('tasks', 'tags',           'update') : true;
+  const { can, canField, status: permStatus } = usePermissions();
+  const hasUpdateAccess = isOwner || (permStatus === 'ready' ? can('tasks', 'update') : true);
+  const canEditStatus   = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'status',         'update') : true);
+  const canEditPriority = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'priority',       'update') : true);
+  const canEditHours    = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'estimatedHours', 'update') : true);
+  const canEditAssignee = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'assignee',       'update') : true);
+  const canEditDates    = hasUpdateAccess && (permStatus === 'ready' ?
+    (canField('tasks', 'startDate', 'update') && canField('tasks', 'dueDate', 'update')) : true);
+  const canEditTags     = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'tags',           'update') : true);
 
   useEffect(() => {
     import("../../../src/lib/api").then(async ({ fetchMe }) => {
@@ -112,7 +113,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
   }, [taskData?.startDate, taskData?.dueDate]);
 
   const handleSelectRange = (selectedRange: any) => {
-    if (!isOwner) return;
+    if (!canEditDates) return;
     setRange(selectedRange);
     if (setTaskData && taskData) {
       setTaskData({
@@ -209,7 +210,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Status */}
           <div className="text-muted-foreground">Status</div>
           <div className="relative w-full">
-            {isOwner && canEditStatus ? (
+            {canEditStatus ? (
               <Popover>
                 <Popover.Button className="flex items-center gap-2 font-medium text-foreground outline-none">
                   <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
@@ -234,7 +235,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                 <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
                 {taskData?.status || "To Do"}
-                {isOwner && !canEditStatus && (
+                {!canEditStatus && (
                   <span title="Read-only field" className="inline-flex items-center ml-1">
                     <Lock className="w-3 h-3 text-muted-foreground/60" />
                   </span>
@@ -246,7 +247,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Priority (Dropdown) */}
           <div className="text-muted-foreground">Priority</div>
           <div className="relative w-full">
-            {isOwner && canEditPriority ? (
+            {canEditPriority ? (
               <Popover>
                 <Popover.Button className="flex items-center gap-1.5 font-medium outline-none">
                   <PriorityBadge priority={priority as any} />
@@ -283,7 +284,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
             ) : (
               <div className="flex items-center gap-1.5 font-medium">
                 <PriorityBadge priority={priority as any} />
-                {isOwner && !canEditPriority && (
+                {!canEditPriority && (
                   <span title="Read-only field" className="inline-flex items-center ml-1">
                     <Lock className="w-3 h-3 text-muted-foreground/60" />
                   </span>
@@ -295,7 +296,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Assigned Time (Hours) */}
           <div className="text-muted-foreground">Assign Time</div>
           <div className="flex items-center gap-2">
-            {isOwner && canEditHours ? (
+            {canEditHours ? (
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -316,7 +317,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
             ) : (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold text-foreground">{taskData?.estimatedHours || 0} Hours</span>
-                {isOwner && !canEditHours && (
+                {!canEditHours && (
                   <span title="Read-only field" className="inline-flex items-center">
                     <Lock className="w-3 h-3 text-muted-foreground/60" />
                   </span>
@@ -347,7 +348,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Member Assignment (Single Member) */}
           <div className="text-muted-foreground self-start mt-1">Assignee</div>
           <div className="relative w-full flex flex-col gap-2">
-            {isOwner && canEditAssignee ? (
+            {canEditAssignee ? (
               <Popover>
                 <Popover.Button className="flex items-center gap-1.5 text-muted-foreground font-medium outline-none hover:text-foreground transition-colors text-left">
                   <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -384,6 +385,9 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
                               }
                             }}
                           >
+                            <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                              {member.fullName?.firstName?.[0] || member.name?.[0] || 'U'}
+                            </div>
                             <div className="flex-1 overflow-hidden">
                               <div className="text-xs font-semibold truncate">
                                 {member.fullName?.firstName} {member.fullName?.lastName}
@@ -404,11 +408,14 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
                   )}
 
                   {taskData?.assignee && (
-                    <div className="mt-4 pt-3 border-t border-border">
-                      <div className="text-xs font-semibold text-muted-foreground mb-2">Currently Assigned</div>
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-foreground">
+                    <div className="border-t border-border mt-3 pt-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Current Assignee</div>
+                      <div className="flex items-center gap-2 p-1 bg-muted/40 rounded">
+                        <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
+                          {taskData.assignee.fullName?.firstName?.[0] || taskData.assignee.name?.[0] || 'U'}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-medium text-foreground truncate">
                             {taskData.assignee.fullName?.firstName} {taskData.assignee.fullName?.lastName}
                           </span>
                           <span className="text-[10px] text-muted-foreground">{taskData.assignee.role}</span>
@@ -422,7 +429,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
               <div className="flex items-center gap-1.5 font-medium text-foreground">
                 <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name) : 'Unassigned'}</span>
-                {isOwner && !canEditAssignee && (
+                {!canEditAssignee && (
                   <span title="Read-only field" className="inline-flex items-center ml-1">
                     <Lock className="w-3 h-3 text-muted-foreground/60" />
                   </span>
@@ -447,7 +454,7 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Dates (Calendar Popover - Start & End Date Range) */}
           <div className="text-muted-foreground">Dates</div>
           <div className="relative w-full">
-            {isOwner && canEditDates ? (
+            {canEditDates ? (
               <Popover className="relative">
                 <Popover.Button className="flex items-center gap-2 px-2 py-1 bg-muted/50 border border-border/50 rounded-md font-medium text-foreground outline-none hover:bg-muted transition-colors">
                   <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
