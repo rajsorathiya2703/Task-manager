@@ -16,7 +16,7 @@ interface SidebarProps {
 export function Sidebar({ user }: SidebarProps) {
   const { isOpen, setIsOpen, toggleSidebar } = useSidebar();
   const { isOpen: isChatbotOpen, toggleChatbot } = useChatbot();
-  const { can } = usePermissions();
+  const { can, status } = usePermissions();
   const pathname = usePathname();
 
   // Day Off / Time Off Module Toggle
@@ -28,16 +28,16 @@ export function Sidebar({ user }: SidebarProps) {
   const hasProjectsAccess = can("projects", "read");
   const hasTimelineAccess = can("tasks", "read") || can("projects", "read");
 
-  const isSystemAdmin = user?.is_system_admin !== false;
+  const isSystemAdmin = Boolean(user?.is_system_admin === true);
   const hasTeamAccess = can("teams", "read");
-  const hasEmployeesAccess = isSystemAdmin && can("employees", "read");
-  const hasUsersAccess = isSystemAdmin && (can("users", "read") || can("settings", "read"));
-  const hasUserGroupsAccess = isSystemAdmin && (can("user-groups", "read") || can("settings", "read"));
+  const hasEmployeesAccess = isSystemAdmin || can("employees", "read");
+  const hasUsersAccess = isSystemAdmin || can("users", "read");
+  const hasUserGroupsAccess = isSystemAdmin || can("user-groups", "read");
 
   // Time Off permissions
   const hasTimeOffSection = dayOffEnabled;
-  const hasTimeOffApprovals = dayOffEnabled && (isSystemAdmin || can("employees", "read"));
-  const hasTimeOffPolicies = dayOffEnabled && isSystemAdmin;
+  const hasTimeOffApprovals = dayOffEnabled && (isSystemAdmin || can("dayoff", "update") || can("employees", "read"));
+  const hasTimeOffPolicies = dayOffEnabled && (isSystemAdmin || can("dayoff", "update"));
 
   const hasWorkspaceSection = isEmployee || hasTasksAccess || hasProjectsAccess || hasTimelineAccess;
   const hasConfigurationSection =
@@ -104,6 +104,23 @@ export function Sidebar({ user }: SidebarProps) {
               </span>
             </button>
           </div>
+
+          {/* Loading Skeleton */}
+          {status === "loading" && (
+            <div className="space-y-4 px-1 py-1 animate-pulse">
+              <div className="h-3 w-20 bg-muted/80 rounded" />
+              <div className="space-y-2">
+                <div className="h-8 bg-muted/50 rounded-lg w-full" />
+                <div className="h-8 bg-muted/50 rounded-lg w-full" />
+                <div className="h-8 bg-muted/50 rounded-lg w-full" />
+              </div>
+              <div className="h-3 w-24 bg-muted/80 rounded mt-4" />
+              <div className="space-y-2">
+                <div className="h-8 bg-muted/50 rounded-lg w-full" />
+                <div className="h-8 bg-muted/50 rounded-lg w-full" />
+              </div>
+            </div>
+          )}
 
           {/* Workspace Section */}
           {hasWorkspaceSection && (

@@ -1,53 +1,50 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { usePathname } from "next/navigation";
 import { fetchMyPermissions, setAccessDeniedHandler } from "../lib/api";
 import { AccessDeniedModal } from "../components/common/AccessDeniedModal";
+import {
+  ActionKey,
+  ActionPerms,
+  FieldPerms,
+  ModuleKey,
+  PermissionsContextType,
+  PermissionsStatus,
+  ScopeKey,
+} from "../types/permissions";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
-export interface ActionPerms {
-  create: boolean;
-  read: boolean;
-  update: boolean;
-  delete: boolean;
-}
-
-export interface FieldPerms {
-  read: boolean;
-  write: boolean;
-  update: boolean;
-  delete: boolean;
-}
-
-export interface PermissionsContextType {
-  groups: string[];
-  modulePermissions: Record<string, ActionPerms>;
-  operationPermissions: Record<string, ActionPerms>;
-  fieldPermissions: Record<string, Record<string, FieldPerms>>;
-  isLoading: boolean;
-  refreshPermissions: () => Promise<void>;
-  can: (module: string, action: "create" | "read" | "update" | "delete") => boolean;
-  canOperation: (
-    operation: string,
-    action: "create" | "read" | "update" | "delete" | "write"
-  ) => boolean;
-  canField: (
-    model: string,
-    field: string,
-    action: "read" | "write" | "update" | "delete"
-  ) => boolean;
-  showAccessDenied: (message?: string, title?: string) => void;
-  closeAccessDenied: () => void;
-}
+export type { ActionPerms, FieldPerms, PermissionsContextType };
 
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
 
-export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const RETRY_DELAYS = [1000, 2000, 4000];
+
+export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [status, setStatus] = useState<PermissionsStatus>("loading");
+  const [isStale, setIsStale] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
   const [groups, setGroups] = useState<string[]>([]);
   const [modulePermissions, setModulePermissions] = useState<Record<string, ActionPerms>>({});
+  const [moduleScopes, setModuleScopes] = useState<Record<string, ScopeKey>>({});
   const [operationPermissions, setOperationPermissions] = useState<Record<string, ActionPerms>>({});
   const [fieldPermissions, setFieldPermissions] = useState<Record<string, Record<string, FieldPerms>>>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [version, setVersion] = useState<string>("");
+
+  const versionRef = useRef<string>("");
+  const isMountedRef = useRef<boolean>(true);
+  const isFetchingRef = useRef<boolean>(false);
   const pathname = usePathname();
 
   // Access Denied Modal State
@@ -82,34 +79,159 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     pathname === "/" ||
     pathname.startsWith("/auth");
 
-  const refreshPermissions = useCallback(async () => {
-    if (isPublicPage) {
-      setIsLoading(false);
-      return;
-    }
+  // Core fetch logic with version comparison and retry
+  const fetchWithRetry = useCallback(async (maxRetries = 0): Promise<any> => {
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+      try {
+        const data = await fetchMyPermissions();
+        return data;
+      } catch (err: any) {
+        if (err?.response?.status === 401) {
+          if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+            window.location.href = "/login";
+          }
+          throw err;
+        }
 
-    try {
-      const data = await fetchMyPermissions();
-      if (data) {
-        setGroups(data.groups || []);
-        setModulePermissions(data.modulePermissions || {});
-        setOperationPermissions(data.operationPermissions || {});
-        setFieldPermissions(data.fieldPermissions || {});
+        if (attempt < maxRetries) {
+          const delay = RETRY_DELAYS[attempt] || 4000;
+          await new Promise((res) => setTimeout(res, delay));
+          attempt++;
+        } else {
+          throw err;
+        }
       }
-    } catch (err) {
-      console.warn("Failed to load user permissions", err);
-    } finally {
-      setIsLoading(false);
     }
-  }, [isPublicPage]);
+  }, []);
 
+  const refreshPermissions = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (isPublicPage) {
+        setStatus("ready");
+        return;
+      }
+
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
+      const isSilent = opts?.silent ?? false;
+      if (!isSilent && status !== "ready") {
+        setStatus("loading");
+      }
+
+      try {
+        // If not ready yet, retry up to 3 times
+        const retryCount = status === "ready" ? 0 : 3;
+        const data = await fetchWithRetry(retryCount);
+
+        if (!isMountedRef.current) return;
+
+        if (data) {
+          const newVersion = data.version || "";
+          if (!newVersion || newVersion !== versionRef.current) {
+            versionRef.current = newVersion;
+            setGroups(data.groups || []);
+            setModulePermissions(data.modulePermissions || {});
+            setModuleScopes(data.moduleScopes || {});
+            setOperationPermissions(data.operationPermissions || {});
+            setFieldPermissions(data.fieldPermissions || {});
+            setVersion(newVersion);
+          }
+          setStatus("ready");
+          setIsStale(false);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (!isMountedRef.current) return;
+        console.warn("[PermissionsContext] Failed to load user permissions", err);
+
+        if (status === "ready") {
+          // Already have cached permissions, silently flag as stale
+          setIsStale(true);
+        } else {
+          // Initial load failed after all retries: fail closed
+          setStatus("error");
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
+      } finally {
+        isFetchingRef.current = false;
+      }
+    },
+    [isPublicPage, status, fetchWithRetry]
+  );
+
+  // Mount tracking
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // 1. Initial load on mount
   useEffect(() => {
     refreshPermissions();
   }, [refreshPermissions]);
 
-  // Helper to check module permission
+  // 2. Route changes
+  useEffect(() => {
+    if (!isPublicPage && status === "ready") {
+      refreshPermissions({ silent: true });
+    }
+  }, [pathname, isPublicPage, refreshPermissions, status]);
+
+  // 3. Window focus, visibility change, 60s periodic timer, 403 event
+  useEffect(() => {
+    if (isPublicPage) return;
+
+    const handleFocus = () => {
+      refreshPermissions({ silent: true });
+    };
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        refreshPermissions({ silent: true });
+      }
+    };
+
+    const handleForbidden = () => {
+      refreshPermissions({ silent: true });
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleFocus);
+      window.addEventListener("antigravity:forbidden", handleForbidden);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    // 60-second periodic refresh
+    const interval = setInterval(() => {
+      refreshPermissions({ silent: true });
+    }, 60_000);
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("antigravity:forbidden", handleForbidden);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+      clearInterval(interval);
+    };
+  }, [isPublicPage, refreshPermissions]);
+
+  // FAIL-CLOSED: Helper to check module permission
   const can = useCallback(
-    (module: string, action: "create" | "read" | "update" | "delete"): boolean => {
+    (module: ModuleKey | string, action: ActionKey): boolean => {
+      // Fail closed: never grant access while loading or in error state
+      if (status !== "ready") {
+        return false;
+      }
+
       // Full access comes ONLY from an "Administrators" group
       if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
@@ -122,27 +244,25 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       const mod = modulePermissions[module];
       if (!mod) {
-        // Module not explicitly permitted: deny by default
         return false;
       }
 
       return Boolean(mod[action]);
     },
-    [groups, modulePermissions]
+    [status, groups, modulePermissions]
   );
 
-  // Helper to check granular operation permission (e.g., "tasks.comments", "dayoff.approvals")
+  // FAIL-CLOSED: Helper to check granular operation permission
   const canOperation = useCallback(
-    (
-      operation: string,
-      action: "create" | "read" | "update" | "delete" | "write"
-    ): boolean => {
-      // Full access comes ONLY from an "Administrators" group
+    (operation: string, action: ActionKey | "write"): boolean => {
+      if (status !== "ready") {
+        return false;
+      }
+
       if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
       }
 
-      // Deny by default: If user is not assigned to any group, deny access
       if (!groups || groups.length === 0) {
         return false;
       }
@@ -164,22 +284,20 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       return false;
     },
-    [groups, operationPermissions, modulePermissions]
+    [status, groups, operationPermissions, modulePermissions]
   );
 
-  // Helper to check field-level permission
+  // FAIL-CLOSED: Helper to check field-level permission
   const canField = useCallback(
-    (
-      model: string,
-      field: string,
-      action: "read" | "write" | "update" | "delete"
-    ): boolean => {
-      // Full access comes ONLY from an "Administrators" group
+    (model: string, field: string, action: ActionKey | "write"): boolean => {
+      if (status !== "ready") {
+        return false;
+      }
+
       if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
         return true;
       }
 
-      // Deny by default: If user is not assigned to any group, deny access
       if (!groups || groups.length === 0) {
         return false;
       }
@@ -213,27 +331,84 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return true;
       }
 
-      return fieldPerm[action] ?? true;
+      const fieldActionKey = action as keyof FieldPerms;
+      return fieldPerm[fieldActionKey] ?? true;
     },
-    [groups, fieldPermissions, operationPermissions]
+    [status, groups, fieldPermissions, operationPermissions]
   );
+
+  // FAIL-CLOSED: Helper to resolve scope for a module
+  const scopeOf = useCallback(
+    (module: ModuleKey | string): ScopeKey => {
+      if (status !== "ready") {
+        return "own";
+      }
+
+      if (groups.some((g) => g.trim().toLowerCase() === "administrators")) {
+        return "all";
+      }
+
+      return moduleScopes[module] || "own";
+    },
+    [status, groups, moduleScopes]
+  );
+
+  // FAIL-CLOSED: Helper to check if a specific field is editable
+  const isFieldEditable = useCallback(
+    (model: string, field: string): boolean => {
+      if (status !== "ready") {
+        return false;
+      }
+      return canField(model, field, "update");
+    },
+    [status, canField]
+  );
+
+  const isReady = status === "ready";
+  const isLoading = status === "loading";
 
   return (
     <PermissionsContext.Provider
       value={{
+        status,
+        isReady,
+        isLoading,
+        isStale,
+        error,
         groups,
         modulePermissions,
+        moduleScopes,
         operationPermissions,
         fieldPermissions,
-        isLoading,
+        version,
         refreshPermissions,
         can,
         canOperation,
         canField,
+        scopeOf,
+        isFieldEditable,
         showAccessDenied,
         closeAccessDenied,
       }}
     >
+      {status === "error" && (
+        <div className="w-full bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-600 dark:text-amber-400 flex items-center justify-between z-50 sticky top-0 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>
+              Unable to sync latest permissions. Some features may be restricted.
+            </span>
+          </div>
+          <button
+            onClick={() => refreshPermissions()}
+            className="flex items-center gap-1 font-semibold underline hover:text-amber-700 dark:hover:text-amber-300 transition-colors cursor-pointer"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Retry
+          </button>
+        </div>
+      )}
+
       {children}
       <AccessDeniedModal
         isOpen={isAccessDeniedOpen}

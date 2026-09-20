@@ -28,14 +28,16 @@ export class EmployeesController {
 
   @Get()
   @RequirePermission({ module: 'employees', action: 'read', model: 'employees' })
-  findAll() {
-    return this.employeesService.findAll();
+  findAll(@Req() req: any) {
+    const scope = req.permissionScope || 'own';
+    return this.employeesService.findAll(req.user, scope);
   }
 
   @Get(':id')
   @RequirePermission({ module: 'employees', action: 'read', model: 'employees' })
-  findOne(@Param('id') id: string) {
-    return this.employeesService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    const scope = req.permissionScope || 'own';
+    return this.employeesService.findOne(id, req.user, scope);
   }
 
   /**

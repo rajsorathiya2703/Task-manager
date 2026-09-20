@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { UserGroupsService } from '../user-groups/user-groups.service';
 import { withAuthContext, buildAuthContextFromToken } from './helpers/toolContext';
-import { TOOL_DEFINITIONS, executeToolByName, TOOL_MODULE_MAP } from './helpers/toolRegistry';
+import { TOOL_DEFINITIONS, executeToolByName, filterToolsForUser } from './helpers/toolRegistry';
 
 @Injectable()
 export class ChatbotService {
@@ -19,8 +19,8 @@ export class ChatbotService {
    * chat — the core AI agent loop.
    *
    * 1. Fetches the user's effective permissions from their User Groups.
-   * 2. Filters out tools for any module the user cannot access (Layer 1 RBAC).
-   * 3. Sends the user prompt to Claude with only the permitted tools.
+   * 2. Filters tools based on catalog requirements and prunes unpermitted fields (Layer 1 RBAC).
+   * 3. Sends the user prompt to Claude with only the permitted tools and pruned schemas.
    * 4. Handles Claude's tool_use blocks in a loop (multi-step reasoning).
    * 5. Returns the final conversational response.
    */
@@ -30,46 +30,15 @@ export class ChatbotService {
     userMessage: string,
   ): Promise<{ message: string; toolsUsed: string[] }> {
     // ── Step 1: Resolve user permissions ───────────────────────────────────
-    const userPerms = await this.userGroupsService.getUserPermissions(userId);
-    const isAdministrator = userPerms.groups.some(
-      (g) => g.trim().toLowerCase() === 'administrators',
+    const effectiveGroups = await this.userGroupsService.getEffectiveGroups(userId);
+    const user = { id: userId };
+
+    // ── Step 2: Dynamic tool scoping & field pruning (Layer 1 RBAC) ────────
+    const { allowedTools, deniedModules } = filterToolsForUser(
+      TOOL_DEFINITIONS,
+      effectiveGroups,
+      user,
     );
-    const hasGroups = userPerms.groups.length > 0;
-
-    // ── Step 2: Dynamic tool scoping (Layer 1 RBAC) ────────────────────────
-    // For each tool, check if the user's permissions allow access to that tool's module.
-    const allowedTools = TOOL_DEFINITIONS.filter((tool) => {
-      const moduleName = TOOL_MODULE_MAP[tool.name];
-      if (!moduleName) return true; // tools not tied to a module (e.g. get_me) are always allowed
-
-      // Full access comes ONLY from Administrators group
-      if (isAdministrator) return true;
-
-      // Deny by default: If user has no groups, deny access to module-tied tools
-      if (!hasGroups) return false;
-
-      const modPerm = userPerms.modulePermissions?.[moduleName];
-      if (!modPerm) {
-        const hasLegacy =
-          userPerms.permissions?.includes(`${moduleName}:manage`) ||
-          userPerms.permissions?.includes(`${moduleName}:read`) ||
-          userPerms.permissions?.includes(`${moduleName}:create`) ||
-          userPerms.permissions?.includes(`${moduleName}:update`) ||
-          userPerms.permissions?.includes(`${moduleName}:view`);
-        return Boolean(hasLegacy);
-      }
-
-      // Allow the tool if at least one relevant CRUD action is permitted
-      return Boolean(modPerm.read || modPerm.create || modPerm.update || modPerm.delete);
-    });
-
-    const allowedModules = [...new Set(allowedTools.map((t) => TOOL_MODULE_MAP[t.name]).filter(Boolean))];
-    const deniedModules = [...new Set(
-      TOOL_DEFINITIONS
-        .map((t) => TOOL_MODULE_MAP[t.name])
-        .filter(Boolean)
-        .filter((m) => !allowedModules.includes(m)),
-    )];
 
     // ── Step 3: Build system prompt with RBAC constraints ─────────────────
     const systemPrompt = `You are an AI Task Copilot for a project management platform.

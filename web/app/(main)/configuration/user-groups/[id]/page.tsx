@@ -1,13 +1,14 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   PanelLeft, Save, Check, X, Loader2,
   Users, Shield, ArrowLeft, Trash2, Sliders,
   Eye, Edit3, PlusCircle, Trash, CheckSquare, Layers,
   FolderKanban, UserCheck, CalendarOff, BarChart3, Settings,
-  Search
+  Search, History, ChevronLeft, ChevronRight, Info, ExternalLink,
+  Lock, Unlock, AlertTriangle
 } from "lucide-react";
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import {
@@ -16,7 +17,10 @@ import {
   createUserGroup,
   updateUserGroup,
   deleteUserGroup,
-  fetchUsers
+  fetchUsers,
+  fetchPermissionsCatalog,
+  fetchGroupAuditLogs,
+  fetchUserEffectivePermissions,
 } from "../../../../../src/lib/api";
 import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
 import Link from "next/link";
@@ -32,6 +36,26 @@ const COLOR_PRESETS = [
   "#14b8a6", // Teal
 ];
 
+export const ICON_MAP: Record<string, any> = {
+  CheckSquare,
+  FolderKanban,
+  UserCheck,
+  Users,
+  CalendarOff,
+  BarChart3,
+  Settings,
+  Shield,
+  Layers,
+};
+
+export const getModuleIcon = (icon: any) => {
+  if (!icon) return Layers;
+  if (typeof icon === "string") {
+    return ICON_MAP[icon] || Layers;
+  }
+  return icon;
+};
+
 export interface ModuleDef {
   key: string;
   label: string;
@@ -39,7 +63,7 @@ export interface ModuleDef {
   icon: any;
 }
 
-const MODULE_DEFS: ModuleDef[] = [
+const DEFAULT_MODULE_DEFS: ModuleDef[] = [
   { key: "tasks", label: "Tasks Management", desc: "Create, assign, track, and complete tasks", icon: CheckSquare },
   { key: "projects", label: "Projects Management", desc: "Organize project timelines, teams, and milestones", icon: FolderKanban },
   { key: "employees", label: "Employees & HR", desc: "Manage employee profiles, contact info, and compensation", icon: UserCheck },
@@ -50,6 +74,7 @@ const MODULE_DEFS: ModuleDef[] = [
   { key: "user-groups", label: "User Groups & Roles", desc: "Configure access groups and permission policies", icon: Users },
   { key: "settings", label: "System Administration", desc: "Configure global preferences and settings", icon: Settings },
 ];
+export const MODULE_DEFS = DEFAULT_MODULE_DEFS;
 
 export interface OperationDef {
   key: string;
@@ -59,7 +84,7 @@ export interface OperationDef {
   category: string;
 }
 
-const OPERATION_DEFS: OperationDef[] = [
+const DEFAULT_OPERATION_DEFS: OperationDef[] = [
   // Tasks Operations
   { key: "tasks.core", module: "tasks", label: "Task Records", desc: "Create, view, update, and delete core task items", category: "Records" },
   { key: "tasks.comments", module: "tasks", label: "Comments & Discussions", desc: "Post, view, edit, and delete discussion comments on tasks", category: "Collaboration" },
@@ -108,6 +133,7 @@ const OPERATION_DEFS: OperationDef[] = [
   { key: "settings.user_groups", module: "settings", label: "User Groups & Roles (Legacy)", desc: "Create and configure access groups and permission policies", category: "Access Control" },
   { key: "settings.system", module: "settings", label: "System Preferences", desc: "Modify system-wide configurations, branding, and integrations", category: "Administration" },
 ];
+export const OPERATION_DEFS = DEFAULT_OPERATION_DEFS;
 
 interface ModelFieldDef {
   key: string;
@@ -116,7 +142,7 @@ interface ModelFieldDef {
   sensitive?: boolean;
 }
 
-const MODEL_FIELDS: Record<string, { label: string; fields: ModelFieldDef[] }> = {
+const DEFAULT_MODEL_FIELDS: Record<string, { label: string; fields: ModelFieldDef[] }> = {
   tasks: {
     label: "Tasks",
     fields: [
@@ -179,6 +205,7 @@ const MODEL_FIELDS: Record<string, { label: string; fields: ModelFieldDef[] }> =
     ],
   },
 };
+export const MODEL_FIELDS = DEFAULT_MODEL_FIELDS;
 
 type ActionPermState = {
   create: boolean;
@@ -217,7 +244,20 @@ export default function UserGroupDetailPage({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState<"modules" | "operations" | "fields" | "members">("modules");
+  const [activeTab, setActiveTab] = useState<"modules" | "operations" | "fields" | "members" | "history">("modules");
+
+  // ── Phase 19: Audit Trail state ──
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [auditActionFilter, setAuditActionFilter] = useState<string>("all");
+
+  // ── Phase 19: Effective-Access Preview modal state ──
+  const [previewUserId, setPreviewUserId] = useState<string | null>(null);
+  const [previewUser, setPreviewUser] = useState<any | null>(null);
+  const [previewData, setPreviewData] = useState<any | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const [availableUsers, setAvailableUsers] = useState<any[]>([]);
   const [name, setName] = useState("");
@@ -226,8 +266,16 @@ export default function UserGroupDetailPage({
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
 
+  // Dynamic Catalog State
+  const [catalogModules, setCatalogModules] = useState<ModuleDef[]>(DEFAULT_MODULE_DEFS);
+  const [catalogOperations, setCatalogOperations] = useState<OperationDef[]>(DEFAULT_OPERATION_DEFS);
+  const [catalogModels, setCatalogModels] = useState<Record<string, { label: string; fields: ModelFieldDef[] }>>(DEFAULT_MODEL_FIELDS);
+
   // Module-Level CRUD Permissions: moduleKey -> { create, read, update, delete }
   const [modulePerms, setModulePerms] = useState<Record<string, ActionPermState>>({});
+
+  // Module-Level Scope: moduleKey -> 'own' | 'team' | 'all'
+  const [moduleScopes, setModuleScopes] = useState<Record<string, "own" | "team" | "all">>({});
 
   // Operation-Level CRUD Permissions: operationKey -> { read, write, update, delete }
   const [operationPerms, setOperationPerms] = useState<Record<string, OperationPermState>>({});
@@ -241,9 +289,9 @@ export default function UserGroupDetailPage({
   const [originalData, setOriginalData] = useState<any>(null);
 
   // Helper to initialize default permissions for all modules
-  const getDefaultModulePerms = () => {
+  const getDefaultModulePerms = (modules: ModuleDef[] = catalogModules) => {
     const initial: Record<string, ActionPermState> = {};
-    for (const mod of MODULE_DEFS) {
+    for (const mod of modules) {
       initial[mod.key] = {
         create: true,
         read: true,
@@ -254,10 +302,19 @@ export default function UserGroupDetailPage({
     return initial;
   };
 
+  // Helper to initialize default scopes for all modules
+  const getDefaultModuleScopes = (modules: ModuleDef[] = catalogModules) => {
+    const initial: Record<string, "own" | "team" | "all"> = {};
+    for (const mod of modules) {
+      initial[mod.key] = "own";
+    }
+    return initial;
+  };
+
   // Helper to initialize default permissions for all operations
-  const getDefaultOperationPerms = () => {
+  const getDefaultOperationPerms = (operations: OperationDef[] = catalogOperations) => {
     const initial: Record<string, OperationPermState> = {};
-    for (const op of OPERATION_DEFS) {
+    for (const op of operations) {
       initial[op.key] = {
         read: true,
         write: true,
@@ -269,9 +326,9 @@ export default function UserGroupDetailPage({
   };
 
   // Helper to initialize default permissions for all models/fields
-  const getDefaultFieldPerms = () => {
+  const getDefaultFieldPerms = (models: Record<string, { label: string; fields: ModelFieldDef[] }> = catalogModels) => {
     const initial: Record<string, Record<string, FieldPermState>> = {};
-    for (const [modelKey, modelDef] of Object.entries(MODEL_FIELDS)) {
+    for (const [modelKey, modelDef] of Object.entries(models)) {
       initial[modelKey] = {};
       for (const field of modelDef.fields) {
         initial[modelKey][field.key] = {
@@ -285,6 +342,13 @@ export default function UserGroupDetailPage({
     return initial;
   };
 
+  const handleSetModuleScope = (moduleKey: string, scope: "own" | "team" | "all") => {
+    setModuleScopes((prev) => ({
+      ...prev,
+      [moduleKey]: scope,
+    }));
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -292,9 +356,46 @@ export default function UserGroupDetailPage({
         const users = await fetchUsers();
         setAvailableUsers(users || []);
 
-        const initialModulePerms = getDefaultModulePerms();
-        const initialOperationPerms = getDefaultOperationPerms();
-        const initialFieldPerms = getDefaultFieldPerms();
+        let loadedModules: ModuleDef[] = DEFAULT_MODULE_DEFS;
+        let loadedOperations: OperationDef[] = DEFAULT_OPERATION_DEFS;
+        let loadedModels: Record<string, { label: string; fields: ModelFieldDef[] }> = DEFAULT_MODEL_FIELDS;
+
+        try {
+          const catalog = await fetchPermissionsCatalog();
+          if (catalog) {
+            if (catalog.modules && Array.isArray(catalog.modules) && catalog.modules.length > 0) {
+              loadedModules = catalog.modules.map((m: any) => ({
+                key: m.key,
+                label: m.label,
+                desc: m.desc || m.description || "",
+                icon: getModuleIcon(m.icon),
+              }));
+            }
+            if (catalog.operations && Array.isArray(catalog.operations) && catalog.operations.length > 0) {
+              loadedOperations = catalog.operations.map((op: any) => ({
+                key: op.key,
+                module: op.module,
+                label: op.label,
+                desc: op.desc || op.description || "",
+                category: op.category || "General",
+              }));
+            }
+            if (catalog.models && typeof catalog.models === "object" && Object.keys(catalog.models).length > 0) {
+              loadedModels = catalog.models;
+            }
+          }
+        } catch (catalogErr) {
+          console.warn("Failed to load permissions catalog from API, using defaults", catalogErr);
+        }
+
+        setCatalogModules(loadedModules);
+        setCatalogOperations(loadedOperations);
+        setCatalogModels(loadedModels);
+
+        const initialModulePerms = getDefaultModulePerms(loadedModules);
+        const initialModuleScopes = getDefaultModuleScopes(loadedModules);
+        const initialOperationPerms = getDefaultOperationPerms(loadedOperations);
+        const initialFieldPerms = getDefaultFieldPerms(loadedModels);
 
         if (!isNew) {
           const group = await fetchUserGroupById(id);
@@ -308,7 +409,7 @@ export default function UserGroupDetailPage({
           const memberIds = (group.members || []).map((m: any) => (m._id || m).toString());
           setSelectedMembers(memberIds);
 
-          // 1. Populate Module Permissions
+          // 1. Populate Module Permissions & Scopes
           if (group.modulePermissions && Array.isArray(group.modulePermissions)) {
             for (const mp of group.modulePermissions) {
               if (initialModulePerms[mp.module]) {
@@ -318,6 +419,9 @@ export default function UserGroupDetailPage({
                   update: mp.update ?? true,
                   delete: mp.delete ?? true,
                 };
+              }
+              if (mp.scope && ["own", "team", "all"].includes(mp.scope)) {
+                initialModuleScopes[mp.module] = mp.scope;
               }
             }
           } else if (group.permissions && Array.isArray(group.permissions)) {
@@ -347,7 +451,7 @@ export default function UserGroupDetailPage({
             }
           } else {
             // Default operations to match parent module permission if not explicitly configured
-            for (const opDef of OPERATION_DEFS) {
+            for (const opDef of loadedOperations) {
               const parentMod = initialModulePerms[opDef.module];
               if (parentMod) {
                 initialOperationPerms[opDef.key] = {
@@ -375,6 +479,7 @@ export default function UserGroupDetailPage({
           }
 
           setModulePerms(initialModulePerms);
+          setModuleScopes(initialModuleScopes);
           setOperationPerms(initialOperationPerms);
           setFieldPerms(initialFieldPerms);
 
@@ -384,11 +489,13 @@ export default function UserGroupDetailPage({
             color: group.color || "#6366f1",
             members: memberIds,
             modulePerms: JSON.parse(JSON.stringify(initialModulePerms)),
+            moduleScopes: JSON.parse(JSON.stringify(initialModuleScopes)),
             operationPerms: JSON.parse(JSON.stringify(initialOperationPerms)),
             fieldPerms: JSON.parse(JSON.stringify(initialFieldPerms)),
           });
         } else {
           setModulePerms(initialModulePerms);
+          setModuleScopes(initialModuleScopes);
           setOperationPerms(initialOperationPerms);
           setFieldPerms(initialFieldPerms);
         }
@@ -402,6 +509,57 @@ export default function UserGroupDetailPage({
     loadData();
   }, [id, isNew, router]);
 
+  // ── Phase 19: Load Audit Logs ──
+  const loadAuditLogs = useCallback(async () => {
+    if (isNew || !id) return;
+    setAuditLoading(true);
+    try {
+      const data = await fetchGroupAuditLogs({
+        groupId: id,
+        action: auditActionFilter !== "all" ? auditActionFilter : undefined,
+        page: auditPage,
+        limit: 15,
+      });
+      setAuditLogs(data?.logs || data?.data || []);
+      setAuditTotalPages(data?.totalPages || data?.pages || 1);
+    } catch (err) {
+      console.error("Failed to load audit logs", err);
+      setAuditLogs([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [id, isNew, auditPage, auditActionFilter]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      loadAuditLogs();
+    }
+  }, [activeTab, loadAuditLogs]);
+
+  // ── Phase 19: Open Effective-Access Preview modal ──
+  const handleOpenPreview = async (userId: string) => {
+    const user = availableUsers.find((u) => u._id === userId);
+    setPreviewUser(user || null);
+    setPreviewUserId(userId);
+    setPreviewData(null);
+    setPreviewLoading(true);
+    try {
+      const data = await fetchUserEffectivePermissions(userId);
+      setPreviewData(data);
+    } catch (err) {
+      console.error("Failed to load effective permissions", err);
+      setPreviewData({ error: true });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setPreviewUserId(null);
+    setPreviewUser(null);
+    setPreviewData(null);
+  };
+
   const hasChanges =
     !isNew &&
     originalData &&
@@ -410,6 +568,7 @@ export default function UserGroupDetailPage({
       color !== originalData.color ||
       JSON.stringify(selectedMembers.sort()) !== JSON.stringify(originalData.members.sort()) ||
       JSON.stringify(modulePerms) !== JSON.stringify(originalData.modulePerms) ||
+      JSON.stringify(moduleScopes) !== JSON.stringify(originalData.moduleScopes || {}) ||
       JSON.stringify(operationPerms) !== JSON.stringify(originalData.operationPerms) ||
       JSON.stringify(fieldPerms) !== JSON.stringify(originalData.fieldPerms));
 
@@ -492,7 +651,7 @@ export default function UserGroupDetailPage({
   const handleSetAllModulesPreset = (preset: "all" | "readonly" | "none") => {
     setModulePerms(() => {
       const updated: Record<string, ActionPermState> = {};
-      for (const mod of MODULE_DEFS) {
+      for (const mod of catalogModules) {
         updated[mod.key] =
           preset === "all"
             ? { create: true, read: true, update: true, delete: true }
@@ -540,8 +699,8 @@ export default function UserGroupDetailPage({
     setOperationPerms((prev) => {
       const updated = { ...prev };
       const targets = filterMod && filterMod !== "all"
-        ? OPERATION_DEFS.filter((op) => op.module === filterMod)
-        : OPERATION_DEFS;
+        ? catalogOperations.filter((op) => op.module === filterMod)
+        : catalogOperations;
 
       for (const op of targets) {
         updated[op.key] =
@@ -579,7 +738,7 @@ export default function UserGroupDetailPage({
 
   const handleSetModelPreset = (modelKey: string, preset: "all" | "readonly" | "none") => {
     setFieldPerms((prev) => {
-      const modelDef = MODEL_FIELDS[modelKey];
+      const modelDef = catalogModels[modelKey];
       if (!modelDef) return prev;
       const updatedModel: Record<string, FieldPermState> = {};
       for (const field of modelDef.fields) {
@@ -607,6 +766,7 @@ export default function UserGroupDetailPage({
     // 1. Flatten Module Permissions
     const modulePermissionsArray: Array<{
       module: string;
+      scope: "own" | "team" | "all";
       create: boolean;
       read: boolean;
       update: boolean;
@@ -618,6 +778,7 @@ export default function UserGroupDetailPage({
     for (const [modKey, perms] of Object.entries(modulePerms)) {
       modulePermissionsArray.push({
         module: modKey,
+        scope: moduleScopes[modKey] || "own",
         create: perms.create,
         read: perms.read,
         update: perms.update,
@@ -646,7 +807,7 @@ export default function UserGroupDetailPage({
       delete: boolean;
     }> = [];
 
-    for (const opDef of OPERATION_DEFS) {
+    for (const opDef of catalogOperations) {
       const perms = operationPerms[opDef.key] || { read: true, write: true, update: true, delete: true };
       operationPermissionsArray.push({
         module: opDef.module,
@@ -715,6 +876,7 @@ export default function UserGroupDetailPage({
           color: updated.color || "#6366f1",
           members: memberIds,
           modulePerms: JSON.parse(JSON.stringify(modulePerms)),
+          moduleScopes: JSON.parse(JSON.stringify(moduleScopes)),
           operationPerms: JSON.parse(JSON.stringify(operationPerms)),
           fieldPerms: JSON.parse(JSON.stringify(fieldPerms)),
         });
@@ -757,16 +919,16 @@ export default function UserGroupDetailPage({
   }
 
   const displayName = name.trim() || (isNew ? "New Group" : "User Group");
-  const currentModelFields = MODEL_FIELDS[activeModelTab]?.fields || [];
+  const currentModelFields = catalogModels[activeModelTab]?.fields || [];
 
   // Filtered operations for Operation Access tab
-  const filteredOperations = OPERATION_DEFS.filter((op) => {
+  const filteredOperations = catalogOperations.filter((op) => {
     if (opModuleFilter !== "all" && op.module !== opModuleFilter) return false;
     if (opSearchQuery.trim()) {
       const q = opSearchQuery.toLowerCase();
       return (
         op.label.toLowerCase().includes(q) ||
-        op.desc.toLowerCase().includes(q) ||
+        (op.desc && op.desc.toLowerCase().includes(q)) ||
         op.key.toLowerCase().includes(q) ||
         op.category.toLowerCase().includes(q)
       );
@@ -837,6 +999,7 @@ export default function UserGroupDetailPage({
                   setColor(originalData.color);
                   setSelectedMembers(originalData.members);
                   setModulePerms(JSON.parse(JSON.stringify(originalData.modulePerms)));
+                  setModuleScopes(JSON.parse(JSON.stringify(originalData.moduleScopes || {})));
                   setOperationPerms(JSON.parse(JSON.stringify(originalData.operationPerms || {})));
                   setFieldPerms(JSON.parse(JSON.stringify(originalData.fieldPerms)));
                 }}
@@ -961,7 +1124,7 @@ export default function UserGroupDetailPage({
               <Layers className="w-3.5 h-3.5 text-primary" />
               <span>Module Access</span>
               <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.2 rounded-full font-bold">
-                {MODULE_DEFS.length}
+                {catalogModules.length}
               </span>
             </button>
 
@@ -977,7 +1140,7 @@ export default function UserGroupDetailPage({
               <Sliders className="w-3.5 h-3.5 text-indigo-500" />
               <span>Operation Access</span>
               <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.2 rounded-full font-bold">
-                {OPERATION_DEFS.length}
+                {catalogOperations.length}
               </span>
             </button>
 
@@ -993,7 +1156,7 @@ export default function UserGroupDetailPage({
               <Shield className="w-3.5 h-3.5 text-emerald-500" />
               <span>Field-Level Access</span>
               <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.2 rounded-full font-bold">
-                {Object.values(MODEL_FIELDS).reduce((acc, m) => acc + m.fields.length, 0)}
+                {Object.values(catalogModels).reduce((acc, m) => acc + (m?.fields?.length || 0), 0)}
               </span>
             </button>
 
@@ -1012,6 +1175,21 @@ export default function UserGroupDetailPage({
                 {selectedMembers.length}
               </span>
             </button>
+
+            {!isNew && (
+              <button
+                type="button"
+                onClick={() => { setActiveTab("history"); }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                  activeTab === "history"
+                    ? "bg-card text-foreground shadow-sm border border-border/50"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <History className="w-3.5 h-3.5 text-violet-500" />
+                <span>History</span>
+              </button>
+            )}
           </div>
 
           {/* ════════════════════════════════════════════════════════════════ */}
@@ -1061,6 +1239,7 @@ export default function UserGroupDetailPage({
                     <tr>
                       <th className="px-5 py-3 font-semibold">Module Name</th>
                       <th className="px-5 py-3 font-semibold">Description</th>
+                      <th className="px-3 py-3 font-semibold text-center w-36">Access Scope</th>
                       <th className="px-4 py-3 font-semibold text-center w-24">
                         <div className="flex items-center justify-center gap-1" title="Read (View module pages and records)">
                           <Eye className="w-3.5 h-3.5 text-blue-500" />
@@ -1089,14 +1268,15 @@ export default function UserGroupDetailPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/40">
-                    {MODULE_DEFS.map((mod) => {
-                      const Icon = mod.icon;
+                    {catalogModules.map((mod) => {
+                      const Icon = getModuleIcon(mod.icon);
                       const currentPerm = modulePerms[mod.key] || {
                         create: true,
                         read: true,
                         update: true,
                         delete: true,
                       };
+                      const currentScope = moduleScopes[mod.key] || "own";
 
                       const isAll = currentPerm.create && currentPerm.read && currentPerm.update && currentPerm.delete;
                       const isReadOnly = !currentPerm.create && currentPerm.read && !currentPerm.update && !currentPerm.delete;
@@ -1117,6 +1297,25 @@ export default function UserGroupDetailPage({
                           </td>
                           <td className="px-5 py-3.5 text-xs text-muted-foreground max-w-xs">
                             {mod.desc}
+                          </td>
+                          {/* Access Scope Selector */}
+                          <td className="px-3 py-3.5 text-center">
+                            <select
+                              value={currentScope}
+                              onChange={(e) => handleSetModuleScope(mod.key, e.target.value as "own" | "team" | "all")}
+                              className={`text-[11px] font-semibold border rounded-lg px-2.5 py-1 outline-none cursor-pointer transition-colors ${
+                                currentScope === "all"
+                                  ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                                  : currentScope === "team"
+                                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                                  : "bg-muted/40 text-foreground border-border/60"
+                              }`}
+                              title={`Access scope for ${mod.label}: own (user only), team (user's team & subordinates), all (organization-wide)`}
+                            >
+                              <option value="own">Own (User)</option>
+                              <option value="team">Team</option>
+                              <option value="all">All (Org)</option>
+                            </select>
                           </td>
                           {/* Read Access Toggle */}
                           <td className="px-4 py-3.5 text-center">
@@ -1257,10 +1456,10 @@ export default function UserGroupDetailPage({
                         : "bg-muted/50 text-muted-foreground hover:bg-muted"
                     }`}
                   >
-                    All Modules ({OPERATION_DEFS.length})
+                    All Modules ({catalogOperations.length})
                   </button>
-                  {MODULE_DEFS.map((mod) => {
-                    const count = OPERATION_DEFS.filter((op) => op.module === mod.key).length;
+                  {catalogModules.map((mod) => {
+                    const count = catalogOperations.filter((op) => op.module === mod.key).length;
                     return (
                       <button
                         key={mod.key}
@@ -1502,7 +1701,7 @@ export default function UserGroupDetailPage({
 
               {/* Model Tabs */}
               <div className="flex items-center gap-2 px-5 pt-3 border-b border-border/50 overflow-x-auto">
-                {Object.entries(MODEL_FIELDS).map(([key, def]) => (
+                {Object.entries(catalogModels).map(([key, def]) => (
                   <button
                     key={key}
                     type="button"
@@ -1709,34 +1908,54 @@ export default function UserGroupDetailPage({
                       return (
                         <div
                           key={u._id}
-                          onClick={() => handleToggleMember(u._id)}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                          className={`p-3 rounded-xl border transition-all ${
                             isSelected
                               ? "bg-primary/5 border-primary/40 shadow-xs"
-                              : "bg-muted/10 border-border/60 hover:bg-muted/30"
+                              : "bg-muted/10 border-border/60"
                           }`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            {u.avatarUrl ? (
-                              <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                                {u.name?.charAt(0) || u.email?.charAt(0)?.toUpperCase() || 'U'}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold text-foreground truncate">
-                                {u.name || (u.authType === 'guest' ? 'Guest User' : 'User')}
-                              </div>
-                              <div className="text-[11px] text-muted-foreground truncate">
-                                {u.email || "No email"}
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                              onClick={() => handleToggleMember(u._id)}
+                            >
+                              {u.avatarUrl ? (
+                                <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                  {u.name?.charAt(0) || u.email?.charAt(0)?.toUpperCase() || 'U'}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-semibold text-foreground truncate">
+                                  {u.name || (u.authType === 'guest' ? 'Guest User' : 'User')}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground truncate">
+                                  {u.email || "No email"}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ${
-                            isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40 bg-card"
-                          }`}>
-                            {isSelected && <Check className="w-3.5 h-3.5" />}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isSelected && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPreview(u._id)}
+                                  title="Preview effective permissions for this user"
+                                  className="text-[10px] flex items-center gap-1 px-2 py-1 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 transition-colors font-medium border border-violet-500/20"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  Preview Access
+                                </button>
+                              )}
+                              <div
+                                onClick={() => handleToggleMember(u._id)}
+                                className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
+                                  isSelected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40 bg-card hover:border-primary/60"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3.5 h-3.5" />}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1748,6 +1967,169 @@ export default function UserGroupDetailPage({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {/* ── TAB 5: HISTORY (Audit Trail) ── */}
+          {/* ════════════════════════════════════════════════════════════════ */}
+          {activeTab === "history" && !isNew && (
+            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden animate-in fade-in duration-200">
+              <div className="px-5 py-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-violet-500" />
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Change History</h3>
+                    <p className="text-xs text-muted-foreground">Audit trail of all changes made to this group and its membership</p>
+                  </div>
+                </div>
+
+                {/* Action filter + Refresh */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={auditActionFilter}
+                    onChange={(e) => { setAuditActionFilter(e.target.value); setAuditPage(1); }}
+                    className="text-[11px] bg-muted/30 border border-border/60 rounded px-2 py-1 outline-none text-foreground cursor-pointer"
+                  >
+                    <option value="all">All Actions</option>
+                    <option value="group_created">Created</option>
+                    <option value="group_updated">Updated</option>
+                    <option value="group_deleted">Deleted</option>
+                    <option value="member_added">Member Added</option>
+                    <option value="member_removed">Member Removed</option>
+                    <option value="system_admin_granted">Admin Granted</option>
+                    <option value="system_admin_revoked">Admin Revoked</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={loadAuditLogs}
+                    disabled={auditLoading}
+                    className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/50 disabled:opacity-50"
+                  >
+                    {auditLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <History className="w-3 h-3" />}
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Audit log list */}
+              <div className="divide-y divide-border/40">
+                {auditLoading && auditLogs.length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : auditLogs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <History className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">No audit records found for the selected filter.</p>
+                  </div>
+                ) : (
+                  auditLogs.map((log: any, idx: number) => {
+                    const actionColors: Record<string, string> = {
+                      group_created: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+                      group_updated: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+                      group_deleted: "bg-red-500/10 text-red-500 border-red-500/20",
+                      member_added: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+                      member_removed: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                      system_admin_granted: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+                      system_admin_revoked: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+                    };
+                    const actionLabel: Record<string, string> = {
+                      group_created: "Group Created",
+                      group_updated: "Group Updated",
+                      group_deleted: "Group Deleted",
+                      member_added: "Member Added",
+                      member_removed: "Member Removed",
+                      system_admin_granted: "Admin Granted",
+                      system_admin_revoked: "Admin Revoked",
+                    };
+                    const colorClass = actionColors[log.action] || "bg-muted/20 text-muted-foreground border-border/40";
+                    const label = actionLabel[log.action] || log.action;
+                    const ts = log.createdAt ? new Date(log.createdAt) : null;
+
+                    return (
+                      <div key={log._id || idx} className="flex items-start gap-3 px-5 py-3.5 hover:bg-muted/10 transition-colors">
+                        {/* Timeline dot */}
+                        <div className="flex flex-col items-center shrink-0 pt-0.5">
+                          <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0 mt-1" />
+                          {idx < auditLogs.length - 1 && (
+                            <div className="w-px flex-1 min-h-[24px] bg-border/50 mt-1" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${colorClass}`}>
+                              {label}
+                            </span>
+                            <span className="text-xs font-medium text-foreground truncate">
+                              {log.actorEmail || log.actorId || "System"}
+                            </span>
+                            {ts && (
+                              <span className="text-[10px] text-muted-foreground ml-auto">
+                                {ts.toLocaleDateString()} {ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Diff summary */}
+                          {(log.before || log.after) && (
+                            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {log.before && Object.keys(log.before).length > 0 && (
+                                <div className="bg-red-500/5 border border-red-500/15 rounded-lg px-3 py-2">
+                                  <p className="text-[10px] font-bold text-red-500 mb-1 uppercase tracking-wider">Before</p>
+                                  <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all">
+                                    {JSON.stringify(log.before, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {log.after && Object.keys(log.after).length > 0 && (
+                                <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-lg px-3 py-2">
+                                  <p className="text-[10px] font-bold text-emerald-600 mb-1 uppercase tracking-wider">After</p>
+                                  <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all">
+                                    {JSON.stringify(log.after, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {log.targetEmail && (
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Target user: <span className="font-medium text-foreground">{log.targetEmail}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Pagination */}
+              {auditTotalPages > 1 && (
+                <div className="px-5 py-3 border-t border-border/50 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Page {auditPage} of {auditTotalPages}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={auditPage <= 1 || auditLoading}
+                      onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-border/60 bg-card hover:bg-muted transition-colors disabled:opacity-40"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                    </button>
+                    <button
+                      type="button"
+                      disabled={auditPage >= auditTotalPages || auditLoading}
+                      onClick={() => setAuditPage((p) => Math.min(auditTotalPages, p + 1))}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-border/60 bg-card hover:bg-muted transition-colors disabled:opacity-40"
+                    >
+                      Next <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1763,6 +2145,173 @@ export default function UserGroupDetailPage({
             <button onClick={() => setToastMessage(null)} className="ml-2 hover:opacity-70">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* ── Phase 19: Effective-Access Preview Modal ── */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {previewUserId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                  <Eye className="w-4.5 h-4.5 text-violet-500" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground text-sm">Effective Access Preview</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {previewUser?.name || previewUser?.email || previewUserId}
+                    {previewUser?.email && previewUser?.name && (
+                      <span className="ml-1 opacity-70">({previewUser.email})</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {previewLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin text-violet-500" />
+                  <p className="text-xs text-muted-foreground">Loading effective permissions…</p>
+                </div>
+              ) : previewData?.error ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-500" />
+                  <p className="text-xs text-muted-foreground">Failed to load effective permissions. You may need System Admin privileges.</p>
+                </div>
+              ) : previewData ? (
+                <div className="space-y-5">
+                  {/* Groups summary */}
+                  {previewData.groups && previewData.groups.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Member of Groups</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {previewData.groups.map((g: any) => (
+                          <span
+                            key={g._id || g.name}
+                            className="text-[11px] px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium"
+                          >
+                            {g.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* isUnrestricted badge */}
+                  {previewData.isUnrestricted && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <Shield className="w-4 h-4 text-amber-500 shrink-0" />
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                        This user is a System Admin or Administrators group member and has unrestricted access to all modules.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Module permissions matrix */}
+                  {previewData.modulePermissions && (
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Module Permissions</p>
+                      <div className="overflow-x-auto rounded-lg border border-border">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/20 border-b border-border/60">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Module</th>
+                              <th className="px-2 py-2 text-center font-semibold text-blue-500 w-16">Read</th>
+                              <th className="px-2 py-2 text-center font-semibold text-emerald-500 w-16">Write</th>
+                              <th className="px-2 py-2 text-center font-semibold text-amber-500 w-16">Update</th>
+                              <th className="px-2 py-2 text-center font-semibold text-red-500 w-16">Delete</th>
+                              <th className="px-2 py-2 text-center font-semibold text-violet-500 w-20">Scope</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40">
+                            {Object.entries(previewData.modulePermissions).map(([modKey, perms]: [string, any]) => {
+                              const scope = previewData.moduleScopes?.[modKey] || "own";
+                              const hasAny = perms.read || perms.create || perms.update || perms.delete;
+                              return (
+                                <tr
+                                  key={modKey}
+                                  className={`transition-colors ${ hasAny ? "hover:bg-muted/10" : "opacity-50 hover:bg-muted/5" }`}
+                                >
+                                  <td className="px-3 py-2 font-medium text-foreground">
+                                    <div>
+                                      <span>{catalogModules.find((m) => m.key === modKey)?.label || modKey}</span>
+                                      <span className="block text-[10px] text-muted-foreground font-mono">{modKey}</span>
+                                    </div>
+                                  </td>
+                                  {(["read", "create", "update", "delete"] as const).map((act) => (
+                                    <td key={act} className="px-2 py-2 text-center">
+                                      {perms[act] ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-500 mx-auto" />
+                                      ) : (
+                                        <X className="w-3.5 h-3.5 text-muted-foreground/30 mx-auto" />
+                                      )}
+                                    </td>
+                                  ))}
+                                  <td className="px-2 py-2 text-center">
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                      scope === "all" ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                                      : scope === "team" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                      : "bg-muted/40 text-muted-foreground"
+                                    }`}>
+                                      {scope}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Granted / Denied by explanation */}
+                  {previewData.explanation && (
+                    <div className="bg-muted/20 border border-border/60 rounded-lg p-3">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                        <Info className="w-3 h-3" /> Resolution Details
+                      </p>
+                      <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all">
+                        {typeof previewData.explanation === "string"
+                          ? previewData.explanation
+                          : JSON.stringify(previewData.explanation, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-border flex justify-end">
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground transition-colors font-medium border border-border/60"
+              >
+                <X className="w-3.5 h-3.5" /> Close
+              </button>
+            </div>
           </div>
         </div>
       )}

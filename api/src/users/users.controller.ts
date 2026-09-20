@@ -98,10 +98,27 @@ export class UsersController {
 
     // Synchronize membership with "Administrators" group when is_system_admin is modified
     if (updateUserDto.is_system_admin !== undefined) {
+      const requester = req.user;
+      const requesterId = requester?._id?.toString() || requester?.id?.toString();
+      const actor = { id: requesterId, email: requester?.email };
+
       if (updateUserDto.is_system_admin) {
-        await this.userGroupsService.ensureUserInAdminGroup(updated._id);
+        await this.userGroupsService.ensureUserInAdminGroup(updated._id, actor);
       } else {
-        await this.userGroupsService.removeUserFromAdminGroup(updated._id);
+        await this.userGroupsService.removeUserFromAdminGroup(updated._id, actor);
+      }
+
+      if (typeof this.userGroupsService.logAudit === 'function') {
+        await this.userGroupsService.logAudit({
+          actorId: requesterId,
+          actorEmail: requester?.email,
+          action: 'system_admin_toggled',
+          targetUserId: updated._id,
+          targetUserEmail: updated.email,
+          before: { is_system_admin: !updateUserDto.is_system_admin },
+          after: { is_system_admin: updateUserDto.is_system_admin },
+          details: `System admin privilege ${updateUserDto.is_system_admin ? 'granted' : 'revoked'} for ${updated.email || updated._id}`,
+        });
       }
     }
 

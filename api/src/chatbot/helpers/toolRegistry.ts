@@ -1,32 +1,69 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { chatbotApiClient } from '../client/apiClient';
+import { canAny, isUnrestricted } from '../../permissions/permission-resolver';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL_MODULE_MAP — maps tool names to their module key as used in
-// UserGroup.modulePermissions so the chatbot service can filter tools by RBAC.
+// TOOL_REQUIREMENTS — maps each chatbot tool to its module, action, and
+// optional operation/model so the Copilot filters tools and prunes fields by RBAC.
 // ─────────────────────────────────────────────────────────────────────────────
-export const TOOL_MODULE_MAP: Record<string, string | null> = {
+export interface ToolRequirement {
+  module: string;
+  action: 'create' | 'read' | 'update' | 'delete';
+  operation?: string;
+  model?: string;
+}
+
+export const TOOL_REQUIREMENTS: Record<string, ToolRequirement | null> = {
   get_me: null,
+
   // Tasks
-  create_task: 'tasks', list_tasks: 'tasks', get_task: 'tasks',
-  update_task: 'tasks', delete_task: 'tasks', duplicate_task: 'tasks',
-  add_task_comment: 'tasks', start_timer: 'tasks', stop_timer: 'tasks', invite_member: 'tasks',
+  create_task: { module: 'tasks', action: 'create', operation: 'tasks.core', model: 'tasks' },
+  list_tasks: { module: 'tasks', action: 'read', operation: 'tasks.core' },
+  get_task: { module: 'tasks', action: 'read', operation: 'tasks.core' },
+  update_task: { module: 'tasks', action: 'update', operation: 'tasks.core', model: 'tasks' },
+  delete_task: { module: 'tasks', action: 'delete', operation: 'tasks.core' },
+  duplicate_task: { module: 'tasks', action: 'create', operation: 'tasks.core', model: 'tasks' },
+  add_task_comment: { module: 'tasks', action: 'create', operation: 'tasks.comments' },
+  start_timer: { module: 'tasks', action: 'update', operation: 'tasks.time_tracking' },
+  stop_timer: { module: 'tasks', action: 'update', operation: 'tasks.time_tracking' },
+  invite_member: { module: 'tasks', action: 'update', operation: 'tasks.assignment' },
+
   // Projects
-  create_project: 'projects', list_projects: 'projects', get_project: 'projects',
-  update_project: 'projects', delete_project: 'projects',
+  list_projects: { module: 'projects', action: 'read', operation: 'projects.core' },
+  get_project: { module: 'projects', action: 'read', operation: 'projects.core' },
+  create_project: { module: 'projects', action: 'create', operation: 'projects.core', model: 'projects' },
+  update_project: { module: 'projects', action: 'update', operation: 'projects.core', model: 'projects' },
+  delete_project: { module: 'projects', action: 'delete', operation: 'projects.core' },
+
   // Teams
-  create_team: 'teams', list_teams: 'teams', get_team: 'teams',
-  update_team: 'teams', get_active_tasks: 'teams',
+  list_teams: { module: 'teams', action: 'read', operation: 'teams.core' },
+  get_team: { module: 'teams', action: 'read', operation: 'teams.core' },
+  create_team: { module: 'teams', action: 'create', operation: 'teams.core', model: 'teams' },
+  update_team: { module: 'teams', action: 'update', operation: 'teams.core', model: 'teams' },
+  get_active_tasks: { module: 'teams', action: 'read', operation: 'teams.core' },
+
   // Employees
-  create_employee: 'employees', list_employees: 'employees',
-  get_employee: 'employees', update_employee: 'employees',
+  list_employees: { module: 'employees', action: 'read', operation: 'employees.directory' },
+  get_employee: { module: 'employees', action: 'read', operation: 'employees.directory' },
+  create_employee: { module: 'employees', action: 'create', operation: 'employees.status', model: 'employees' },
+  update_employee: { module: 'employees', action: 'update', operation: 'employees.profile', model: 'employees' },
+
   // Users
-  list_users: 'users', update_user: 'users',
+  list_users: { module: 'users', action: 'read', operation: 'users.manage' },
+  update_user: { module: 'users', action: 'update', operation: 'users.manage', model: 'users' },
+
   // User Groups
-  list_user_groups: 'user-groups', get_my_permissions: null, update_user_group: 'user-groups',
-  // Dashboard
-  get_employee_activity: 'dashboard',
+  list_user_groups: { module: 'user-groups', action: 'read', operation: 'user-groups.manage' },
+  get_my_permissions: null,
+
+  // Dashboard / Reports
+  get_employee_activity: { module: 'reports', action: 'read', operation: 'reports.view' },
 };
+
+// Backwards-compatible TOOL_MODULE_MAP derived from TOOL_REQUIREMENTS
+export const TOOL_MODULE_MAP: Record<string, string | null> = Object.fromEntries(
+  Object.entries(TOOL_REQUIREMENTS).map(([tool, req]) => [tool, req ? req.module : null]),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOOL_DEFINITIONS — Anthropic-compatible tool schemas for all 45+ tools.
@@ -264,6 +301,125 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// filterToolsForUser — filters tool definitions by user permissions and prunes
+// input schema properties that the user is not permitted to mutate.
+// ─────────────────────────────────────────────────────────────────────────────
+export function filterToolsForUser(
+  tools: Anthropic.Tool[],
+  effectiveGroups: any[],
+  user: any,
+): { allowedTools: Anthropic.Tool[]; deniedModules: string[] } {
+  const unrestricted = isUnrestricted(user, effectiveGroups);
+
+  const allModules = [
+    ...new Set(
+      Object.values(TOOL_REQUIREMENTS)
+        .filter((r): r is ToolRequirement => r !== null)
+        .map((r) => r.module),
+    ),
+  ];
+
+  if (unrestricted) {
+    return {
+      allowedTools: tools,
+      deniedModules: [],
+    };
+  }
+
+  const hasGroups = Array.isArray(effectiveGroups) && effectiveGroups.length > 0;
+  const allowedTools: Anthropic.Tool[] = [];
+
+  for (const tool of tools) {
+    const req = TOOL_REQUIREMENTS[tool.name];
+
+    // Tool not mapped in catalog requirements -> deny by default (fail closed)
+    if (req === undefined) {
+      continue;
+    }
+
+    // Public / self tools without requirements (e.g. get_me, get_my_permissions)
+    if (req === null) {
+      allowedTools.push(tool);
+      continue;
+    }
+
+    // Deny if user has no groups and tool requires permission
+    if (!hasGroups) {
+      continue;
+    }
+
+    // Check module/action/operation permission
+    const check = canAny(effectiveGroups, {
+      module: req.module,
+      action: req.action,
+      operation: req.operation,
+    });
+
+    if (!check.allowed) {
+      continue;
+    }
+
+    // If tool allows mutation and has schema properties, apply field-level pruning
+    if (req.model && tool.input_schema?.properties) {
+      const properties: Record<string, any> = { ...tool.input_schema.properties };
+      let required = tool.input_schema.required ? [...tool.input_schema.required] : [];
+      let schemaModified = false;
+
+      for (const propKey of Object.keys(properties)) {
+        let fieldName = propKey;
+        if (req.model === 'employees' && ['firstName', 'lastName', 'middleName'].includes(propKey)) {
+          fieldName = 'fullName';
+        }
+
+        const fieldCheck = canAny(effectiveGroups, {
+          module: req.module,
+          action: req.action,
+          operation: req.operation,
+          model: req.model,
+          field: fieldName,
+        });
+
+        if (!fieldCheck.allowed) {
+          delete properties[propKey];
+          required = required.filter((r) => r !== propKey);
+          schemaModified = true;
+        }
+      }
+
+      if (schemaModified) {
+        allowedTools.push({
+          ...tool,
+          input_schema: {
+            ...tool.input_schema,
+            properties,
+            required,
+          },
+        });
+      } else {
+        allowedTools.push(tool);
+      }
+    } else {
+      allowedTools.push(tool);
+    }
+  }
+
+  const allowedModules = [
+    ...new Set(
+      allowedTools
+        .map((t) => TOOL_REQUIREMENTS[t.name]?.module)
+        .filter((m): m is string => Boolean(m)),
+    ),
+  ];
+
+  const deniedModules = allModules.filter((m) => !allowedModules.includes(m));
+
+  return {
+    allowedTools,
+    deniedModules,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // executeToolByName — dispatches tool calls from Claude to the correct API endpoint.
 // ─────────────────────────────────────────────────────────────────────────────
 const PAYROLL_FIELDS = ['baseSalary', 'currency', 'payFrequency', 'bankAccountNumber', 'bankRoutingNumber', 'taxId'];
@@ -382,10 +538,6 @@ export async function executeToolByName(
       return (await chatbotApiClient.get('/user-groups')).data;
     case 'get_my_permissions':
       return (await chatbotApiClient.get('/user-groups/my-permissions')).data;
-    case 'update_user_group': {
-      const { id, ...body } = input;
-      return (await chatbotApiClient.patch(`/user-groups/${id}`, body)).data;
-    }
 
     // Dashboard
     case 'get_employee_activity': {

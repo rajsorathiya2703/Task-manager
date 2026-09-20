@@ -69,7 +69,8 @@ export class TasksController {
   @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findAll(@Request() req, @Query('projectId') projectId?: string) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin, scope);
   }
 
   @Get('timeline')
@@ -142,7 +143,8 @@ export class TasksController {
   @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findOne(@Request() req, @Param('id') id: string) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Patch(':id')
@@ -154,14 +156,16 @@ export class TasksController {
       email: req.user?.email,
     };
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin, scope);
   }
 
   @Delete(':id')
   @RequirePermission({ module: 'tasks', action: 'delete', model: 'tasks' })
   remove(@Request() req, @Param('id') id: string) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Post(':id/duplicate')

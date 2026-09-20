@@ -82,7 +82,8 @@ describe('UsersController', () => {
       const result = await controller.update('targetUser1', { is_system_admin: true }, adminReq);
 
       expect(result).toBe(updatedUser);
-      expect(userGroupsService.ensureUserInAdminGroup).toHaveBeenCalledWith('targetUser1');
+      // Phase 19: controller now passes an actor object for audit trail
+      expect(userGroupsService.ensureUserInAdminGroup).toHaveBeenCalledWith('targetUser1', expect.any(Object));
     });
 
     it('should PREVENT demoting the last remaining system administrator', async () => {

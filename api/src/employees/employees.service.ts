@@ -1,15 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Employee } from './schemas/employee.schema';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
+import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class EmployeesService {
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private usersService: UsersService,
+    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   async create(createEmployeeDto: any): Promise<Employee> {
@@ -26,15 +28,34 @@ export class EmployeesService {
     return newEmployee.save();
   }
 
-  async findAll(): Promise<Employee[]> {
+  async findAll(userContext?: any, scope: 'own' | 'team' | 'all' = 'all'): Promise<Employee[]> {
+    if (!userContext || userContext.is_system_admin || scope === 'all') {
+      return this.employeeModel.find().populate('userId').exec();
+    }
+
+    if (this.accessScopeService) {
+      const filter = await this.accessScopeService.buildFilter('employees', userContext, scope);
+      return this.employeeModel.find(filter).populate('userId').exec();
+    }
+
     return this.employeeModel.find().populate('userId').exec();
   }
 
-  async findOne(id: string): Promise<Employee> {
+  async findOne(id: string, userContext?: any, scope: 'own' | 'team' | 'all' = 'all'): Promise<Employee> {
     const employee = await this.employeeModel.findById(id).populate('userId').exec();
     if (!employee) {
       throw new NotFoundException(`Employee #${id} not found`);
     }
+
+    if (userContext && !userContext.is_system_admin && scope !== 'all') {
+      if (this.accessScopeService) {
+        const hasAccess = await this.accessScopeService.canAccess('employees', employee, userContext, scope);
+        if (!hasAccess) {
+          throw new ForbiddenException('Access Denied: You do not have permission to view this employee profile.');
+        }
+      }
+    }
+
     return employee;
   }
 

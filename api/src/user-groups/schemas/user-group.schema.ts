@@ -29,6 +29,9 @@ export class ModulePermission {
   @Prop({ required: true })
   module: string; // 'tasks' | 'projects' | 'employees' | 'teams' | 'reports' | 'settings'
 
+  @Prop({ type: String, enum: ['own', 'team', 'all'], default: 'own' })
+  scope?: 'own' | 'team' | 'all';
+
   @Prop({ default: true })
   create: boolean;
 
@@ -69,7 +72,7 @@ export const OperationPermissionSchema = SchemaFactory.createForClass(OperationP
 
 @Schema({ timestamps: true })
 export class UserGroup extends Document {
-  @Prop({ required: true })
+  @Prop({ required: true, unique: true })
   name: string;
 
   @Prop()
@@ -95,5 +98,10 @@ export class UserGroup extends Document {
 }
 
 export const UserGroupSchema = SchemaFactory.createForClass(UserGroup);
+
+// Explicit schema indexes
+UserGroupSchema.index({ name: 1 }, { unique: true });
+UserGroupSchema.index({ members: 1 });
+
 
 

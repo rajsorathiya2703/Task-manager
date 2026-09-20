@@ -82,22 +82,53 @@ describe('PermissionsGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('should DENY access if user has no groups (Fixing fail-open bug)', async () => {
-    reflector.getAllAndOverride.mockImplementation((key: string) => {
-      if (key === REQUIRE_PERMISSION_KEY) return { module: 'tasks', action: 'read' };
-      return undefined;
-    });
-    userGroupsService.getUserPermissions.mockResolvedValue({
-      groups: [],
-      permissions: [],
-      modulePermissions: {},
-      operationPermissions: {},
-      fieldPermissions: {},
-    });
+  it('should DENY access if user has no groups when PERMISSIONS_DENY_WHEN_NO_GROUP=true', async () => {
+    const prevEnv = process.env.PERMISSIONS_DENY_WHEN_NO_GROUP;
+    process.env.PERMISSIONS_DENY_WHEN_NO_GROUP = 'true';
+    try {
+      reflector.getAllAndOverride.mockImplementation((key: string) => {
+        if (key === REQUIRE_PERMISSION_KEY) return { module: 'tasks', action: 'read' };
+        return undefined;
+      });
+      userGroupsService.getUserPermissions.mockResolvedValue({
+        groups: [],
+        permissions: [],
+        modulePermissions: {},
+        operationPermissions: {},
+        fieldPermissions: {},
+      });
 
-    const context = createMockContext({ id: 'user1' });
+      const context = createMockContext({ id: 'user1' });
 
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    } finally {
+      process.env.PERMISSIONS_DENY_WHEN_NO_GROUP = prevEnv;
+    }
+  });
+
+  it('should ALLOW access (unrestricted fallback) if user has no groups when PERMISSIONS_DENY_WHEN_NO_GROUP=false', async () => {
+    const prevEnv = process.env.PERMISSIONS_DENY_WHEN_NO_GROUP;
+    process.env.PERMISSIONS_DENY_WHEN_NO_GROUP = 'false';
+    try {
+      reflector.getAllAndOverride.mockImplementation((key: string) => {
+        if (key === REQUIRE_PERMISSION_KEY) return { module: 'tasks', action: 'read' };
+        return undefined;
+      });
+      userGroupsService.getUserPermissions.mockResolvedValue({
+        groups: [],
+        permissions: [],
+        modulePermissions: {},
+        operationPermissions: {},
+        fieldPermissions: {},
+      });
+
+      const context = createMockContext({ id: 'user1' });
+
+      const result = await guard.canActivate(context);
+      expect(result).toBe(true);
+    } finally {
+      process.env.PERMISSIONS_DENY_WHEN_NO_GROUP = prevEnv;
+    }
   });
 
   it('should DENY access if user is in an empty group with 0 permissions (Fixing empty-group bug)', async () => {

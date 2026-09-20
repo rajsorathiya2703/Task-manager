@@ -67,6 +67,9 @@ api.interceptors.response.use(
       if (accessDeniedHandler) {
         accessDeniedHandler(message);
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('antigravity:forbidden', { detail: { message } }));
+      }
     }
 
     return Promise.reject(error);
@@ -412,6 +415,11 @@ export const fetchMyPermissions = async () => {
   return res.data;
 };
 
+export const fetchPermissionsCatalog = async () => {
+  const res = await api.get('/permissions/catalog');
+  return res.data;
+};
+
 export const fetchEmployeeActivity = async (range?: string, startDate?: string, endDate?: string, employeeId?: string) => {
   const params = new URLSearchParams();
   if (range) params.append('range', range);
@@ -531,6 +539,37 @@ export const markNotificationRead = async (id: string) => {
 
 export const markAllNotificationsRead = async () => {
   const res = await api.post(dayOffEndpoints.markAllNotificationsRead);
+  return res.data;
+};
+
+// ── Phase 19: Audit Trail & Effective-Access Preview ──────────────────────────
+
+export const fetchGroupAuditLogs = async (params?: {
+  groupId?: string;
+  action?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const sp = new URLSearchParams();
+  if (params?.groupId) sp.append('groupId', params.groupId);
+  if (params?.action) sp.append('action', params.action);
+  if (params?.page != null) sp.append('page', String(params.page));
+  if (params?.limit != null) sp.append('limit', String(params.limit));
+  const qs = sp.toString();
+  const res = await api.get(qs ? `/user-groups/audit?${qs}` : '/user-groups/audit');
+  return res.data;
+};
+
+export const fetchUserEffectivePermissions = async (userId: string) => {
+  const res = await api.get(`/user-groups/users/${userId}/effective-permissions`);
+  return res.data;
+};
+
+export const checkUserPermission = async (
+  userId: string,
+  body: { module: string; action: 'create' | 'read' | 'update' | 'delete'; operation?: string; model?: string; field?: string },
+) => {
+  const res = await api.post(`/user-groups/users/${userId}/check`, body);
   return res.data;
 };
 

@@ -135,6 +135,18 @@ describe('UserGroupsService', () => {
         }),
       ).not.toThrow();
     });
+
+    it('should accept valid module permissions with row-level scope', () => {
+      expect(() =>
+        service.validateGroupAgainstCatalog({
+          modulePermissions: [
+            { module: 'tasks', scope: 'team', create: true, read: true, update: true, delete: true },
+            { module: 'projects', scope: 'all', create: true, read: true, update: true, delete: true },
+            { module: 'employees', scope: 'own', create: true, read: true, update: true, delete: true },
+          ],
+        }),
+      ).not.toThrow();
+    });
   });
 
   describe('update', () => {
@@ -158,6 +170,77 @@ describe('UserGroupsService', () => {
       await expect(
         service.update(validId, { name: 'Renamed Employee' }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('Caching and Invalidation', () => {
+    let cacheService: any;
+    let serviceWithCache: UserGroupsService;
+
+    beforeEach(() => {
+      cacheService = {
+        get: jest.fn(),
+        set: jest.fn(),
+        invalidate: jest.fn(),
+      };
+      serviceWithCache = new UserGroupsService(mockUserGroupModel, cacheService);
+    });
+
+    it('should serve from cache if cached entry exists', async () => {
+      const cachedGroups = [{ name: 'Employee' }];
+      cacheService.get.mockReturnValue(cachedGroups);
+
+      const result = await serviceWithCache.getEffectiveGroups('user1');
+      expect(result).toBe(cachedGroups);
+      expect(mockUserGroupModel.find).not.toHaveBeenCalled();
+    });
+
+    it('should query DB and store in cache on cache miss', async () => {
+      cacheService.get.mockReturnValue(undefined);
+      const dbGroups = [{ name: 'Employee' }];
+      mockUserGroupModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(dbGroups),
+      });
+
+      const result = await serviceWithCache.getEffectiveGroups('user1');
+      expect(result).toEqual(dbGroups);
+      expect(cacheService.set).toHaveBeenCalledWith('user1', dbGroups);
+    });
+
+    it('should invalidate cache for user on membership addition', async () => {
+      mockUserGroupModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ name: 'Administrators' }),
+      });
+      mockUserGroupModel.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ name: 'Administrators' }),
+      });
+
+      await serviceWithCache.addUserToGroup('user1', 'Administrators');
+      expect(cacheService.invalidate).toHaveBeenCalledWith('user1');
+    });
+
+    it('should invalidate cache for user on removal from Admin group', async () => {
+      mockUserGroupModel.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ name: 'Administrators' }),
+      });
+
+      await serviceWithCache.removeUserFromAdminGroup('user1');
+      expect(cacheService.invalidate).toHaveBeenCalledWith('user1');
+    });
+
+    it('should invalidate entire cache on group create, update, or remove', async () => {
+      // create
+      const saveMock = jest.fn().mockResolvedValue({ name: 'NewGroup' });
+      mockUserGroupModel = jest.fn().mockImplementation(() => ({
+        save: saveMock,
+      }));
+      serviceWithCache = new UserGroupsService(mockUserGroupModel as any, cacheService);
+
+      await serviceWithCache.create({
+        name: 'NewGroup',
+        modulePermissions: [],
+      } as any);
+      expect(cacheService.invalidate).toHaveBeenCalled();
     });
   });
 });

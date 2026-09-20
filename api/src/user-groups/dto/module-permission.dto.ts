@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { CATALOG_MODULES } from '../../permissions/permissions.catalog';
 
 export class ModulePermissionDto {
@@ -8,6 +8,13 @@ export class ModulePermissionDto {
     message: `module must be one of: ${CATALOG_MODULES.join(', ')}`,
   })
   module: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['own', 'team', 'all'], {
+    message: 'scope must be one of: own, team, all',
+  })
+  scope?: 'own' | 'team' | 'all';
 
   @IsBoolean()
   create: boolean;
@@ -21,3 +28,4 @@ export class ModulePermissionDto {
   @IsBoolean()
   delete: boolean;
 }
+

@@ -15,11 +15,13 @@ export class DashboardController {
   getEmployeeActivity(@Request() req, @Query() query: EmployeeActivityQueryDto) {
     const userId = req.user?.id || req.user?._id;
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    const scope = req.permissionScope || 'own';
     return this.dashboardService.getEmployeeActivity(
       query,
       userId?.toString(),
       req.user?.email,
       isSystemAdmin,
+      scope,
     );
   }
 }

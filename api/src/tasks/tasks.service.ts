@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Task } from './schemas/task.schema';
@@ -11,6 +11,7 @@ import { CommentsService } from '../comments/comments.service';
 
 import { Team } from '../teams/schemas/team.schema';
 import { Employee } from '../employees/schemas/employee.schema';
+import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class TasksService {
@@ -21,6 +22,7 @@ export class TasksService {
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private emailService: EmailService,
     private commentsService: CommentsService,
+    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   /**
@@ -61,9 +63,20 @@ export class TasksService {
   }
 
 
-  async hasTaskAccess(task: Task, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<boolean> {
-    if (isSystemAdmin) return true;
-    if (!userId) return true;
+  async hasTaskAccess(
+    task: Task,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<boolean> {
+    if (isSystemAdmin || scope === 'all') return true;
+    if (!userId && !email) return true;
+
+    if (this.accessScopeService) {
+      const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+      return this.accessScopeService.canAccess('tasks', task, userContext, scope);
+    }
 
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
     const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
@@ -188,8 +201,75 @@ export class TasksService {
     return savedTask;
   }
 
-  async findAll(userId: string, email?: string, projectId?: string, isSystemAdmin?: boolean): Promise<Task[]> {
+  async findAll(
+    userId: string,
+    email?: string,
+    projectId?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Task[]> {
     const { Types } = require('mongoose');
+
+    if (isSystemAdmin || scope === 'all') {
+      const query: any = {};
+      if (projectId) {
+        const projIdObj = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+        query.$or = [{ projectId: projIdObj }, { projectId: projectId.toString() }];
+      }
+      return this.taskModel
+        .find(query)
+        .populate('projectId', 'name color')
+        .populate('assignee')
+        .populate('assignedBy')
+        .sort({ createdAt: -1 })
+        .exec();
+    }
+
+    if (this.accessScopeService) {
+      const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+      const scopeFilter = await this.accessScopeService.buildFilter('tasks', userContext, scope);
+
+      if (projectId) {
+        const projIdObj = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+        const project = await this.projectModel.findById(projIdObj).exec();
+        if (!project) return [];
+
+        const hasProjectAccess = await this.accessScopeService.canAccess('projects', project, userContext, scope);
+        if (hasProjectAccess && scope === 'team') {
+          return this.taskModel
+            .find({
+              $or: [{ projectId: projIdObj }, { projectId: projectId.toString() }],
+            })
+            .populate('projectId', 'name color')
+            .populate('assignee')
+            .populate('assignedBy')
+            .sort({ createdAt: -1 })
+            .exec();
+        }
+
+        return this.taskModel
+          .find({
+            $and: [
+              { $or: [{ projectId: projIdObj }, { projectId: projectId.toString() }] },
+              scopeFilter,
+            ],
+          })
+          .populate('projectId', 'name color')
+          .populate('assignee')
+          .populate('assignedBy')
+          .sort({ createdAt: -1 })
+          .exec();
+      }
+
+      return this.taskModel
+        .find(scopeFilter)
+        .populate('projectId', 'name color')
+        .populate('assignee')
+        .populate('assignedBy')
+        .sort({ createdAt: -1 })
+        .exec();
+    }
+
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
     const employeeIdObjs = employeeIds.map((id) => (Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id));
     const employeeIdStrs = employeeIds.map((id) => id.toString());
@@ -282,7 +362,13 @@ export class TasksService {
     return tasks;
   }
 
-  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<any | null> {
+  async findOne(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<any | null> {
     const { Types } = require('mongoose');
     if (!Types.ObjectId.isValid(id)) {
       return null;
@@ -291,7 +377,7 @@ export class TasksService {
     if (!task) return null;
 
     if (userId) {
-      const hasAccess = await this.hasTaskAccess(task, userId, email, isSystemAdmin);
+      const hasAccess = await this.hasTaskAccess(task, userId, email, isSystemAdmin, scope);
       if (!hasAccess) {
         const { ForbiddenException } = require('@nestjs/common');
         throw new ForbiddenException('You do not have access to this task');
@@ -394,10 +480,11 @@ export class TasksService {
     email?: string,
     user?: { name: string; avatarUrl?: string; email?: string },
     isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
   ): Promise<Task | null> {
     let existingTask: any = null;
     if (userId) {
-      existingTask = await this.findOne(id, userId, email, isSystemAdmin);
+      existingTask = await this.findOne(id, userId, email, isSystemAdmin, scope);
     } else {
       existingTask = await this.taskModel.findById(id).exec();
     }
@@ -646,35 +733,50 @@ export class TasksService {
     } as any;
   }
 
-  async remove(id: string, userId?: string, _email?: string, isSystemAdmin?: boolean): Promise<Task | null> {
-    if (userId && !isSystemAdmin) {
+  async remove(
+    id: string,
+    userId?: string,
+    _email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Task | null> {
+    if (userId && !isSystemAdmin && scope !== 'all') {
       const task = await this.taskModel.findById(id).exec();
       if (!task) return null;
 
-      const isOwner = task.userId?.toString() === userId;
-      let canDelete = isOwner;
+      if (this.accessScopeService) {
+        const userContext = { id: userId, _id: userId, email: _email, is_system_admin: isSystemAdmin };
+        const hasAccess = await this.accessScopeService.canAccess('tasks', task, userContext, scope);
+        if (!hasAccess) {
+          const { ForbiddenException } = require('@nestjs/common');
+          throw new ForbiddenException('Only task owners, project leads, or administrators can delete this task');
+        }
+      } else {
+        const isOwner = task.userId?.toString() === userId;
+        let canDelete = isOwner;
 
-      if (!canDelete && task.projectId) {
-        const project = await this.projectModel.findById(task.projectId).exec();
-        if (project) {
-          if (project.userId?.toString() === userId) {
-            canDelete = true;
-          } else if (project.teamId) {
-            const team = await this.teamModel.findById(project.teamId).exec();
-            if (team && team.teamLead) {
-              const employeeIds = await this.getEmployeeIdsForUser(userId, _email);
-              const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
-              if (employeeIdStrs.has(team.teamLead.toString())) {
-                canDelete = true;
+        if (!canDelete && task.projectId) {
+          const project = await this.projectModel.findById(task.projectId).exec();
+          if (project) {
+            if (project.userId?.toString() === userId) {
+              canDelete = true;
+            } else if (project.teamId) {
+              const team = await this.teamModel.findById(project.teamId).exec();
+              if (team && team.teamLead) {
+                const employeeIds = await this.getEmployeeIdsForUser(userId, _email);
+                const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+                if (employeeIdStrs.has(team.teamLead.toString())) {
+                  canDelete = true;
+                }
               }
             }
           }
         }
-      }
 
-      if (!canDelete) {
-        const { ForbiddenException } = require('@nestjs/common');
-        throw new ForbiddenException('Only task owners, project leads, or administrators can delete this task');
+        if (!canDelete) {
+          const { ForbiddenException } = require('@nestjs/common');
+          throw new ForbiddenException('Only task owners, project leads, or administrators can delete this task');
+        }
       }
     }
     return this.taskModel.findByIdAndDelete(id).exec();

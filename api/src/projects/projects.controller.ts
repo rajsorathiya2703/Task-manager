@@ -21,27 +21,31 @@ export class ProjectsController {
   @RequirePermission({ module: 'projects', action: 'read', model: 'projects' })
   findAll(@Request() req) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.projectsService.findAll(req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.projectsService.findAll(req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Get(':id')
   @RequirePermission({ module: 'projects', action: 'read', model: 'projects' })
   findOne(@Request() req, @Param('id') id: string) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.projectsService.findOne(id, req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.projectsService.findOne(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Patch(':id')
   @RequirePermission({ module: 'projects', action: 'update', model: 'projects' })
   update(@Request() req, @Param('id') id: string, @Body() updateProjectDto: UpdateProjectDto) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.projectsService.update(id, updateProjectDto, req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.projectsService.update(id, updateProjectDto, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Delete(':id')
   @RequirePermission({ module: 'projects', action: 'delete', model: 'projects' })
   remove(@Request() req, @Param('id') id: string) {
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.projectsService.remove(id, req.user.id, req.user.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.projectsService.remove(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 }

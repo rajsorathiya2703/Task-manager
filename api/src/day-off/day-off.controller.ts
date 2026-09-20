@@ -113,28 +113,26 @@ export class DayOffController {
     @Query('scope') scope?: string,
   ) {
     const y = year ? parseInt(year, 10) : undefined;
-    if (scope === 'my') {
-      return this.dayOffService.getMyApplications(req.user, y);
-    }
-
-    // Viewing all employee applications requires dayoff.approvals or Administrators
-    const userId = req.user?.id || req.user?._id;
-    if (userId) {
-      const userPerms = await this.userGroupsService.getUserPermissions(userId.toString());
-      const isAdministrator = userPerms.groups?.some(
-        (g) => g.trim().toLowerCase() === 'administrators',
-      );
-      if (!isAdministrator) {
-        const opPerm = (userPerms as any).operationPermissions?.['dayoff.approvals'];
-        if (!opPerm || opPerm.read === false) {
-          throw new ForbiddenException(
-            'Access Denied: You do not have permission to view all leave applications.',
-          );
+    const permScope = req.permissionScope || 'own';
+    if (scope === 'my' || permScope === 'own') {
+      const userId = req.user?.id || req.user?._id;
+      let isAllowedAll = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+      if (userId && !isAllowedAll) {
+        const userPerms = await this.userGroupsService.getUserPermissions(userId.toString());
+        isAllowedAll = userPerms.groups?.some((g) => g.trim().toLowerCase() === 'administrators') || false;
+        if (!isAllowedAll) {
+          const opPerm = (userPerms as any).operationPermissions?.['dayoff.approvals'];
+          if (opPerm && opPerm.read !== false) {
+            isAllowedAll = true;
+          }
         }
+      }
+      if (!isAllowedAll || scope === 'my') {
+        return this.dayOffService.getMyApplications(req.user, y);
       }
     }
 
-    return this.dayOffService.getAllApplications({ status, year: y });
+    return this.dayOffService.getAllApplications({ status, year: y }, req.user, permScope);
   }
 
   @Patch('applications/:id/cancel')

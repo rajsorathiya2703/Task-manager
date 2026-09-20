@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Team } from './schemas/team.schema';
 import { Task } from '../tasks/schemas/task.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { CommentsService } from '../comments/comments.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class TeamsService {
@@ -13,6 +14,7 @@ export class TeamsService {
     @InjectModel(Task.name) private taskModel: Model<Task>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private commentsService: CommentsService,
+    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   private async getEmployeeIdsForUser(userId?: string, email?: string): Promise<Types.ObjectId[]> {
@@ -71,10 +73,25 @@ export class TeamsService {
     return newTeam.save();
   }
 
-  async findAll(userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team[]> {
-    if (isSystemAdmin) {
+  async findAll(
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Team[]> {
+    if (isSystemAdmin || scope === 'all') {
       return this.teamModel
         .find()
+        .populate('members')
+        .populate('teamLead')
+        .exec();
+    }
+
+    if (this.accessScopeService) {
+      const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+      const filter = await this.accessScopeService.buildFilter('teams', userContext, scope);
+      return this.teamModel
+        .find(filter)
         .populate('members')
         .populate('teamLead')
         .exec();
@@ -116,7 +133,13 @@ export class TeamsService {
       .exec();
   }
 
-  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team> {
+  async findOne(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
     }
@@ -125,7 +148,20 @@ export class TeamsService {
       throw new NotFoundException(`Team #${id} not found`);
     }
 
-    if (!isSystemAdmin && userId) {
+    if (isSystemAdmin || scope === 'all') {
+      return team;
+    }
+
+    if (userId) {
+      if (this.accessScopeService) {
+        const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+        const hasAccess = await this.accessScopeService.canAccess('teams', team, userContext, scope);
+        if (!hasAccess) {
+          throw new ForbiddenException('Access Denied: You do not have permission to view this team.');
+        }
+        return team;
+      }
+
       const hasAccess = await this.isUserInTeam(team, userId, email);
       if (!hasAccess) {
         throw new ForbiddenException('Access Denied: You are not a member of this team.');
@@ -135,20 +171,17 @@ export class TeamsService {
     return team;
   }
 
-  async update(id: string, updateTeamDto: any, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Team> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new NotFoundException(`Team #${id} not found`);
-    }
-    const existingTeam = await this.teamModel.findById(id).populate('members').populate('teamLead').exec();
+  async update(
+    id: string,
+    updateTeamDto: any,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Team> {
+    const existingTeam = await this.findOne(id, userId, email, isSystemAdmin, scope);
     if (!existingTeam) {
       throw new NotFoundException(`Team #${id} not found`);
-    }
-
-    if (!isSystemAdmin && userId) {
-      const hasAccess = await this.isUserInTeam(existingTeam, userId, email);
-      if (!hasAccess) {
-        throw new ForbiddenException('Access Denied: You do not have permission to update this team.');
-      }
     }
 
     const updatedTeam = await this.teamModel.findByIdAndUpdate(
@@ -160,10 +193,29 @@ export class TeamsService {
     return updatedTeam!;
   }
 
-  async remove(id: string): Promise<any> {
-    if (!Types.ObjectId.isValid(id)) {
+  async remove(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<any> {
+    const existingTeam = await this.findOne(id, userId, email, isSystemAdmin, scope);
+    if (!existingTeam) {
       throw new NotFoundException(`Team #${id} not found`);
     }
+
+    if (!isSystemAdmin && userId && scope !== 'all') {
+      const teamLeadStr = (existingTeam.teamLead?._id || existingTeam.teamLead)?.toString();
+      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+      const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+      if (userId) employeeIdStrs.add(userId.toString());
+
+      if (!teamLeadStr || !employeeIdStrs.has(teamLeadStr)) {
+        throw new ForbiddenException('Only the team lead or administrator can delete this team');
+      }
+    }
+
     const deletedTeam = await this.teamModel.findByIdAndDelete(id).exec();
     if (!deletedTeam) {
       throw new NotFoundException(`Team #${id} not found`);
@@ -171,20 +223,16 @@ export class TeamsService {
     return deletedTeam;
   }
 
-  async getActiveTasks(teamId: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Task[]> {
-    if (!Types.ObjectId.isValid(teamId)) {
-      throw new NotFoundException(`Team #${teamId} not found`);
-    }
-    const team = await this.teamModel.findById(teamId).populate('members').populate('teamLead').exec();
+  async getActiveTasks(
+    teamId: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Task[]> {
+    const team = await this.findOne(teamId, userId, email, isSystemAdmin, scope);
     if (!team) {
       throw new NotFoundException(`Team #${teamId} not found`);
-    }
-
-    if (!isSystemAdmin && userId) {
-      const hasAccess = await this.isUserInTeam(team, userId, email);
-      if (!hasAccess) {
-        throw new ForbiddenException('Access Denied: You are not a member of this team.');
-      }
     }
     
     // Find all active tasks assigned to any team member

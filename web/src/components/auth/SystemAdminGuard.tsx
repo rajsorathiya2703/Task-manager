@@ -13,8 +13,8 @@ export function SystemAdminGuard({ children }: { children: React.ReactNode }) {
     fetchMe()
       .then((user) => {
         if (!mounted) return;
-        // User is system admin unless explicitly false
-        if (user && user.is_system_admin !== false) {
+        // User is strictly system admin if is_system_admin === true
+        if (user && user.is_system_admin === true) {
           setIsAuthorized(true);
         } else {
           setIsAuthorized(false);

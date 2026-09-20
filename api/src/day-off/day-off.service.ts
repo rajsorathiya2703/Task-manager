@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Logger,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -16,6 +17,7 @@ import { LeaveBalance } from './schemas/leave-balance.schema';
 import { Notification } from './schemas/notification.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { DayOffMailService } from './day-off-mail.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class DayOffService implements OnModuleInit {
@@ -29,6 +31,7 @@ export class DayOffService implements OnModuleInit {
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private mailService: DayOffMailService,
+    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   async onModuleInit() {
@@ -327,7 +330,11 @@ export class DayOffService implements OnModuleInit {
       .exec();
   }
 
-  async getAllApplications(query?: { status?: string; year?: number }): Promise<LeaveApplication[]> {
+  async getAllApplications(
+    query?: { status?: string; year?: number },
+    user?: any,
+    scope: 'own' | 'team' | 'all' = 'all',
+  ): Promise<LeaveApplication[]> {
     const filter: any = {};
     if (query?.status) {
       filter.status = query.status;
@@ -336,6 +343,28 @@ export class DayOffService implements OnModuleInit {
       const start = new Date(`${query.year}-01-01T00:00:00.000Z`);
       const end = new Date(`${query.year}-12-31T23:59:59.999Z`);
       filter.fromDate = { $gte: start, $lte: end };
+    }
+
+    if (user && !user.is_system_admin && scope !== 'all' && this.accessScopeService) {
+      const scopeFilter = await this.accessScopeService.buildFilter('dayoff', user, scope);
+      if (Object.keys(scopeFilter).length > 0) {
+        if (filter.fromDate || filter.status) {
+          return this.applicationModel
+            .find({ $and: [filter, scopeFilter] })
+            .populate('leaveTypeId')
+            .populate('employeeId')
+            .populate('userId')
+            .sort({ fromDate: -1 })
+            .exec();
+        }
+        return this.applicationModel
+          .find(scopeFilter)
+          .populate('leaveTypeId')
+          .populate('employeeId')
+          .populate('userId')
+          .sort({ fromDate: -1 })
+          .exec();
+      }
     }
 
     return this.applicationModel

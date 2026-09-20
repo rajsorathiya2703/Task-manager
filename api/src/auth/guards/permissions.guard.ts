@@ -10,6 +10,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ALLOW_AUTHENTICATED_KEY } from '../decorators/allow-authenticated.decorator';
 import { REQUIRE_SYSTEM_ADMIN_KEY } from '../decorators/system-admin.decorator';
 import { UserGroupsService } from '../../user-groups/user-groups.service';
+import { canAny, isUnrestricted } from '../../permissions/permission-resolver';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -43,16 +44,44 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
+    const rawGroups = this.userGroupsService.getEffectiveGroups
+      ? await this.userGroupsService.getEffectiveGroups(userId.toString())
+      : [];
+
     const userPerms = await this.userGroupsService.getUserPermissions(userId.toString());
 
-    // 4. Full access comes from an "Administrators" group or is_system_admin flag
-    const isAdministrator = userPerms.groups?.some(
-      (groupName) => groupName.trim().toLowerCase() === 'administrators',
-    );
-    const isSystemAdmin = Boolean(isAdministrator || user?.is_system_admin === true);
+    // Reconstruct groups if rawGroups is empty (e.g. in legacy unit tests mocking only getUserPermissions)
+    const effectiveGroups = rawGroups && rawGroups.length > 0
+      ? rawGroups
+      : (userPerms?.groups || []).map((name) => ({
+          name,
+          modulePermissions: Object.entries(userPerms?.modulePermissions || {}).map(([mod, p]: any) => ({
+            module: mod,
+            ...p,
+          })),
+          operationPermissions: Object.entries(userPerms?.operationPermissions || {}).map(([op, p]: any) => ({
+            operation: op,
+            ...p,
+          })),
+          fieldPermissions: Object.entries(userPerms?.fieldPermissions || {}).flatMap(([model, fields]: any) =>
+            Object.entries(fields || {}).map(([field, p]: any) => ({
+              model,
+              field,
+              ...p,
+            })),
+          ),
+          permissions: userPerms?.permissions || [],
+        }));
 
-    // Cache on request for downstream interceptors
+    // Cache on request for downstream handlers and interceptors
+    req.userGroups = effectiveGroups;
     req.userPerms = userPerms;
+
+    const isSystemAdmin = Boolean(
+      user?.is_system_admin === true ||
+      effectiveGroups.some((g) => (typeof g === 'string' ? g : g?.name)?.trim().toLowerCase() === 'administrators') ||
+      userPerms?.groups?.some((g) => g.trim().toLowerCase() === 'administrators'),
+    );
     req.isSystemAdmin = isSystemAdmin;
 
     // Check @RequireSystemAdmin() requirement
@@ -67,10 +96,12 @@ export class PermissionsGuard implements CanActivate {
     }
 
     if (isSystemAdmin) {
+      req.permissionScope = 'all';
       return true;
     }
 
     if (isAllowAuthenticated) {
+      req.permissionScope = 'all';
       return true;
     }
 
@@ -88,7 +119,13 @@ export class PermissionsGuard implements CanActivate {
       );
     }
 
-    // 6. Deny by default: If user is not assigned to any user groups, deny access
+    // Check if user is unrestricted (e.g. no groups when PERMISSIONS_DENY_WHEN_NO_GROUP is false)
+    if (isUnrestricted(user, effectiveGroups)) {
+      req.permissionScope = 'all';
+      return true;
+    }
+
+    // Deny by default: If user is not assigned to any user groups
     if (!userPerms.groups || userPerms.groups.length === 0) {
       throw new ForbiddenException(
         `Access Denied: You do not belong to any user group with access to ${requirement.module}.`,
@@ -97,142 +134,100 @@ export class PermissionsGuard implements CanActivate {
 
     const { module: modKey, action, model: modelKey = requirement.module, operation: opKey } = requirement;
 
-    // 7. ── Check Operation-Level CRUD Permission (if specified) ──
-    if (opKey) {
-      const opActionKey = action === 'create' ? 'write' : action;
-      const opPerm = (userPerms as any).operationPermissions?.[opKey];
-      if (opPerm !== undefined) {
-        if (opPerm[opActionKey] === false) {
-          throw new ForbiddenException(
-            `Access Denied: You do not have permission to ${action} for operation '${opKey}'.`,
-          );
-        }
-      } else {
-        // Deny sensitive operations by default if not explicitly granted
-        if (
-          opKey.startsWith('dayoff.approvals') ||
-          opKey.startsWith('dayoff.policies') ||
-          opKey.startsWith('settings.')
-        ) {
-          throw new ForbiddenException(
-            `Access Denied: You do not have permission to ${action} for operation '${opKey}'.`,
-          );
-        }
-      }
-    }
-
-    // 3. ── Check Module-Level CRUD Permission (Deny by default) ──
-    const modPerm = userPerms.modulePermissions?.[modKey];
-    const hasModulePermission = modPerm && modPerm[action] === true;
-
-    const hasLegacyManage = userPerms.permissions?.includes(`${modKey}:manage`);
-    const hasLegacyAction = userPerms.permissions?.includes(`${modKey}:${action}`);
-    const hasLegacyView = action === 'read' && userPerms.permissions?.includes(`${modKey}:view`);
-    let hasLegacyPermission = hasLegacyManage || hasLegacyAction || hasLegacyView;
-
-    // Backward-compatible fallback for read on separated modules if user has settings read access
-    if (!hasModulePermission && !hasLegacyPermission && action === 'read' && (modKey === 'users' || modKey === 'user-groups')) {
-      const settingsMod = userPerms.modulePermissions?.['settings'];
-      if (settingsMod && settingsMod.read === true) {
-        hasLegacyPermission = true;
-      } else if (
-        userPerms.permissions?.includes('settings:read') ||
-        userPerms.permissions?.includes('settings:view') ||
-        userPerms.permissions?.includes('settings:manage')
-      ) {
-        hasLegacyPermission = true;
-      }
-    }
-
-    if (!hasModulePermission && !hasLegacyPermission) {
+    // ── Check Module-Level CRUD Permission via canAny ──
+    const moduleCheck = canAny(effectiveGroups, { module: modKey, action });
+    if (!moduleCheck.allowed) {
+      const reasons = moduleCheck.results.map((r) => r.reason).filter(Boolean).join('; ');
       throw new ForbiddenException(
-        `Access Denied: You do not have permission to ${action} records in ${modKey}.`,
+        reasons || `Access Denied: You do not have permission to ${action} records in ${modKey}.`,
       );
     }
+    req.permissionScope = moduleCheck.scope;
 
-    // 2. ── Check Field-Level CRUD Permissions for Create / Update / Delete ──
-    const modelFields = userPerms.fieldPermissions?.[modelKey];
-    const compPerm = userPerms.operationPermissions?.['employees.compensation'];
-    const compensationFields = [
-      'baseSalary',
-      'currency',
-      'payFrequency',
-      'bankAccountNumber',
-      'bankRoutingNumber',
-      'taxId',
-    ];
+    // ── Check Operation-Level CRUD Permission via canAny ──
+    if (opKey) {
+      const opCheck = canAny(effectiveGroups, {
+        module: modKey,
+        action,
+        operation: opKey,
+      });
+      if (!opCheck.allowed) {
+        const reasons = opCheck.results.map((r) => r.reason).filter(Boolean).join('; ');
+        throw new ForbiddenException(
+          reasons || `Access Denied: You do not have permission to ${action} for operation '${opKey}'.`,
+        );
+      }
+    }
 
+    // ── Check Field-Level CRUD Permissions via canAny ──
     if ((action === 'create' || action === 'update') && req.body && typeof req.body === 'object') {
       const bodyKeys = Object.keys(req.body).filter(
         (k) => !['_id', 'id', 'createdAt', 'updatedAt', '__v', 'userId'].includes(k),
       );
 
       for (const key of bodyKeys) {
-        // Check operation-level compensation constraint for employee records
-        if (modelKey === 'employees' && compensationFields.includes(key) && compPerm) {
-          if (action === 'create' && compPerm.write === false) {
-            throw new ForbiddenException(
-              `Access Denied: You do not have permission to set employee compensation field '${key}'.`,
-            );
-          }
-          if (action === 'update' && compPerm.update === false) {
-            throw new ForbiddenException(
-              `Access Denied: You do not have permission to update employee compensation field '${key}'.`,
-            );
-          }
-        }
+        const val = req.body[key];
+        const isDeletingValue = action === 'update' && (val === null || val === '' || val === undefined);
 
-        // Check field-level permissions if configured
-        if (modelFields) {
-          const fieldPerm = modelFields[key];
-          if (fieldPerm) {
-            if (action === 'create' && fieldPerm.write === false) {
-              throw new ForbiddenException(
-                `Access Denied: You do not have permission to set field '${key}' in ${modelKey}.`,
-              );
-            }
-            if (action === 'update') {
-              const val = req.body[key];
-              const isDeletingValue = val === null || val === '' || val === undefined;
-              if (isDeletingValue && fieldPerm.delete === false) {
-                throw new ForbiddenException(
-                  `Access Denied: You do not have permission to delete field '${key}' in ${modelKey}.`,
-                );
-              }
-              if (fieldPerm.update === false) {
-                throw new ForbiddenException(
-                  `Access Denied: You do not have permission to update field '${key}' in ${modelKey}.`,
-                );
-              }
-            }
+        const fieldCheck = canAny(effectiveGroups, {
+          module: modKey,
+          action,
+          model: modelKey,
+          field: key,
+          isDeletingValue,
+        });
+
+        if (!fieldCheck.allowed) {
+          const reasons = fieldCheck.results.map((r) => r.reason).filter(Boolean).join('; ');
+          const showDetails = isSystemAdmin || process.env.NODE_ENV !== 'production';
+          let msg: string;
+          if (modelKey === 'employees' && ['baseSalary', 'currency', 'payFrequency', 'bankAccountNumber', 'bankRoutingNumber', 'taxId'].includes(key) && reasons.includes('employees.compensation')) {
+            msg = `Access Denied: You do not have permission to ${action === 'create' ? 'set' : 'update'} employee compensation field '${key}'.`;
+          } else if (isDeletingValue) {
+            msg = `Access Denied: You do not have permission to delete field '${key}' in ${modelKey}.`;
+          } else if (action === 'create') {
+            msg = `Access Denied: You do not have permission to set field '${key}' in ${modelKey}.`;
+          } else {
+            msg = `Access Denied: You do not have permission to update field '${key}' in ${modelKey}.`;
           }
+          throw new ForbiddenException(showDetails ? `${msg} ${reasons}` : msg);
         }
       }
     }
 
     if (action === 'delete') {
-      // If endpoint explicitly targets a field via requirement
-      if (requirement.field && modelFields) {
-        const fieldPerm = modelFields[requirement.field];
-        if (fieldPerm && fieldPerm.delete === false) {
-          throw new ForbiddenException(
-            `Access Denied: You do not have permission to delete field '${requirement.field}' in ${modelKey}.`,
-          );
+      if (requirement.field) {
+        const fieldCheck = canAny(effectiveGroups, {
+          module: modKey,
+          action: 'delete',
+          model: modelKey,
+          field: requirement.field,
+        });
+        if (!fieldCheck.allowed) {
+          const reasons = fieldCheck.results.map((r) => r.reason).filter(Boolean).join('; ');
+          const showDetails = isSystemAdmin || process.env.NODE_ENV !== 'production';
+          const msg = `Access Denied: You do not have permission to delete field '${requirement.field}' in ${modelKey}.`;
+          throw new ForbiddenException(showDetails ? `${msg} ${reasons}` : msg);
         }
       }
 
-      // If request body specifies a field or fields to delete
-      if (req.body && typeof req.body === 'object' && modelFields) {
+      if (req.body && typeof req.body === 'object') {
         const targetFields: string[] = [];
         if (typeof req.body.field === 'string') targetFields.push(req.body.field);
         if (Array.isArray(req.body.fields)) targetFields.push(...req.body.fields);
 
         for (const field of targetFields) {
-          const fieldPerm = modelFields[field];
-          if (fieldPerm && fieldPerm.delete === false) {
-            throw new ForbiddenException(
-              `Access Denied: You do not have permission to delete field '${field}' in ${modelKey}.`,
-            );
+          const fieldCheck = canAny(effectiveGroups, {
+            module: modKey,
+            action: 'delete',
+            model: modelKey,
+            field,
+          });
+          if (!fieldCheck.allowed) {
+            const reasons = fieldCheck.results.map((r) => r.reason).filter(Boolean).join('; ');
+            const showDetails = isSystemAdmin || process.env.NODE_ENV !== 'production';
+            const msg = `Access Denied: You do not have permission to delete field '${field}' in ${modelKey}.`;
+            throw new ForbiddenException(showDetails ? `${msg} ${reasons}` : msg);
           }
         }
       }

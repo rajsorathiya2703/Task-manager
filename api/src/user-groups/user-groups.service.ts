@@ -1,22 +1,50 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserGroup } from './schemas/user-group.schema';
+import { PermissionAuditLog, AuditAction } from './schemas/permission-audit-log.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
 import {
   CATALOG_MODULES,
   CATALOG_OPERATIONS,
   CATALOG_MODELS_AND_FIELDS,
+  PERMISSION_CATALOG,
 } from '../permissions/permissions.catalog';
+import {
+  resolveEffective,
+  EffectivePermissions,
+  canAny,
+  isUnrestricted,
+  PermissionCheck,
+} from '../permissions/permission-resolver';
+import { PermissionCacheService } from '../permissions/permission-cache.service';
 import { CreateUserGroupDto } from './dto/create-user-group.dto';
 import { UpdateUserGroupDto } from './dto/update-user-group.dto';
 
 @Injectable()
 export class UserGroupsService {
   private readonly logger = new Logger(UserGroupsService.name);
+  private auditLogModel?: Model<PermissionAuditLog>;
 
   constructor(
     @InjectModel(UserGroup.name) private userGroupModel: Model<UserGroup>,
-  ) {}
+    @Optional()
+    @InjectModel(PermissionAuditLog.name)
+    auditLogModelOrCache?: Model<PermissionAuditLog> | PermissionCacheService,
+    @Optional() @InjectModel(User.name) private userModel?: Model<UserDocument>,
+    @Optional() private permissionCacheService?: PermissionCacheService,
+  ) {
+    if (
+      auditLogModelOrCache &&
+      'invalidate' in (auditLogModelOrCache as any) &&
+      typeof (auditLogModelOrCache as any).invalidate === 'function'
+    ) {
+      this.permissionCacheService = auditLogModelOrCache as PermissionCacheService;
+      this.auditLogModel = undefined;
+    } else {
+      this.auditLogModel = auditLogModelOrCache as Model<PermissionAuditLog>;
+    }
+  }
 
   async ensureDefaultGroups(): Promise<{ adminGroup: UserGroup; employeeGroup: UserGroup }> {
     const adminModules = ['tasks', 'projects', 'employees', 'teams', 'dayoff', 'reports', 'settings', 'users', 'user-groups'];
@@ -26,6 +54,7 @@ export class UserGroupsService {
       read: true,
       update: true,
       delete: true,
+      scope: 'all' as const,
     }));
     const adminPermissions = adminModules.flatMap((m) => [
       `${m}:manage`,
@@ -94,7 +123,8 @@ export class UserGroupsService {
       this.logger.log('Created default "Administrators" user group.');
     } else {
       const hasUsers = adminGroup.modulePermissions?.some((mp) => mp.module === 'users');
-      if (!hasUsers || !adminGroup.operationPermissions || adminGroup.operationPermissions.length === 0) {
+      const missingAdminScope = adminGroup.modulePermissions?.some((mp) => mp.scope !== 'all');
+      if (!hasUsers || missingAdminScope || !adminGroup.operationPermissions || adminGroup.operationPermissions.length === 0) {
         adminGroup.permissions = adminPermissions;
         adminGroup.modulePermissions = adminModulePermissions;
         adminGroup.operationPermissions = adminOperationPermissions;
@@ -106,15 +136,15 @@ export class UserGroupsService {
     }
 
     const employeeModulePermissions = [
-      { module: 'tasks', create: true, read: true, update: true, delete: true },
-      { module: 'projects', create: true, read: true, update: true, delete: false },
-      { module: 'teams', create: true, read: true, update: true, delete: false },
-      { module: 'employees', create: false, read: true, update: false, delete: false },
-      { module: 'dayoff', create: true, read: true, update: true, delete: true },
-      { module: 'reports', create: false, read: true, update: false, delete: false },
-      { module: 'settings', create: false, read: false, update: false, delete: false },
-      { module: 'users', create: false, read: false, update: false, delete: false },
-      { module: 'user-groups', create: false, read: false, update: false, delete: false },
+      { module: 'tasks', create: true, read: true, update: true, delete: true, scope: 'own' as const },
+      { module: 'projects', create: true, read: true, update: true, delete: false, scope: 'own' as const },
+      { module: 'teams', create: true, read: true, update: true, delete: false, scope: 'team' as const },
+      { module: 'employees', create: false, read: true, update: false, delete: false, scope: 'own' as const },
+      { module: 'dayoff', create: true, read: true, update: true, delete: true, scope: 'own' as const },
+      { module: 'reports', create: false, read: true, update: false, delete: false, scope: 'own' as const },
+      { module: 'settings', create: false, read: false, update: false, delete: false, scope: 'own' as const },
+      { module: 'users', create: false, read: false, update: false, delete: false, scope: 'own' as const },
+      { module: 'user-groups', create: false, read: false, update: false, delete: false, scope: 'own' as const },
     ];
     const employeePermissions = [
       'tasks:create', 'tasks:read', 'tasks:update', 'tasks:delete',
@@ -195,7 +225,8 @@ export class UserGroupsService {
       const hasApprovals = employeeGroup.operationPermissions?.some((op) => op.operation === 'dayoff.approvals');
       const hasUsers = employeeGroup.modulePermissions?.some((mp) => mp.module === 'users');
       const hasFieldPermissions = employeeGroup.fieldPermissions && employeeGroup.fieldPermissions.length > 0;
-      if (!hasApprovals || !hasUsers || !hasFieldPermissions || !employeeGroup.operationPermissions || employeeGroup.operationPermissions.length === 0) {
+      const missingEmployeeScope = employeeGroup.modulePermissions?.some((mp) => !mp.scope);
+      if (!hasApprovals || !hasUsers || !hasFieldPermissions || missingEmployeeScope || !employeeGroup.operationPermissions || employeeGroup.operationPermissions.length === 0) {
         employeeGroup.modulePermissions = employeeModulePermissions;
         employeeGroup.operationPermissions = employeeOperationPermissions;
         if (!hasFieldPermissions) {
@@ -217,7 +248,11 @@ export class UserGroupsService {
     }).exec();
   }
 
-  async addUserToGroup(userId: string | Types.ObjectId, groupName: string): Promise<UserGroup | null> {
+  async addUserToGroup(
+    userId: string | Types.ObjectId,
+    groupNameOrId: string | Types.ObjectId,
+    actor?: { id?: string; email?: string },
+  ): Promise<UserGroup | null> {
     if (!userId) return null;
     const userIdObj = typeof userId === 'string' && Types.ObjectId.isValid(userId)
       ? new Types.ObjectId(userId)
@@ -225,40 +260,103 @@ export class UserGroupsService {
 
     await this.ensureDefaultGroups();
 
-    return this.userGroupModel.findOneAndUpdate(
-      { name: { $regex: new RegExp(`^${groupName.trim()}$`, 'i') } },
+    const isObjectId = typeof groupNameOrId === 'string' && Types.ObjectId.isValid(groupNameOrId);
+    const filter = isObjectId
+      ? { _id: groupNameOrId }
+      : { name: { $regex: new RegExp(`^${groupNameOrId.toString().trim()}$`, 'i') } };
+
+    const updated = await this.userGroupModel.findOneAndUpdate(
+      filter,
       { $addToSet: { members: userIdObj } },
       { new: true },
     ).exec();
+
+    this.permissionCacheService?.invalidate(userId.toString());
+
+    if (updated) {
+      await this.logAudit({
+        actorId: actor?.id,
+        actorEmail: actor?.email,
+        action: 'member_added',
+        groupId: updated._id,
+        groupName: updated.name,
+        targetUserId: userIdObj as Types.ObjectId,
+        details: `Added member to group "${updated.name}"`,
+      });
+    }
+
+    return updated;
+  }
+
+  async removeUserFromGroup(
+    userId: string | Types.ObjectId,
+    groupNameOrId: string | Types.ObjectId,
+    actor?: { id?: string; email?: string },
+  ): Promise<UserGroup | null> {
+    if (!userId) return null;
+    const userIdObj = typeof userId === 'string' && Types.ObjectId.isValid(userId)
+      ? new Types.ObjectId(userId)
+      : userId;
+
+    const isObjectId = typeof groupNameOrId === 'string' && Types.ObjectId.isValid(groupNameOrId);
+    const filter = isObjectId
+      ? { _id: groupNameOrId }
+      : { name: { $regex: new RegExp(`^${groupNameOrId.toString().trim()}$`, 'i') } };
+
+    const updated = await this.userGroupModel.findOneAndUpdate(
+      filter,
+      { $pull: { members: userIdObj } },
+      { new: true },
+    ).exec();
+
+    this.permissionCacheService?.invalidate(userId.toString());
+
+    if (updated) {
+      await this.logAudit({
+        actorId: actor?.id,
+        actorEmail: actor?.email,
+        action: 'member_removed',
+        groupId: updated._id,
+        groupName: updated.name,
+        targetUserId: userIdObj as Types.ObjectId,
+        details: `Removed member from group "${updated.name}"`,
+      });
+    }
+
+    return updated;
   }
 
   async ensureUserInEmployeeGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
     return this.addUserToGroup(userId, 'Employee');
   }
 
-  async ensureUserInAdminGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
-    return this.addUserToGroup(userId, 'Administrators');
+  async addUserToDefaultGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
+    return this.ensureUserInEmployeeGroup(userId);
   }
 
-  async removeUserFromAdminGroup(userId: string | Types.ObjectId): Promise<UserGroup | null> {
-    if (!userId) return null;
-    const userIdObj = typeof userId === 'string' && Types.ObjectId.isValid(userId)
-      ? new Types.ObjectId(userId)
-      : userId;
+  async ensureUserInAdminGroup(
+    userId: string | Types.ObjectId,
+    actor?: { id?: string; email?: string },
+  ): Promise<UserGroup | null> {
+    return this.addUserToGroup(userId, 'Administrators', actor);
+  }
 
-    return this.userGroupModel.findOneAndUpdate(
-      { name: { $regex: /^administrators$/i } },
-      { $pull: { members: userIdObj } },
-      { new: true },
-    ).exec();
+  async removeUserFromAdminGroup(
+    userId: string | Types.ObjectId,
+    actor?: { id?: string; email?: string },
+  ): Promise<UserGroup | null> {
+    return this.removeUserFromGroup(userId, 'Administrators', actor);
   }
 
   validateGroupAgainstCatalog(dto: Partial<CreateUserGroupDto | UpdateUserGroupDto>): void {
+    const moduleMap: Record<string, { create?: boolean; read?: boolean; update?: boolean; delete?: boolean }> = {};
+
     if (dto.modulePermissions) {
       for (const mp of dto.modulePermissions) {
         if (!CATALOG_MODULES.includes(mp.module as any)) {
           throw new BadRequestException(`Invalid module "${mp.module}" in modulePermissions.`);
         }
+        moduleMap[mp.module] = mp;
       }
     }
 
@@ -271,6 +369,22 @@ export class UserGroupsService {
           throw new BadRequestException(
             `Invalid operation "${op.operation}" for module "${op.module}". Must match system permissions catalog.`,
           );
+        }
+
+        const parentMod = moduleMap[op.module];
+        if (parentMod) {
+          if (op.read && parentMod.read === false) {
+            throw new BadRequestException(`Operation "${op.operation}" grants "read" but module "${op.module}" denies "read".`);
+          }
+          if (op.write && parentMod.create === false) {
+            throw new BadRequestException(`Operation "${op.operation}" grants "write" but module "${op.module}" denies "create".`);
+          }
+          if (op.update && parentMod.update === false) {
+            throw new BadRequestException(`Operation "${op.operation}" grants "update" but module "${op.module}" denies "update".`);
+          }
+          if (op.delete && parentMod.delete === false) {
+            throw new BadRequestException(`Operation "${op.operation}" grants "delete" but module "${op.module}" denies "delete".`);
+          }
         }
       }
     }
@@ -286,14 +400,146 @@ export class UserGroupsService {
             `Invalid field "${fp.field}" for model "${fp.model}". Allowed fields: ${allowedFields.join(', ')}.`,
           );
         }
+
+        const parentMod = moduleMap[fp.model];
+        if (parentMod) {
+          if (fp.read && parentMod.read === false) {
+            throw new BadRequestException(`Field "${fp.field}" on model "${fp.model}" grants "read" but module "${fp.model}" denies "read".`);
+          }
+          if (fp.write && parentMod.create === false) {
+            throw new BadRequestException(`Field "${fp.field}" on model "${fp.model}" grants "write" but module "${fp.model}" denies "create".`);
+          }
+          if (fp.update && parentMod.update === false) {
+            throw new BadRequestException(`Field "${fp.field}" on model "${fp.model}" grants "update" but module "${fp.model}" denies "update".`);
+          }
+          if (fp.delete && parentMod.delete === false) {
+            throw new BadRequestException(`Field "${fp.field}" on model "${fp.model}" grants "delete" but module "${fp.model}" denies "delete".`);
+          }
+        }
       }
     }
   }
 
-  async create(createUserGroupDto: CreateUserGroupDto): Promise<UserGroup> {
+  computeGroupDiff(before: any, after: any): { beforeDiff: Record<string, any>; afterDiff: Record<string, any> } {
+    const beforeDiff: Record<string, any> = {};
+    const afterDiff: Record<string, any> = {};
+
+    const fieldsToTrack = [
+      'name',
+      'description',
+      'color',
+      'modulePermissions',
+      'operationPermissions',
+      'fieldPermissions',
+    ];
+
+    for (const field of fieldsToTrack) {
+      const bVal = before?.[field];
+      const aVal = after?.[field];
+
+      if (JSON.stringify(bVal) !== JSON.stringify(aVal)) {
+        if (bVal !== undefined) beforeDiff[field] = bVal;
+        if (aVal !== undefined) afterDiff[field] = aVal;
+      }
+    }
+
+    return { beforeDiff, afterDiff };
+  }
+
+  async logAudit(entry: {
+    actorId?: string;
+    actorEmail?: string;
+    action: AuditAction;
+    groupId?: string | Types.ObjectId;
+    groupName?: string;
+    targetUserId?: string | Types.ObjectId;
+    targetUserEmail?: string;
+    before?: Record<string, any>;
+    after?: Record<string, any>;
+    details?: string;
+  }): Promise<PermissionAuditLog | null> {
+    if (!this.auditLogModel || typeof this.auditLogModel !== 'function') {
+      return null;
+    }
+    try {
+      const audit = new this.auditLogModel({
+        actorId: entry.actorId || 'system',
+        actorEmail: entry.actorEmail || 'system@internal',
+        action: entry.action,
+        groupId: entry.groupId,
+        groupName: entry.groupName,
+        targetUserId: entry.targetUserId,
+        targetUserEmail: entry.targetUserEmail,
+        before: entry.before,
+        after: entry.after,
+        details: entry.details,
+      });
+      return await audit.save();
+    } catch (err) {
+      this.logger.error('Failed to save permission audit log', err);
+      return null;
+    }
+  }
+
+  async getAuditLogs(params: {
+    groupId?: string;
+    action?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ logs: PermissionAuditLog[]; total: number; page: number; totalPages: number }> {
+    if (!this.auditLogModel) {
+      return { logs: [], total: 0, page: 1, totalPages: 0 };
+    }
+
+    const query: any = {};
+    if (params.groupId && Types.ObjectId.isValid(params.groupId)) {
+      query.groupId = new Types.ObjectId(params.groupId);
+    }
+    if (params.action) {
+      query.action = params.action;
+    }
+
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const [logs, total] = await Promise.all([
+      this.auditLogModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.auditLogModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      logs,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async create(createUserGroupDto: CreateUserGroupDto, actor?: { id?: string; email?: string }): Promise<UserGroup> {
     this.validateGroupAgainstCatalog(createUserGroupDto);
     const newGroup = new this.userGroupModel(createUserGroupDto);
-    return newGroup.save();
+    const saved = await newGroup.save();
+    this.permissionCacheService?.invalidate();
+
+    await this.logAudit({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: 'group_created',
+      groupId: saved._id,
+      groupName: saved.name,
+      after: {
+        name: saved.name,
+        description: saved.description,
+        color: saved.color,
+        modulePermissions: saved.modulePermissions,
+        operationPermissions: saved.operationPermissions,
+        fieldPermissions: saved.fieldPermissions,
+      },
+      details: `Created user group "${saved.name}"`,
+    });
+
+    return saved;
   }
 
   async findAll(): Promise<UserGroup[]> {
@@ -311,7 +557,11 @@ export class UserGroupsService {
     return group;
   }
 
-  async update(id: string, updateUserGroupDto: UpdateUserGroupDto): Promise<UserGroup> {
+  async update(
+    id: string,
+    updateUserGroupDto: UpdateUserGroupDto,
+    actor?: { id?: string; email?: string },
+  ): Promise<UserGroup> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
@@ -342,10 +592,27 @@ export class UserGroupsService {
     if (!updated) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
+    this.permissionCacheService?.invalidate();
+
+    const beforeObj = existing.toObject ? existing.toObject() : existing;
+    const afterObj = updated.toObject ? updated.toObject() : updated;
+    const { beforeDiff, afterDiff } = this.computeGroupDiff(beforeObj, afterObj);
+
+    await this.logAudit({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: 'group_updated',
+      groupId: updated._id,
+      groupName: updated.name,
+      before: beforeDiff,
+      after: afterDiff,
+      details: `Updated user group "${updated.name}"`,
+    });
+
     return updated;
   }
 
-  async remove(id: string): Promise<any> {
+  async remove(id: string, actor?: { id?: string; email?: string }): Promise<any> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`User Group #${id} not found`);
     }
@@ -360,18 +627,95 @@ export class UserGroupsService {
     }
 
     const deleted = await this.userGroupModel.findByIdAndDelete(id).exec();
+    this.permissionCacheService?.invalidate();
+
+    await this.logAudit({
+      actorId: actor?.id,
+      actorEmail: actor?.email,
+      action: 'group_deleted',
+      groupId: group._id,
+      groupName: group.name,
+      before: { name: group.name, description: group.description },
+      details: `Deleted user group "${group.name}"`,
+    });
+
     return deleted;
   }
 
-  async getUserPermissions(userId: string): Promise<{
-    groups: string[];
-    permissions: string[];
-    modulePermissions: Record<string, { create: boolean; read: boolean; update: boolean; delete: boolean }>;
-    operationPermissions: Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>;
-    fieldPermissions: Record<string, Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>>;
-  }> {
+  async getUserEffectiveAccessDetails(userId: string): Promise<any> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException(`User #${userId} not found`);
+    }
+
+    const user = this.userModel ? await this.userModel.findById(userId).exec() : null;
+
+    const effectiveGroups = await this.getEffectiveGroups(userId);
+    const effective = resolveEffective(effectiveGroups);
+    const isUnrestrictedUser = isUnrestricted(user || { id: userId }, effectiveGroups);
+
+    // Build module-level explanation breakdown
+    const moduleExplanations: Record<
+      string,
+      {
+        grantedBy: string[];
+        deniedBy: string[];
+        winningScope: string;
+      }
+    > = {};
+
+    for (const mod of PERMISSION_CATALOG.modules) {
+      const readCheck = canAny(effectiveGroups, { module: mod.key, action: 'read' });
+      const grantedBy = readCheck.results.filter((r) => r.allowed).map((r) => r.group);
+      const deniedBy = readCheck.results.filter((r) => !r.allowed).map((r) => r.group);
+      const winningScope = effective.moduleScopes[mod.key] || 'own';
+
+      moduleExplanations[mod.key] = {
+        grantedBy,
+        deniedBy,
+        winningScope,
+      };
+    }
+
+    return {
+      user: {
+        id: user?._id || userId,
+        email: user?.email || 'unknown',
+        name: user?.name || 'Unknown User',
+        is_system_admin: Boolean(user?.is_system_admin),
+      },
+      groups: effectiveGroups.map((g) => ({
+        id: g._id,
+        name: g.name,
+        color: g.color || '#6366f1',
+      })),
+      effective,
+      moduleExplanations,
+      isUnrestricted: isUnrestrictedUser,
+    };
+  }
+
+  async checkUserPermission(
+    userId: string,
+    check: {
+      module: string;
+      action: 'create' | 'read' | 'update' | 'delete';
+      operation?: string;
+      model?: string;
+      field?: string;
+    },
+  ): Promise<any> {
+    const effectiveGroups = await this.getEffectiveGroups(userId);
+    return canAny(effectiveGroups, check);
+  }
+
+  async getEffectiveGroups(userId: string): Promise<UserGroup[]> {
     if (!userId) {
-      return { groups: [], permissions: [], modulePermissions: {}, operationPermissions: {}, fieldPermissions: {} };
+      return [];
+    }
+
+    const cached = this.permissionCacheService?.get(userId);
+    if (cached) {
+      return cached;
     }
 
     const userIdObj = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
@@ -379,66 +723,24 @@ export class UserGroupsService {
     if (userIdObj) query.push({ members: userIdObj });
 
     const groups = await this.userGroupModel.find({ $or: query }).exec();
+    this.permissionCacheService?.set(userId, groups);
+    return groups;
+  }
 
-    const groupNames: string[] = [];
-    const permissionsSet = new Set<string>();
-    const moduleMap: Record<string, { create: boolean; read: boolean; update: boolean; delete: boolean }> = {};
-    const operationMap: Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }> = {};
-    const fieldMap: Record<string, Record<string, { read: boolean; write: boolean; update: boolean; delete: boolean }>> = {};
-
-    for (const group of groups) {
-      groupNames.push(group.name);
-      if (group.permissions) {
-        group.permissions.forEach((p) => permissionsSet.add(p));
-      }
-
-      if (group.modulePermissions) {
-        for (const mp of group.modulePermissions) {
-          if (!moduleMap[mp.module]) {
-            moduleMap[mp.module] = { create: false, read: false, update: false, delete: false };
-          }
-          if (mp.create) moduleMap[mp.module].create = true;
-          if (mp.read) moduleMap[mp.module].read = true;
-          if (mp.update) moduleMap[mp.module].update = true;
-          if (mp.delete) moduleMap[mp.module].delete = true;
-        }
-      }
-
-      if (group.operationPermissions) {
-        for (const op of group.operationPermissions) {
-          if (!operationMap[op.operation]) {
-            operationMap[op.operation] = { read: false, write: false, update: false, delete: false };
-          }
-          if (op.read) operationMap[op.operation].read = true;
-          if (op.write) operationMap[op.operation].write = true;
-          if (op.update) operationMap[op.operation].update = true;
-          if (op.delete) operationMap[op.operation].delete = true;
-        }
-      }
-
-      if (group.fieldPermissions) {
-        for (const fp of group.fieldPermissions) {
-          if (!fieldMap[fp.model]) {
-            fieldMap[fp.model] = {};
-          }
-          if (!fieldMap[fp.model][fp.field]) {
-            fieldMap[fp.model][fp.field] = { read: false, write: false, update: false, delete: false };
-          }
-          // Union of permissions (if in any group, grant)
-          if (fp.read) fieldMap[fp.model][fp.field].read = true;
-          if (fp.write) fieldMap[fp.model][fp.field].write = true;
-          if (fp.update) fieldMap[fp.model][fp.field].update = true;
-          if (fp.delete) fieldMap[fp.model][fp.field].delete = true;
-        }
-      }
+  async getUserPermissions(userId: string): Promise<EffectivePermissions> {
+    if (!userId) {
+      return resolveEffective([], {
+        modules: CATALOG_MODULES,
+        operations: CATALOG_OPERATIONS,
+        modelsAndFields: CATALOG_MODELS_AND_FIELDS,
+      });
     }
 
-    return {
-      groups: groupNames,
-      permissions: Array.from(permissionsSet),
-      modulePermissions: moduleMap,
-      operationPermissions: operationMap,
-      fieldPermissions: fieldMap,
-    };
+    const groups = await this.getEffectiveGroups(userId);
+    return resolveEffective(groups, {
+      modules: CATALOG_MODULES,
+      operations: CATALOG_OPERATIONS,
+      modelsAndFields: CATALOG_MODELS_AND_FIELDS,
+    });
   }
 }

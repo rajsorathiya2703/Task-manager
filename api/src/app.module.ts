@@ -16,6 +16,7 @@ import { UserGroupsModule } from './user-groups/user-groups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissions.interceptor';
@@ -45,6 +46,7 @@ import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissio
     DashboardModule,
     ChatbotModule,
     DayOffModule,
+    PermissionsModule,
   ],
   controllers: [AppController],
   providers: [

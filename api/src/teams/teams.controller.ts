@@ -20,7 +20,8 @@ export class TeamsController {
   findAll(@Request() req) {
     const userId = req.user?.id || req.user?._id;
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.teamsService.findAll(userId?.toString(), req.user?.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.teamsService.findAll(userId?.toString(), req.user?.email, isSystemAdmin, scope);
   }
 
   @Get(':id')
@@ -28,7 +29,8 @@ export class TeamsController {
   findOne(@Param('id') id: string, @Request() req) {
     const userId = req.user?.id || req.user?._id;
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.teamsService.findOne(id, userId?.toString(), req.user?.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.teamsService.findOne(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
   }
 
   @Patch(':id')
@@ -36,13 +38,17 @@ export class TeamsController {
   update(@Param('id') id: string, @Body() updateTeamDto: any, @Request() req) {
     const userId = req.user?.id || req.user?._id;
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.teamsService.update(id, updateTeamDto, userId?.toString(), req.user?.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.teamsService.update(id, updateTeamDto, userId?.toString(), req.user?.email, isSystemAdmin, scope);
   }
 
   @Delete(':id')
   @RequirePermission({ module: 'teams', action: 'delete', model: 'teams' })
-  remove(@Param('id') id: string) {
-    return this.teamsService.remove(id);
+  remove(@Param('id') id: string, @Request() req) {
+    const userId = req.user?.id || req.user?._id;
+    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
+    const scope = req.permissionScope || 'own';
+    return this.teamsService.remove(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
   }
 
   @Get(':id/active-tasks')
@@ -50,7 +56,8 @@ export class TeamsController {
   getActiveTasks(@Param('id') id: string, @Request() req) {
     const userId = req.user?.id || req.user?._id;
     const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.teamsService.getActiveTasks(id, userId?.toString(), req.user?.email, isSystemAdmin);
+    const scope = req.permissionScope || 'own';
+    return this.teamsService.getActiveTasks(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
   }
 
   // ── Comment Endpoints ──

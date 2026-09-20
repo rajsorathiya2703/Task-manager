@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Project } from './schemas/project.schema';
@@ -8,6 +8,7 @@ import { UpdateProjectDto } from './dto/update-project.dto';
 import { Team } from '../teams/schemas/team.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { Task } from '../tasks/schemas/task.schema';
+import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class ProjectsService {
@@ -16,6 +17,7 @@ export class ProjectsService {
     @InjectModel(Team.name) private teamModel: Model<Team>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Task.name) private taskModel: Model<Task>,
+    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   private async getEmployeeIdsForUser(userId?: string, email?: string): Promise<Types.ObjectId[]> {
@@ -44,9 +46,20 @@ export class ProjectsService {
     return createdProject.save();
   }
 
-  async findAll(userId: string, email?: string, isSystemAdmin?: boolean): Promise<Project[]> {
-    if (isSystemAdmin) {
+  async findAll(
+    userId: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Project[]> {
+    if (isSystemAdmin || scope === 'all') {
       return this.projectModel.find().populate('teamId').sort({ createdAt: -1 }).exec();
+    }
+
+    if (this.accessScopeService) {
+      const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+      const filter = await this.accessScopeService.buildFilter('projects', userContext, scope);
+      return this.projectModel.find(filter).populate('teamId').sort({ createdAt: -1 }).exec();
     }
 
     const employeeIds = await this.getEmployeeIdsForUser(userId, email);
@@ -111,18 +124,33 @@ export class ProjectsService {
     return this.projectModel.find({ $or: orConditions }).populate('teamId').sort({ createdAt: -1 }).exec();
   }
 
-  async findOne(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
+  async findOne(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Project | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
     const project = await this.projectModel.findById(id).populate('teamId').exec();
     if (!project) return null;
 
-    if (isSystemAdmin) {
+    if (isSystemAdmin || scope === 'all') {
       return project;
     }
 
     if (userId) {
+      if (this.accessScopeService) {
+        const userContext = { id: userId, _id: userId, email, is_system_admin: isSystemAdmin };
+        const hasAccess = await this.accessScopeService.canAccess('projects', project, userContext, scope);
+        if (!hasAccess) {
+          throw new ForbiddenException('You do not have access to this project');
+        }
+        return project;
+      }
+
       const employeeIds = await this.getEmployeeIdsForUser(userId, email);
       const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
 
@@ -170,8 +198,15 @@ export class ProjectsService {
     return project;
   }
 
-  async update(id: string, updateProjectDto: UpdateProjectDto, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
-    const project = await this.findOne(id, userId, email, isSystemAdmin);
+  async update(
+    id: string,
+    updateProjectDto: UpdateProjectDto,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Project | null> {
+    const project = await this.findOne(id, userId, email, isSystemAdmin, scope);
     if (!project) {
       throw new NotFoundException('Project not found');
     }
@@ -179,14 +214,32 @@ export class ProjectsService {
     return this.projectModel.findByIdAndUpdate(id, updateProjectDto, { new: true }).populate('teamId').exec();
   }
 
-  async remove(id: string, userId?: string, email?: string, isSystemAdmin?: boolean): Promise<Project | null> {
-    const project = await this.findOne(id, userId, email, isSystemAdmin);
+  async remove(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: 'own' | 'team' | 'all' = 'own',
+  ): Promise<Project | null> {
+    const project = await this.findOne(id, userId, email, isSystemAdmin, scope);
     if (!project) {
       throw new NotFoundException('Project not found');
     }
 
-    if (!isSystemAdmin && userId && project.userId.toString() !== userId) {
-      throw new ForbiddenException('Only the project owner or administrator can delete this project');
+    if (!isSystemAdmin && userId && scope !== 'all') {
+      let canDelete = project.userId.toString() === userId;
+      if (!canDelete && scope === 'team' && project.teamId) {
+        const team: any = project.teamId;
+        const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+        const employeeIdStrs = new Set(employeeIds.map((e) => e.toString()));
+        const teamLeadId = team.teamLead ? (team.teamLead._id || team.teamLead).toString() : null;
+        if (teamLeadId && employeeIdStrs.has(teamLeadId)) {
+          canDelete = true;
+        }
+      }
+      if (!canDelete) {
+        throw new ForbiddenException('Only the project owner or administrator can delete this project');
+      }
     }
 
     return this.projectModel.findByIdAndDelete(id).exec();
