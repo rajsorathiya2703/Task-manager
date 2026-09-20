@@ -809,22 +809,31 @@ export default function UserGroupDetailPage({
 
     for (const opDef of catalogOperations) {
       const perms = operationPerms[opDef.key] || { read: true, write: true, update: true, delete: true };
+      const parentMod = modulePerms[opDef.module];
+
+      // Clamp operation permissions to not exceed the parent module's permissions.
+      // Backend enforces: op.write requires parentMod.create, op.update requires parentMod.update, etc.
+      const clampedRead   = perms.read   && (parentMod?.read   !== false);
+      const clampedWrite  = perms.write  && (parentMod?.create !== false);
+      const clampedUpdate = perms.update && (parentMod?.update !== false);
+      const clampedDelete = perms.delete && (parentMod?.delete !== false);
+
       operationPermissionsArray.push({
         module: opDef.module,
         operation: opDef.key,
-        read: perms.read,
-        write: perms.write,
-        update: perms.update,
-        delete: perms.delete,
+        read:   clampedRead,
+        write:  clampedWrite,
+        update: clampedUpdate,
+        delete: clampedDelete,
       });
 
-      if (perms.read) legacyPermissionsArray.push(`${opDef.key}:read`);
-      if (perms.write) {
+      if (clampedRead) legacyPermissionsArray.push(`${opDef.key}:read`);
+      if (clampedWrite) {
         legacyPermissionsArray.push(`${opDef.key}:write`);
         legacyPermissionsArray.push(`${opDef.key}:create`);
       }
-      if (perms.update) legacyPermissionsArray.push(`${opDef.key}:update`);
-      if (perms.delete) legacyPermissionsArray.push(`${opDef.key}:delete`);
+      if (clampedUpdate) legacyPermissionsArray.push(`${opDef.key}:update`);
+      if (clampedDelete) legacyPermissionsArray.push(`${opDef.key}:delete`);
     }
 
     // 3. Flatten Field Permissions
