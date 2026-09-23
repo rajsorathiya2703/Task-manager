@@ -99,15 +99,15 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
       expect(result?._id.toString()).toBe(mockProjectId);
     });
 
-    it('should THROW ForbiddenException when regular user does not have access', async () => {
+    it('should ALLOW regular user to view project without access restrictions', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
         exec: jest.fn().mockResolvedValue(mockProject),
       });
 
-      await expect(
-        service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
+      const result = await service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false);
+      expect(result).toBeDefined();
+      expect(result?._id.toString()).toBe(mockProjectId);
     });
   });
 
@@ -198,18 +198,14 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
       expect(projectModel.findByIdAndDelete).toHaveBeenCalledWith(mockProjectId);
     });
 
-    it('should THROW ForbiddenException when regular user attempts to delete project created by someone else', async () => {
-      projectModel.findById.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          ...mockProject,
-          members: [{ email: 'other@example.com' }], // has read access, but is not owner
-        }),
+    it('should ALLOW any user to delete project without ownership restrictions', async () => {
+      projectModel.findByIdAndDelete.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockProject),
       });
 
-      await expect(
-        service.remove(mockProjectId, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
+      const result = await service.remove(mockProjectId, mockOtherUserId, 'other@example.com', false);
+      expect(result).toBeDefined();
+      expect(projectModel.findByIdAndDelete).toHaveBeenCalledWith(mockProjectId);
     });
   });
 });

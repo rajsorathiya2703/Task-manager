@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { ArrowLeft, Save, AlertCircle, CheckCircle2 } from "lucide-react";
-import { createLeaveType, updateLeaveType, fetchUserGroups } from "../../../lib/api";
+import { createLeaveType, updateLeaveType } from "../../../lib/api";
 
 interface LeaveTypeFormProps {
   initialData?: any | null;
@@ -37,35 +37,19 @@ export function LeaveTypeForm({ initialData, onBack, onSaved }: LeaveTypeFormPro
   const [defaultAllocation, setDefaultAllocation] = useState<number>(
     initialData?.defaultAllocation !== undefined ? initialData.defaultAllocation : 12
   );
-  const [selectedUserGroups, setSelectedUserGroups] = useState<string[]>(
-    initialData?.applicableUserGroups?.map((g: any) => (typeof g === "object" ? g._id : g)) || []
-  );
   const [isActive, setIsActive] = useState<boolean>(
     initialData?.isActive !== undefined ? initialData.isActive : true
   );
 
-  const [userGroups, setUserGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchUserGroups()
-      .then((data) => setUserGroups(data || []))
-      .catch(() => setUserGroups([]));
-  }, []);
 
   const handleNameChange = (val: string) => {
     setName(val);
     if (!isEditing && !code) {
       setCode(val.toUpperCase().replace(/[^A-Z0-9]/g, "_"));
     }
-  };
-
-  const handleGroupToggle = (groupId: string) => {
-    setSelectedUserGroups((prev) =>
-      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
-    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,7 +72,6 @@ export function LeaveTypeForm({ initialData, onBack, onSaved }: LeaveTypeFormPro
       salaryDeductionPercent: Number(salaryDeductionPercent),
       refillCycle,
       defaultAllocation: Number(defaultAllocation),
-      applicableUserGroups: selectedUserGroups,
       isActive,
     };
 
@@ -129,7 +112,7 @@ export function LeaveTypeForm({ initialData, onBack, onSaved }: LeaveTypeFormPro
               {isEditing ? `Edit Leave Type: ${initialData.name}` : "New Leave Type"}
             </h2>
             <p className="text-xs text-muted-foreground">
-              Configure allocation, deduction, carry-forward, and applicable user groups
+              Configure allocation, deduction, and carry-forward rules
             </p>
           </div>
         </div>
@@ -341,40 +324,6 @@ export function LeaveTypeForm({ initialData, onBack, onSaved }: LeaveTypeFormPro
                 />
               </div>
             )}
-          </div>
-        </div>
-
-        {/* User Groups Targeting */}
-        <div className="space-y-3 pt-2">
-          <h3 className="text-xs font-bold text-foreground uppercase tracking-wider pb-1 border-b border-border/60">
-            Applicable User Groups
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Select which user groups can apply for this leave. If none selected, this leave type is available to all employees.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-            {userGroups.map((group) => {
-              const checked = selectedUserGroups.includes(group._id);
-              return (
-                <label
-                  key={group._id}
-                  className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer select-none text-xs transition-all ${
-                    checked
-                      ? "border-primary bg-primary/5 text-foreground font-semibold"
-                      : "border-border/60 hover:bg-muted/40 text-muted-foreground"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => handleGroupToggle(group._id)}
-                    className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/20"
-                  />
-                  <span className="truncate">{group.name}</span>
-                </label>
-              );
-            })}
           </div>
         </div>
 

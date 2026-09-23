@@ -1,17 +1,15 @@
-import { Injectable, ForbiddenException, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Task } from '../tasks/schemas/task.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { EmployeeActivityQueryDto } from './dto/employee-activity-query.dto';
-import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class DashboardService {
   constructor(
     @InjectModel(Task.name) private taskModel: Model<Task>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
-    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   private getDateRange(query: EmployeeActivityQueryDto): {
@@ -73,7 +71,7 @@ export class DashboardService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'own',
+    scope: 'own' | 'team' | 'all' = 'all',
   ) {
     const { currentStart, currentEnd, prevStart, prevEnd } = this.getDateRange(query);
     const now = new Date();
@@ -94,66 +92,23 @@ export class DashboardService {
         .exec();
     }
 
-    // 2. Resolve selected employee with row-level authorization
+    // 2. Resolve selected employee
     let selectedEmployee: any = null;
     if (query.employeeId && Types.ObjectId.isValid(query.employeeId)) {
-      const targetEmpIdStr = query.employeeId.toString();
-      if (isSystemAdmin || scope === 'all') {
-        selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
-      } else if (scope === 'team' && this.accessScopeService) {
-        const teamContext = await this.accessScopeService.getTeamContextForUser(userId, email);
-        const isTeamMember = teamContext.memberEmployeeIds.some(
-          (eid) => eid.toString() === targetEmpIdStr,
-        );
-        if (!isTeamMember && (!callingUserEmployee || callingUserEmployee._id.toString() !== targetEmpIdStr)) {
-          throw new ForbiddenException(
-            "Access Denied: You do not have permission to view other employees' activity data.",
-          );
-        }
-        selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
-      } else {
-        // Scope 'own' (or fallback): can ONLY view their own employee activity
-        if (
-          !callingUserEmployee ||
-          callingUserEmployee._id.toString() !== targetEmpIdStr
-        ) {
-          throw new ForbiddenException(
-            "Access Denied: You do not have permission to view other employees' activity data.",
-          );
-        }
-        selectedEmployee = callingUserEmployee;
-      }
+      selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
     } else {
-      // Default to calling user's own employee
       selectedEmployee = callingUserEmployee;
     }
 
-    // Require an active employee profile: do NOT fall back to other users' employee records
     if (!selectedEmployee) {
-      throw new ForbiddenException(
-        'No employee profile found for your account. An active employee profile is required to access the activity dashboard.',
-      );
+      selectedEmployee = await this.employeeModel.findOne().exec();
     }
 
     // 3. Fetch employee list for selector
-    let allEmployees: any[] = [];
-    if (isSystemAdmin || scope === 'all') {
-      allEmployees = await this.employeeModel
-        .find({}, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
-        .sort({ 'fullName.firstName': 1 })
-        .exec();
-    } else if (scope === 'team' && this.accessScopeService) {
-      const teamContext = await this.accessScopeService.getTeamContextForUser(userId, email);
-      allEmployees = await this.employeeModel
-        .find(
-          { _id: { $in: teamContext.memberEmployeeIds } },
-          { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 },
-        )
-        .sort({ 'fullName.firstName': 1 })
-        .exec();
-    } else if (callingUserEmployee) {
-      allEmployees = [callingUserEmployee];
-    }
+    const allEmployees = await this.employeeModel
+      .find({}, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
+      .sort({ 'fullName.firstName': 1 })
+      .exec();
 
     // 3. Facet Aggregation on Task model for overall workspace metrics
     const [facetResults] = await this.taskModel.aggregate([

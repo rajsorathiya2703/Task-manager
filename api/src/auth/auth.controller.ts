@@ -4,7 +4,6 @@ import { AuthService } from './auth.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
-import { AllowAuthenticated } from './decorators/allow-authenticated.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { EmployeesService } from '../employees/employees.service';
@@ -85,7 +84,6 @@ export class AuthController {
     return { success: true };
   }
 
-  @AllowAuthenticated()
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getMe(@Req() req: Request) {

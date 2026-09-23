@@ -1,11 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { chatbotApiClient } from '../client/apiClient';
-import { canAny, isUnrestricted } from '../../permissions/permission-resolver';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TOOL_REQUIREMENTS — maps each chatbot tool to its module, action, and
-// optional operation/model so the Copilot filters tools and prunes fields by RBAC.
-// ─────────────────────────────────────────────────────────────────────────────
 export interface ToolRequirement {
   module: string;
   action: 'create' | 'read' | 'update' | 'delete';
@@ -52,10 +47,6 @@ export const TOOL_REQUIREMENTS: Record<string, ToolRequirement | null> = {
   list_users: { module: 'users', action: 'read', operation: 'users.manage' },
   update_user: { module: 'users', action: 'update', operation: 'users.manage', model: 'users' },
 
-  // User Groups
-  list_user_groups: { module: 'user-groups', action: 'read', operation: 'user-groups.manage' },
-  get_my_permissions: null,
-
   // Dashboard / Reports
   get_employee_activity: { module: 'reports', action: 'read', operation: 'reports.view' },
 };
@@ -66,7 +57,7 @@ export const TOOL_MODULE_MAP: Record<string, string | null> = Object.fromEntries
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL_DEFINITIONS — Anthropic-compatible tool schemas for all 45+ tools.
+// TOOL_DEFINITIONS — Anthropic-compatible tool schemas for all tools.
 // ─────────────────────────────────────────────────────────────────────────────
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
@@ -277,17 +268,6 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     description: 'Update a user account.',
     input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, name: { type: 'string' } }, required: ['id'] },
   },
-  // ── User Groups ──────────────────────────────────────────────────────────
-  {
-    name: 'list_user_groups',
-    description: 'List all user groups and their permissions.',
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
-  },
-  {
-    name: 'get_my_permissions',
-    description: "Get the current user's effective permissions from their User Groups.",
-    input_schema: { type: 'object' as const, properties: {}, required: [] },
-  },
   // ── Dashboard ─────────────────────────────────────────────────────────────
   {
     name: 'get_employee_activity',
@@ -300,122 +280,14 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// filterToolsForUser — filters tool definitions by user permissions and prunes
-// input schema properties that the user is not permitted to mutate.
-// ─────────────────────────────────────────────────────────────────────────────
 export function filterToolsForUser(
   tools: Anthropic.Tool[],
-  effectiveGroups: any[],
-  user: any,
+  _effectiveGroups?: any[],
+  _user?: any,
 ): { allowedTools: Anthropic.Tool[]; deniedModules: string[] } {
-  const unrestricted = isUnrestricted(user, effectiveGroups);
-
-  const allModules = [
-    ...new Set(
-      Object.values(TOOL_REQUIREMENTS)
-        .filter((r): r is ToolRequirement => r !== null)
-        .map((r) => r.module),
-    ),
-  ];
-
-  if (unrestricted) {
-    return {
-      allowedTools: tools,
-      deniedModules: [],
-    };
-  }
-
-  const hasGroups = Array.isArray(effectiveGroups) && effectiveGroups.length > 0;
-  const allowedTools: Anthropic.Tool[] = [];
-
-  for (const tool of tools) {
-    const req = TOOL_REQUIREMENTS[tool.name];
-
-    // Tool not mapped in catalog requirements -> deny by default (fail closed)
-    if (req === undefined) {
-      continue;
-    }
-
-    // Public / self tools without requirements (e.g. get_me, get_my_permissions)
-    if (req === null) {
-      allowedTools.push(tool);
-      continue;
-    }
-
-    // Deny if user has no groups and tool requires permission
-    if (!hasGroups) {
-      continue;
-    }
-
-    // Check module/action/operation permission
-    const check = canAny(effectiveGroups, {
-      module: req.module,
-      action: req.action,
-      operation: req.operation,
-    });
-
-    if (!check.allowed) {
-      continue;
-    }
-
-    // If tool allows mutation and has schema properties, apply field-level pruning
-    if (req.model && tool.input_schema?.properties) {
-      const properties: Record<string, any> = { ...tool.input_schema.properties };
-      let required = tool.input_schema.required ? [...tool.input_schema.required] : [];
-      let schemaModified = false;
-
-      for (const propKey of Object.keys(properties)) {
-        let fieldName = propKey;
-        if (req.model === 'employees' && ['firstName', 'lastName', 'middleName'].includes(propKey)) {
-          fieldName = 'fullName';
-        }
-
-        const fieldCheck = canAny(effectiveGroups, {
-          module: req.module,
-          action: req.action,
-          operation: req.operation,
-          model: req.model,
-          field: fieldName,
-        });
-
-        if (!fieldCheck.allowed) {
-          delete properties[propKey];
-          required = required.filter((r) => r !== propKey);
-          schemaModified = true;
-        }
-      }
-
-      if (schemaModified) {
-        allowedTools.push({
-          ...tool,
-          input_schema: {
-            ...tool.input_schema,
-            properties,
-            required,
-          },
-        });
-      } else {
-        allowedTools.push(tool);
-      }
-    } else {
-      allowedTools.push(tool);
-    }
-  }
-
-  const allowedModules = [
-    ...new Set(
-      allowedTools
-        .map((t) => TOOL_REQUIREMENTS[t.name]?.module)
-        .filter((m): m is string => Boolean(m)),
-    ),
-  ];
-
-  const deniedModules = allModules.filter((m) => !allowedModules.includes(m));
-
   return {
-    allowedTools,
-    deniedModules,
+    allowedTools: tools,
+    deniedModules: [],
   };
 }
 
@@ -532,12 +404,6 @@ export async function executeToolByName(
       const { id, ...body } = input;
       return (await chatbotApiClient.patch(`/users/${id}`, body)).data;
     }
-
-    // User Groups
-    case 'list_user_groups':
-      return (await chatbotApiClient.get('/user-groups')).data;
-    case 'get_my_permissions':
-      return (await chatbotApiClient.get('/user-groups/my-permissions')).data;
 
     // Dashboard
     case 'get_employee_activity': {

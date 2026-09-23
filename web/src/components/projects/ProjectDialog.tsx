@@ -19,7 +19,6 @@ import "react-day-picker/dist/style.css";
 import { formatDisplayDate } from "../../lib/utils";
 import { useRouter } from "next/navigation";
 import { fetchTeams } from "../../lib/api";
-import { usePermissions } from "../../contexts/PermissionsContext";
 
 export const PROJECT_COLORS = [
   { name: "Blue", value: "#3b82f6", bg: "bg-blue-500", light: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
@@ -48,7 +47,6 @@ export function ProjectDialog({
   onDelete,
 }: ProjectDialogProps) {
   const router = useRouter();
-  const { can } = usePermissions();
   const isEditing = Boolean(project?.id || (project as any)?._id);
 
   const [name, setName] = useState("");
@@ -431,7 +429,7 @@ export function ProjectDialog({
             {/* Footer Buttons */}
             <div className="flex items-center justify-between pt-4 border-t border-border mt-6">
               <div>
-                {isEditing && onDelete && can('projects', 'delete') && (
+                {isEditing && onDelete && (
                   <button
                     type="button"
                     disabled={isDeleting}

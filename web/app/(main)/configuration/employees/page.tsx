@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { fetchEmployees } from "../../../../src/lib/api";
-import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import { User, Building, Mail, Type, CheckCircle } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../../src/components/common/GroupByDropdown";
@@ -25,7 +24,6 @@ const groupByOptions: GroupByOption[] = [
 
 export default function EmployeesConfigurationPage() {
   const router = useRouter();
-  const { can } = usePermissions();
   const [rawEmployees, setRawEmployees] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -209,7 +207,7 @@ export default function EmployeesConfigurationPage() {
           { label: 'Configuration' },
           { label: 'Employees' }
         ]}
-        showAdd={can('employees', 'create')}
+        showAdd={true}
         addText="New Employee"
         addHref="/configuration/employees/new"
         filters={filters}

@@ -10,7 +10,6 @@ import {
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import { fetchEmployeeById, fetchEmployees, createEmployee, api } from "../../../../../src/lib/api";
 import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
-import { usePermissions } from "../../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 const EMPTY_EMPLOYEE = {
@@ -46,8 +45,7 @@ export default function EmployeeDetailPage({
   const isNew = id === "new";
   const router = useRouter();
   const { isOpen, toggleSidebar } = useSidebar();
-  const { canField, canOperation } = usePermissions();
-  const canReadPayroll = canField("employees", "baseSalary", "read") && canOperation("employees.compensation", "read");
+  const canReadPayroll = true;
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);

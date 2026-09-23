@@ -151,7 +151,7 @@ describe('TeamsService', () => {
       expect(result).toBe(mockTeam);
     });
 
-    it('should THROW ForbiddenException if non-admin user is NOT a member of the team', async () => {
+    it('should ALLOW any user to view team regardless of membership', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -160,36 +160,12 @@ describe('TeamsService', () => {
         }),
       });
 
-      const otherEmpId = new Types.ObjectId();
-      employeeModel.find.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([{ _id: otherEmpId }]),
-      });
-
-      await expect(
-        service.findOne(mockTeamId, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
+      const result = await service.findOne(mockTeamId, mockOtherUserId, 'other@example.com', false);
+      expect(result).toBe(mockTeam);
     });
   });
 
   describe('getActiveTasks', () => {
-    it('should THROW ForbiddenException if user is not in team', async () => {
-      teamModel.findById.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue(mockTeam),
-          }),
-        }),
-      });
-
-      employeeModel.find.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([]),
-      });
-
-      await expect(
-        service.getActiveTasks(mockTeamId, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
     it('should ALLOW member to get active tasks', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
@@ -223,35 +199,13 @@ describe('TeamsService', () => {
   });
 
   describe('update', () => {
-    it('should THROW ForbiddenException if non-admin user is not a member', async () => {
+    it('should ALLOW any user to update team', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
             exec: jest.fn().mockResolvedValue(mockTeam),
           }),
         }),
-      });
-
-      employeeModel.find.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([]),
-      });
-
-      await expect(
-        service.update(mockTeamId, { name: 'New Name' }, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should ALLOW member to update team', async () => {
-      teamModel.findById.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue(mockTeam),
-          }),
-        }),
-      });
-
-      employeeModel.find.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([{ _id: mockMemberEmpId }]),
       });
 
       const updatedTeam = { ...mockTeam, name: 'Updated Team' };
@@ -266,8 +220,8 @@ describe('TeamsService', () => {
       const result = await service.update(
         mockTeamId,
         { name: 'Updated Team' },
-        mockMemberUserId,
-        'member@example.com',
+        mockOtherUserId,
+        'other@example.com',
         false,
       );
       expect(result).toBe(updatedTeam);
@@ -275,25 +229,7 @@ describe('TeamsService', () => {
   });
 
   describe('findAll', () => {
-    it('should return all teams for system admin', async () => {
-      teamModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue([mockTeam]),
-          }),
-        }),
-      });
-
-      const result = await service.findAll(mockOtherUserId, 'admin@example.com', true);
-      expect(result).toEqual([mockTeam]);
-      expect(teamModel.find).toHaveBeenCalledWith();
-    });
-
-    it('should return only member teams for standard user', async () => {
-      employeeModel.find.mockReturnValue({
-        exec: jest.fn().mockResolvedValue([{ _id: mockMemberEmpId }]),
-      });
-
+    it('should return all teams for any user', async () => {
       teamModel.find.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -304,11 +240,7 @@ describe('TeamsService', () => {
 
       const result = await service.findAll(mockMemberUserId, 'member@example.com', false);
       expect(result).toEqual([mockTeam]);
-      expect(teamModel.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          $or: expect.any(Array),
-        }),
-      );
+      expect(teamModel.find).toHaveBeenCalledWith();
     });
   });
 });

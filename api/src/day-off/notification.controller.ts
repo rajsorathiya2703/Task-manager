@@ -1,9 +1,7 @@
 import { Controller, Get, Patch, Post, Param, Req } from '@nestjs/common';
 import { DayOffService } from './day-off.service';
-import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
 
 @Controller('notifications')
-@AllowAuthenticated()
 export class NotificationController {
   constructor(private readonly dayOffService: DayOffService) {}
 

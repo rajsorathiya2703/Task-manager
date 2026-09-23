@@ -10,7 +10,6 @@ import { Project } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
 import { Loader2 } from "lucide-react";
-import { usePermissions } from "../../../src/contexts/PermissionsContext";
 
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
 const defaultPriorities = ["High", "Medium", "Low"];
@@ -21,7 +20,6 @@ const groupByOptions: GroupByOption[] = [
 ];
 
 export default function ProjectsPage() {
-  const { can } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [data, setData] = useState<Record<string, Project[]>>({
     "To Do": [],
@@ -240,7 +238,7 @@ export default function ProjectsPage() {
         onViewChange={setView}
         addText="Add Project"
         onAddClick={handleOpenCreate}
-        showAdd={can('projects', 'create')}
+        showAdd={true}
         filters={filters}
         onApplyFilter={(f) => setFilters([...filters, f])}
         onRemoveFilter={(id) => setFilters(filters.filter(f => f.id !== id))}

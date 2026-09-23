@@ -1,9 +1,8 @@
 import { useState, useRef } from "react";
-import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon, Lock } from "lucide-react";
+import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 import { useEffect } from "react";
-import { usePermissions } from "../../contexts/PermissionsContext";
 
 interface TaskHeaderProps {
   taskId?: string;
@@ -19,7 +18,7 @@ export function TaskHeader({
   taskId, 
   taskData, 
   setTaskData, 
-  isEditable,
+  isEditable = true,
   onStartTimer,
   onStopTimer,
   isTimerLoading = false
@@ -96,18 +95,11 @@ export function TaskHeader({
   };
 
   const isNew = !taskId || taskId === 'new';
-
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const isOwner = isNew || taskData?.isOwner !== false;
-
-  // Field-level permission checks
-  const { can, canField, status: permStatus } = usePermissions();
-  const actionKey = isNew ? 'create' : 'update';
-  const hasUpdateAccess = isOwner || (permStatus === 'ready' ? can('tasks', actionKey) : true);
-  const canEditTitle       = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'title',       actionKey) : true);
-  const canEditDescription = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'description', actionKey) : true);
-  const canEditResources   = isEditable !== false && hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'resources',   actionKey) : true);
+  const canEditTitle = isEditable !== false;
+  const canEditDescription = isEditable !== false;
+  const canEditResources = isEditable !== false;
 
   useEffect(() => {
     const loadUser = async () => {
@@ -153,14 +145,7 @@ export function TaskHeader({
               className="text-2xl font-bold text-foreground w-full bg-transparent border-none outline-none focus:ring-0 placeholder:text-muted-foreground/50 p-0"
             />
           ) : (
-            <div className="flex items-start gap-2">
-              <h1 className="text-2xl font-bold text-foreground flex-1">{title || 'Untitled Task'}</h1>
-              {!canEditTitle && (
-                <span title="Read-only field" className="mt-1.5 shrink-0 inline-flex items-center">
-                  <Lock className="w-4 h-4 text-muted-foreground/60" />
-                </span>
-              )}
-            </div>
+            <h1 className="text-2xl font-bold text-foreground flex-1">{title || 'Untitled Task'}</h1>
           )}
           
           {canEditDescription ? (
@@ -171,14 +156,7 @@ export function TaskHeader({
               className="text-muted-foreground text-sm w-full bg-transparent border-none outline-none focus:ring-0 resize-none min-h-[60px] p-0"
             />
           ) : (
-            <div className="flex items-start gap-1.5">
-              <p className="text-muted-foreground text-sm flex-1">{description || <span className="italic opacity-50">No description</span>}</p>
-              {!canEditDescription && (
-                <span title="Read-only field" className="mt-0.5 shrink-0 inline-flex items-center">
-                  <Lock className="w-3.5 h-3.5 text-muted-foreground/60" />
-                </span>
-              )}
-            </div>
+            <p className="text-muted-foreground text-sm flex-1">{description || <span className="italic opacity-50">No description</span>}</p>
           )}
         </div>
 
@@ -265,7 +243,7 @@ export function TaskHeader({
             </div>
           )}
 
-          {canEditResources ? (
+          {canEditResources && (
             <Popover className="relative">
               <Popover.Button 
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium outline-none w-fit cursor-pointer"
@@ -303,11 +281,6 @@ export function TaskHeader({
                 )}
               </Popover.Panel>
             </Popover>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60 cursor-not-allowed select-none">
-              <Lock className="w-3.5 h-3.5" />
-              <span>Attachments are read-only</span>
-            </div>
           )}
           <input 
             type="file" 

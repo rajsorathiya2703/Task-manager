@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, SearchContextItem } from "../../../../src/components/layout/PageHeader";
 import { fetchTeams } from "../../../../src/lib/api";
-import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import { Users, Shield, Type, AlignLeft } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "../../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../../src/components/common/GroupByDropdown";
@@ -22,7 +21,6 @@ const groupByOptions: GroupByOption[] = [
 
 export default function TeamsConfigurationPage() {
   const router = useRouter();
-  const { can } = usePermissions();
   const [rawTeams, setRawTeams] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,7 +193,7 @@ export default function TeamsConfigurationPage() {
       <PageHeader
         title="Teams"
         breadcrumbs={[{ label: "Configuration" }, { label: "Teams" }]}
-        showAdd={can("teams", "create")}
+        showAdd={true}
         addText="New Team"
         addHref="/configuration/team/new"
         filters={filters}

@@ -5,8 +5,6 @@ import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { RequirePermission } from '../auth/decorators/permissions.decorator';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 function validateAttachmentFile(file: Express.Multer.File) {
@@ -51,7 +49,7 @@ function validateAttachmentFile(file: Express.Multer.File) {
 }
 
 @Controller('tasks')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard)
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
@@ -59,35 +57,27 @@ export class TasksController {
   ) {}
 
   @Post()
-  @RequirePermission({ module: 'tasks', action: 'create', model: 'tasks' })
   create(@Request() req, @Body() createTaskDto: CreateTaskDto) {
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, isSystemAdmin);
+    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, true);
   }
 
   @Get()
-  @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findAll(@Request() req, @Query('projectId') projectId?: string) {
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin, scope);
+    return this.tasksService.findAll(req.user.id, req.user.email, projectId, true, 'all');
   }
 
   @Get('timeline')
-  @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   getTimeline(@Request() req, @Query() query: any) {
     return this.tasksService.getTimeline(req.user.id, req.user.email, query);
   }
 
   @Get('timer/active')
-  @RequirePermission({ module: 'tasks', action: 'read', operation: 'tasks.time_tracking', model: 'tasks' })
   async getActiveTimer(@Request() req) {
     const activeTask = await this.tasksService.getActiveTimer(req.user.email);
     return activeTask || null;
   }
 
   @Get('file/view')
-  @RequirePermission({ module: 'tasks', action: 'read', operation: 'tasks.attachments', model: 'tasks' })
   async viewFile(
     @Query('url') fileUrl: string,
     @Query('name') fileName: string,
@@ -140,42 +130,31 @@ export class TasksController {
   }
 
   @Get(':id')
-  @RequirePermission({ module: 'tasks', action: 'read', model: 'tasks' })
   findOne(@Request() req, @Param('id') id: string) {
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin, scope);
+    return this.tasksService.findOne(id, req.user.id, req.user.email, true, 'all');
   }
 
   @Patch(':id')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   update(@Request() req, @Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
       avatarUrl: req.user?.avatarUrl,
       email: req.user?.email,
     };
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin, scope);
+    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, true, 'all');
   }
 
   @Delete(':id')
-  @RequirePermission({ module: 'tasks', action: 'delete', model: 'tasks' })
   remove(@Request() req, @Param('id') id: string) {
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin, scope);
+    return this.tasksService.remove(id, req.user.id, req.user.email, true, 'all');
   }
 
   @Post(':id/duplicate')
-  @RequirePermission({ module: 'tasks', action: 'create', model: 'tasks' })
   duplicate(@Request() req, @Param('id') id: string) {
     return this.tasksService.duplicate(id, req.user.id, req.user.email);
   }
 
   @Post('upload')
-  @RequirePermission({ module: 'tasks', action: 'create', operation: 'tasks.attachments', model: 'tasks' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files || files.length === 0) {
@@ -197,7 +176,6 @@ export class TasksController {
   }
 
   @Post(':id/upload')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.attachments', model: 'tasks' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
     @Request() req,
@@ -236,7 +214,6 @@ export class TasksController {
   }
 
   @Post(':id/comments')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async addComment(
     @Request() req,
     @Param('id') id: string,
@@ -253,7 +230,6 @@ export class TasksController {
   }
 
   @Patch(':id/comments/:commentId')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async updateComment(
     @Request() req,
     @Param('id') id: string,
@@ -264,7 +240,6 @@ export class TasksController {
   }
 
   @Delete(':id/comments/:commentId')
-  @RequirePermission({ module: 'tasks', action: 'update', model: 'tasks' })
   async deleteComment(
     @Request() req,
     @Param('id') id: string,
@@ -274,7 +249,6 @@ export class TasksController {
   }
 
   @Post(':id/invite')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.assignment', model: 'tasks' })
   async inviteMember(
     @Request() req,
     @Param('id') id: string,
@@ -282,8 +256,7 @@ export class TasksController {
   ) {
     try {
       const inviterName = req.user?.name || 'A team member';
-      const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, isSystemAdmin);
+      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, true);
     } catch (e) {
       require('fs').writeFileSync('invite-error.log', e.stack || e.message);
       throw e;
@@ -291,7 +264,6 @@ export class TasksController {
   }
 
   @Post(':id/timer/start')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.time_tracking', model: 'tasks' })
   async startTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
@@ -302,7 +274,6 @@ export class TasksController {
   }
 
   @Post(':id/timer/stop')
-  @RequirePermission({ module: 'tasks', action: 'update', operation: 'tasks.time_tracking', model: 'tasks' })
   async stopTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',

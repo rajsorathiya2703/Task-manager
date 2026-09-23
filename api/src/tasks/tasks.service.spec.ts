@@ -123,17 +123,14 @@ describe('TasksService - Authorization & Role-based Access', () => {
       expect(taskModel.findByIdAndDelete).toHaveBeenCalledWith(mockTaskId);
     });
 
-    it('should THROW ForbiddenException when regular user attempts to delete someone else task without lead role', async () => {
-      taskModel.findById.mockReturnValue({
+    it('should ALLOW any user to delete task without ownership restrictions', async () => {
+      taskModel.findByIdAndDelete.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockTask),
       });
-      projectModel.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
 
-      await expect(
-        service.remove(mockTaskId, mockOtherUserId, 'other@example.com', false),
-      ).rejects.toThrow(ForbiddenException);
+      const result = await service.remove(mockTaskId, mockOtherUserId, 'other@example.com', false);
+      expect(result).toBeDefined();
+      expect(taskModel.findByIdAndDelete).toHaveBeenCalledWith(mockTaskId);
     });
   });
 

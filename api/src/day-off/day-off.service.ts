@@ -5,7 +5,6 @@ import {
   ForbiddenException,
   Logger,
   OnModuleInit,
-  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -17,7 +16,6 @@ import { LeaveBalance } from './schemas/leave-balance.schema';
 import { Notification } from './schemas/notification.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { DayOffMailService } from './day-off-mail.service';
-import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class DayOffService implements OnModuleInit {
@@ -31,7 +29,6 @@ export class DayOffService implements OnModuleInit {
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private mailService: DayOffMailService,
-    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   async onModuleInit() {
@@ -142,11 +139,11 @@ export class DayOffService implements OnModuleInit {
     if (query?.activeOnly) {
       filter.isActive = true;
     }
-    return this.leaveTypeModel.find(filter).populate('applicableUserGroups').sort({ createdAt: 1 }).exec();
+    return this.leaveTypeModel.find(filter).sort({ createdAt: 1 }).exec();
   }
 
   async getLeaveTypeById(id: string): Promise<LeaveType> {
-    const item = await this.leaveTypeModel.findById(id).populate('applicableUserGroups').exec();
+    const item = await this.leaveTypeModel.findById(id).exec();
     if (!item) throw new NotFoundException(`Leave Type #${id} not found`);
     return item;
   }
@@ -345,28 +342,6 @@ export class DayOffService implements OnModuleInit {
       filter.fromDate = { $gte: start, $lte: end };
     }
 
-    if (user && !user.is_system_admin && scope !== 'all' && this.accessScopeService) {
-      const scopeFilter = await this.accessScopeService.buildFilter('dayoff', user, scope);
-      if (Object.keys(scopeFilter).length > 0) {
-        if (filter.fromDate || filter.status) {
-          return this.applicationModel
-            .find({ $and: [filter, scopeFilter] })
-            .populate('leaveTypeId')
-            .populate('employeeId')
-            .populate('userId')
-            .sort({ fromDate: -1 })
-            .exec();
-        }
-        return this.applicationModel
-          .find(scopeFilter)
-          .populate('leaveTypeId')
-          .populate('employeeId')
-          .populate('userId')
-          .sort({ fromDate: -1 })
-          .exec();
-      }
-    }
-
     return this.applicationModel
       .find(filter)
       .populate('leaveTypeId')
@@ -474,18 +449,6 @@ export class DayOffService implements OnModuleInit {
 
     if (!application) {
       throw new NotFoundException(`Application #${id} not found`);
-    }
-
-    // Prevent self-approval or self-rejection
-    const currentUserId = (adminUser?.id || adminUser?._id)?.toString();
-    const applicationUserId = application.userId?.toString();
-    const applicationEmployeeUserId = (application.employeeId as any)?.userId?.toString();
-
-    if (
-      currentUserId &&
-      (currentUserId === applicationUserId || currentUserId === applicationEmployeeUserId)
-    ) {
-      throw new ForbiddenException('You cannot approve or reject your own leave application.');
     }
 
     if (application.status === status) {

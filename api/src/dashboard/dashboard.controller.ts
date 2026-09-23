@@ -2,26 +2,19 @@ import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { EmployeeActivityQueryDto } from './dto/employee-activity-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { RequirePermission } from '../auth/decorators/permissions.decorator';
 
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('employee-activity')
-  @RequirePermission({ module: 'reports', action: 'read' })
   getEmployeeActivity(@Request() req, @Query() query: EmployeeActivityQueryDto) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
     return this.dashboardService.getEmployeeActivity(
       query,
       userId?.toString(),
       req.user?.email,
-      isSystemAdmin,
-      scope,
     );
   }
 }

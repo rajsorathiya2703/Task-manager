@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { Popover } from "@headlessui/react";
-import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, Lock, UserCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, UserCheck, RotateCcw } from "lucide-react";
 
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { PriorityBadge } from "../board/PriorityBadge";
 import { formatDisplayDate } from "../../lib/utils";
-import { usePermissions } from "../../contexts/PermissionsContext";
 
 interface TaskDetailsPanelProps {
   taskId?: string;
@@ -17,22 +16,10 @@ interface TaskDetailsPanelProps {
 }
 
 export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsPanelProps) {
-  const isOwner = taskData?.isOwner !== false;
   const priority = taskData?.priority || "High";
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAssigningBack, setIsAssigningBack] = useState(false);
-
-  // Field-level permission checks (tasks model)
-  const { can, canField, status: permStatus } = usePermissions();
-  const hasUpdateAccess = isOwner || (permStatus === 'ready' ? can('tasks', 'update') : true);
-  const canEditStatus   = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'status',         'update') : true);
-  const canEditPriority = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'priority',       'update') : true);
-  const canEditHours    = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'estimatedHours', 'update') : true);
-  const canEditAssignee = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'assignee',       'update') : true);
-  const canEditDates    = hasUpdateAccess && (permStatus === 'ready' ?
-    (canField('tasks', 'startDate', 'update') && canField('tasks', 'dueDate', 'update')) : true);
-  const canEditTags     = hasUpdateAccess && (permStatus === 'ready' ? canField('tasks', 'tags',           'update') : true);
 
   useEffect(() => {
     import("../../../src/lib/api").then(async ({ fetchMe }) => {
@@ -113,7 +100,6 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
   }, [taskData?.startDate, taskData?.dueDate]);
 
   const handleSelectRange = (selectedRange: any) => {
-    if (!canEditDates) return;
     setRange(selectedRange);
     if (setTaskData && taskData) {
       setTaskData({
@@ -210,120 +196,86 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Status */}
           <div className="text-muted-foreground">Status</div>
           <div className="relative w-full">
-            {canEditStatus ? (
-              <Popover>
-                <Popover.Button className="flex items-center gap-2 font-medium text-foreground outline-none">
-                  <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
-                  {taskData?.status || "To Do"}
-                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                </Popover.Button>
-                <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
-                  {['To Do', 'Doing', 'Completed', 'On Hold'].map(status => (
-                    <button key={status} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => {
-                      if (setTaskData && taskData) setTaskData({ ...taskData, status });
-                    }}>
-                      <div className="flex items-center gap-2 font-medium text-foreground">
-                        <span className={`w-2 h-2 rounded-full ${status === 'Completed' ? 'bg-green-500' : status === 'Doing' ? 'bg-blue-500' : status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
-                        {status}
-                      </div>
-                      {taskData?.status === status && <Check className="w-3.5 h-3.5 text-foreground" />}
-                    </button>
-                  ))}
-                </Popover.Panel>
-              </Popover>
-            ) : (
-              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+            <Popover>
+              <Popover.Button className="flex items-center gap-2 font-medium text-foreground outline-none">
                 <span className={`w-2 h-2 rounded-full ${taskData?.status === 'Completed' ? 'bg-green-500' : taskData?.status === 'Doing' ? 'bg-blue-500' : taskData?.status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
                 {taskData?.status || "To Do"}
-                {!canEditStatus && (
-                  <span title="Read-only field" className="inline-flex items-center ml-1">
-                    <Lock className="w-3 h-3 text-muted-foreground/60" />
-                  </span>
-                )}
-              </div>
-            )}
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </Popover.Button>
+              <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
+                {['To Do', 'Doing', 'Completed', 'On Hold'].map(status => (
+                  <button key={status} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => {
+                    if (setTaskData && taskData) setTaskData({ ...taskData, status });
+                  }}>
+                    <div className="flex items-center gap-2 font-medium text-foreground">
+                      <span className={`w-2 h-2 rounded-full ${status === 'Completed' ? 'bg-green-500' : status === 'Doing' ? 'bg-blue-500' : status === 'On Hold' ? 'bg-red-500' : 'bg-orange-500'}`}></span>
+                      {status}
+                    </div>
+                    {taskData?.status === status && <Check className="w-3.5 h-3.5 text-foreground" />}
+                  </button>
+                ))}
+              </Popover.Panel>
+            </Popover>
           </div>
 
           {/* Priority (Dropdown) */}
           <div className="text-muted-foreground">Priority</div>
           <div className="relative w-full">
-            {canEditPriority ? (
-              <Popover>
-                <Popover.Button className="flex items-center gap-1.5 font-medium outline-none">
-                  <PriorityBadge priority={priority as any} />
-                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                </Popover.Button>
-                <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
-                  <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Priority</div>
-                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("No Priority")}>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Signal className="w-3.5 h-3.5" /> No Priority
-                    </div>
-                    {priority === "No Priority" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                  </button>
-                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("High")}>
-                    <div className="flex items-center gap-2 text-red-600">
-                      <SignalHigh className="w-3.5 h-3.5" /> Urgent
-                    </div>
-                    {priority === "High" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                  </button>
-                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Medium")}>
-                    <div className="flex items-center gap-2 text-orange-500">
-                      <SignalMedium className="w-3.5 h-3.5" /> Medium
-                    </div>
-                    {priority === "Medium" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                  </button>
-                  <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Low")}>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <SignalLow className="w-3.5 h-3.5" /> Low
-                    </div>
-                    {priority === "Low" && <Check className="w-3.5 h-3.5 text-foreground" />}
-                  </button>
-                </Popover.Panel>
-              </Popover>
-            ) : (
-              <div className="flex items-center gap-1.5 font-medium">
+            <Popover>
+              <Popover.Button className="flex items-center gap-1.5 font-medium outline-none">
                 <PriorityBadge priority={priority as any} />
-                {!canEditPriority && (
-                  <span title="Read-only field" className="inline-flex items-center ml-1">
-                    <Lock className="w-3 h-3 text-muted-foreground/60" />
-                  </span>
-                )}
-              </div>
-            )}
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </Popover.Button>
+              <Popover.Panel anchor="bottom start" className="w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Priority</div>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("No Priority")}>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Signal className="w-3.5 h-3.5" /> No Priority
+                  </div>
+                  {priority === "No Priority" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                </button>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("High")}>
+                  <div className="flex items-center gap-2 text-red-600">
+                    <SignalHigh className="w-3.5 h-3.5" /> Urgent
+                  </div>
+                  {priority === "High" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                </button>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Medium")}>
+                  <div className="flex items-center gap-2 text-orange-500">
+                    <SignalMedium className="w-3.5 h-3.5" /> Medium
+                  </div>
+                  {priority === "Medium" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                </button>
+                <button className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left" onClick={() => handlePriorityChange("Low")}>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <SignalLow className="w-3.5 h-3.5" /> Low
+                  </div>
+                  {priority === "Low" && <Check className="w-3.5 h-3.5 text-foreground" />}
+                </button>
+              </Popover.Panel>
+            </Popover>
           </div>
 
           {/* Assigned Time (Hours) */}
           <div className="text-muted-foreground">Assign Time</div>
           <div className="flex items-center gap-2">
-            {canEditHours ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={taskData?.estimatedHours ?? 0}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0;
-                    if (setTaskData && taskData) {
-                      setTaskData({ ...taskData, estimatedHours: val });
-                    }
-                  }}
-                  className="w-16 px-2 py-1 text-xs bg-muted/50 border border-border rounded-md outline-none focus:border-primary font-semibold text-foreground text-center"
-                  placeholder="0"
-                />
-                <span className="text-xs text-muted-foreground font-medium">Hours</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-foreground">{taskData?.estimatedHours || 0} Hours</span>
-                {!canEditHours && (
-                  <span title="Read-only field" className="inline-flex items-center">
-                    <Lock className="w-3 h-3 text-muted-foreground/60" />
-                  </span>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={taskData?.estimatedHours ?? 0}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  if (setTaskData && taskData) {
+                    setTaskData({ ...taskData, estimatedHours: val });
+                  }
+                }}
+                className="w-16 px-2 py-1 text-xs bg-muted/50 border border-border rounded-md outline-none focus:border-primary font-semibold text-foreground text-center"
+                placeholder="0"
+              />
+              <span className="text-xs text-muted-foreground font-medium">Hours</span>
+            </div>
           </div>
 
           {/* Due Time Progress Bar */}
@@ -348,94 +300,82 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
           {/* Member Assignment (Single Member) */}
           <div className="text-muted-foreground self-start mt-1">Assignee</div>
           <div className="relative w-full flex flex-col gap-2">
-            {canEditAssignee ? (
-              <Popover>
-                <Popover.Button className="flex items-center gap-1.5 text-muted-foreground font-medium outline-none hover:text-foreground transition-colors text-left">
-                  <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name || 'Assigned') : 'Assign member'}</span>
-                </Popover.Button>
-                <Popover.Panel anchor="bottom end" className="w-64 bg-card border border-border rounded-lg shadow-lg z-50 p-3 outline-none origin-top-right mt-1">
-                  <div className="text-sm font-semibold mb-3">Assign from Team</div>
-                  
-                  {teamMembers.length > 0 ? (
-                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                      {teamMembers.map((member) => {
-                        const isSelected = taskData?.assignee?._id === member._id;
-                        return (
-                          <button
-                            key={member._id}
-                            className={`flex items-center gap-2 w-full text-left p-2 rounded-md transition-colors ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'}`}
-                            onClick={async () => {
-                              if (setTaskData && taskData) {
-                                try {
-                                  const targetId = taskId || taskData.id || taskData._id;
-                                  if (!targetId) throw new Error("Task ID is missing");
-                                  const { updateTask } = await import("../../../src/lib/api");
-                                  const newAssigneeId = isSelected ? null : member._id;
-                                  const updated = await updateTask(targetId, { assignee: newAssigneeId });
-                                  setTaskData({
-                                    ...taskData,
-                                    assignee: isSelected ? null : (updated?.assignee || member),
-                                    assignedBy: updated?.assignedBy || taskData.assignedBy,
-                                    updates: updated?.updates || taskData.updates
-                                  });
-                                } catch (err) {
-                                  console.error("Failed to assign member", err);
-                                }
+            <Popover>
+              <Popover.Button className="flex items-center gap-1.5 text-muted-foreground font-medium outline-none hover:text-foreground transition-colors text-left">
+                <UserCheck className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name || 'Assigned') : 'Assign member'}</span>
+              </Popover.Button>
+              <Popover.Panel anchor="bottom end" className="w-64 bg-card border border-border rounded-lg shadow-lg z-50 p-3 outline-none origin-top-right mt-1">
+                <div className="text-sm font-semibold mb-3">Assign from Team</div>
+                
+                {teamMembers.length > 0 ? (
+                  <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                    {teamMembers.map((member) => {
+                      const isSelected = taskData?.assignee?._id === member._id;
+                      return (
+                        <button
+                          key={member._id}
+                          className={`flex items-center gap-2 w-full text-left p-2 rounded-md transition-colors ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'}`}
+                          onClick={async () => {
+                            if (setTaskData && taskData) {
+                              try {
+                                const targetId = taskId || taskData.id || taskData._id;
+                                if (!targetId) throw new Error("Task ID is missing");
+                                const { updateTask } = await import("../../../src/lib/api");
+                                const newAssigneeId = isSelected ? null : member._id;
+                                const updated = await updateTask(targetId, { assignee: newAssigneeId });
+                                setTaskData({
+                                  ...taskData,
+                                  assignee: isSelected ? null : (updated?.assignee || member),
+                                  assignedBy: updated?.assignedBy || taskData.assignedBy,
+                                  updates: updated?.updates || taskData.updates
+                                });
+                              } catch (err) {
+                                console.error("Failed to assign member", err);
                               }
-                            }}
-                          >
-                            <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                              {member.fullName?.firstName?.[0] || member.name?.[0] || 'U'}
+                            }
+                          }}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                            {member.fullName?.firstName?.[0] || member.name?.[0] || 'U'}
+                          </div>
+                          <div className="flex-1 overflow-hidden">
+                            <div className="text-xs font-semibold truncate">
+                              {member.fullName?.firstName} {member.fullName?.lastName}
                             </div>
-                            <div className="flex-1 overflow-hidden">
-                              <div className="text-xs font-semibold truncate">
-                                {member.fullName?.firstName} {member.fullName?.lastName}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground truncate">{member.role}</div>
-                            </div>
-                            {isSelected && (
-                              <Check className="w-3 h-3 text-primary" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground italic text-center py-4">
-                      No team assigned to this project.
-                    </div>
-                  )}
+                            <div className="text-[10px] text-muted-foreground truncate">{member.role}</div>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3 h-3 text-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground italic text-center py-4">
+                    No team assigned to this project.
+                  </div>
+                )}
 
-                  {taskData?.assignee && (
-                    <div className="border-t border-border mt-3 pt-2">
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Current Assignee</div>
-                      <div className="flex items-center gap-2 p-1 bg-muted/40 rounded">
-                        <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
-                          {taskData.assignee.fullName?.firstName?.[0] || taskData.assignee.name?.[0] || 'U'}
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-medium text-foreground truncate">
-                            {taskData.assignee.fullName?.firstName} {taskData.assignee.fullName?.lastName}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">{taskData.assignee.role}</span>
-                        </div>
+                {taskData?.assignee && (
+                  <div className="border-t border-border mt-3 pt-2">
+                    <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Current Assignee</div>
+                    <div className="flex items-center gap-2 p-1 bg-muted/40 rounded">
+                      <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
+                        {taskData.assignee.fullName?.firstName?.[0] || taskData.assignee.name?.[0] || 'U'}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-medium text-foreground truncate">
+                          {taskData.assignee.fullName?.firstName} {taskData.assignee.fullName?.lastName}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{taskData.assignee.role}</span>
                       </div>
                     </div>
-                  )}
-                </Popover.Panel>
-              </Popover>
-            ) : (
-              <div className="flex items-center gap-1.5 font-medium text-foreground">
-                <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <span className="truncate">{taskData?.assignee ? (taskData.assignee.fullName?.firstName || taskData.assignee.name) : 'Unassigned'}</span>
-                {!canEditAssignee && (
-                  <span title="Read-only field" className="inline-flex items-center ml-1">
-                    <Lock className="w-3 h-3 text-muted-foreground/60" />
-                  </span>
+                  </div>
                 )}
-              </div>
-            )}
+              </Popover.Panel>
+            </Popover>
 
             {canAssignBack && (
               <button
@@ -450,112 +390,89 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
             )}
           </div>
 
-
           {/* Dates (Calendar Popover - Start & End Date Range) */}
           <div className="text-muted-foreground">Dates</div>
           <div className="relative w-full">
-            {canEditDates ? (
-              <Popover className="relative">
-                <Popover.Button className="flex items-center gap-2 px-2 py-1 bg-muted/50 border border-border/50 rounded-md font-medium text-foreground outline-none hover:bg-muted transition-colors">
-                  <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-                  {formatDisplayDate(taskData?.startDate || range?.from?.toISOString(), taskData?.dueDate || range?.to?.toISOString()) || "Set Dates"}
-                </Popover.Button>
-                <Popover.Panel anchor="bottom end" className="bg-card border border-border rounded-xl shadow-xl z-50 p-2 outline-none mt-1">
-                  <div className="px-2 py-1 mb-1 text-[11px] font-semibold text-muted-foreground border-b border-border">
-                    Select Start Date → End Date
-                  </div>
-                  <DayPicker
-                    mode="range"
-                    selected={range as any}
-                    onSelect={handleSelectRange}
-                    className="!m-0 text-xs"
-                    style={{
-                      '--rdp-cell-size': '28px',
-                      '--rdp-caption-font-size': '13px',
-                      '--rdp-nav-height': '28px'
-                    } as React.CSSProperties}
-                    modifiersClassNames={{
-                      selected: "bg-primary text-primary-foreground font-bold rounded-full",
-                      range_start: "bg-primary text-primary-foreground font-bold rounded-l-full",
-                      range_end: "bg-primary text-primary-foreground font-bold rounded-r-full",
-                      range_middle: "bg-primary/10 text-foreground font-medium rounded-none",
-                    }}
-                  />
-                </Popover.Panel>
-              </Popover>
-            ) : (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/30 border border-border/30 rounded-md text-xs font-medium text-muted-foreground cursor-not-allowed">
+            <Popover className="relative">
+              <Popover.Button className="flex items-center gap-2 px-2 py-1 bg-muted/50 border border-border/50 rounded-md font-medium text-foreground outline-none hover:bg-muted transition-colors">
                 <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>{formatDisplayDate(taskData?.startDate, taskData?.dueDate) || "No date set"}</span>
-                <span title="Read-only field" className="inline-flex items-center ml-auto opacity-50">
-                  <Lock className="w-3 h-3" />
-                </span>
-              </div>
-            )}
+                {formatDisplayDate(taskData?.startDate || range?.from?.toISOString(), taskData?.dueDate || range?.to?.toISOString()) || "Set Dates"}
+              </Popover.Button>
+              <Popover.Panel anchor="bottom end" className="bg-card border border-border rounded-xl shadow-xl z-50 p-2 outline-none mt-1">
+                <div className="px-2 py-1 mb-1 text-[11px] font-semibold text-muted-foreground border-b border-border">
+                  Select Start Date → End Date
+                </div>
+                <DayPicker
+                  mode="range"
+                  selected={range as any}
+                  onSelect={handleSelectRange}
+                  className="!m-0 text-xs"
+                  style={{
+                    '--rdp-cell-size': '28px',
+                    '--rdp-caption-font-size': '13px',
+                    '--rdp-nav-height': '28px'
+                  } as React.CSSProperties}
+                  modifiersClassNames={{
+                    selected: "bg-primary text-primary-foreground font-bold rounded-full",
+                    range_start: "bg-primary text-primary-foreground font-bold rounded-l-full",
+                    range_end: "bg-primary text-primary-foreground font-bold rounded-r-full",
+                    range_middle: "bg-primary/10 text-foreground font-medium rounded-none",
+                  }}
+                />
+              </Popover.Panel>
+            </Popover>
           </div>
 
           {/* Labels */}
           <div className="text-muted-foreground">Labels</div>
           <div className="relative w-full">
-            {canEditTags ? (
-              <Popover>
-                <Popover.Button className="flex items-center gap-1.5 font-medium text-foreground outline-none hover:text-primary transition-colors text-xs">
-                  {taskData?.tags?.length ? `${taskData.tags.length} Labels` : 'Add label...'}
-                </Popover.Button>
-                <Popover.Panel anchor="bottom end" className="w-56 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none origin-top-right mt-1">
-                  <input
-                    type="text"
-                    placeholder="Type and press Enter..."
-                    className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary mb-2 text-foreground"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const newTag = e.currentTarget.value.trim();
-                        if (newTag && setTaskData && taskData) {
-                          const currentTags = taskData.tags || [];
-                          if (!currentTags.includes(newTag)) {
-                            setTaskData({ ...taskData, tags: [...currentTags, newTag] });
-                          }
-                          e.currentTarget.value = '';
+            <Popover>
+              <Popover.Button className="flex items-center gap-1.5 font-medium text-foreground outline-none hover:text-primary transition-colors text-xs">
+                {taskData?.tags?.length ? `${taskData.tags.length} Labels` : 'Add label...'}
+              </Popover.Button>
+              <Popover.Panel anchor="bottom end" className="w-56 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none origin-top-right mt-1">
+                <input
+                  type="text"
+                  placeholder="Type and press Enter..."
+                  className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary mb-2 text-foreground"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const newTag = e.currentTarget.value.trim();
+                      if (newTag && setTaskData && taskData) {
+                        const currentTags = taskData.tags || [];
+                        if (!currentTags.includes(newTag)) {
+                          setTaskData({ ...taskData, tags: [...currentTags, newTag] });
                         }
+                        e.currentTarget.value = '';
                       }
-                    }}
-                  />
-                  <div className="flex flex-wrap gap-1.5">
-                    {(taskData?.tags || []).map((tag: string) => (
-                      <div key={tag} className="flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">
-                        {tag}
-                        <button
-                          className="hover:text-red-500 ml-1 font-bold"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            if (setTaskData && taskData) {
-                              setTaskData({
-                                ...taskData,
-                                tags: taskData.tags.filter((t: string) => t !== tag)
-                              });
-                            }
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {!(taskData?.tags?.length) && <span className="text-[10px] text-muted-foreground">No labels added yet.</span>}
-                  </div>
-                </Popover.Panel>
-              </Popover>
-            ) : (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(taskData?.tags || []).map((tag: string) => (
-                  <span key={tag} className="bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">{tag}</span>
-                ))}
-                {!(taskData?.tags?.length) && <span className="text-[10px] text-muted-foreground italic">No labels</span>}
-                <span title="Read-only field" className="inline-flex items-center ml-1">
-                  <Lock className="w-3 h-3 text-muted-foreground/60" />
-                </span>
-              </div>
-            )}
+                    }
+                  }}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {(taskData?.tags || []).map((tag: string) => (
+                    <div key={tag} className="flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-sm text-[10px] font-medium text-foreground">
+                      {tag}
+                      <button
+                        className="hover:text-red-500 ml-1 font-bold"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (setTaskData && taskData) {
+                            setTaskData({
+                              ...taskData,
+                              tags: taskData.tags.filter((t: string) => t !== tag)
+                            });
+                          }
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {!(taskData?.tags?.length) && <span className="text-[10px] text-muted-foreground">No labels added yet.</span>}
+                </div>
+              </Popover.Panel>
+            </Popover>
           </div>
         </div>
       </div>

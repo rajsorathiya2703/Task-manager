@@ -33,7 +33,7 @@ export function LeaveTypeList({
         <div>
           <h2 className="font-bold text-sm text-foreground">Configured Leave Types</h2>
           <p className="text-xs text-muted-foreground">
-            Manage policies, refill frequency, deduction percentages, and eligibility
+            Manage policies, refill frequency, deduction percentages, and carry forward
           </p>
         </div>
         <button
@@ -60,7 +60,6 @@ export function LeaveTypeList({
                 <th className="py-3.5 px-6 font-semibold">Refill Cycle</th>
                 <th className="py-3.5 px-6 font-semibold">Salary Cut</th>
                 <th className="py-3.5 px-6 font-semibold">Carry Forward</th>
-                <th className="py-3.5 px-6 font-semibold">Target Groups</th>
                 <th className="py-3.5 px-6 font-semibold">Status</th>
                 <th className="py-3.5 px-6 font-semibold text-right">Actions</th>
               </tr>
@@ -123,11 +122,6 @@ export function LeaveTypeList({
                     ) : (
                       <span className="text-muted-foreground">No</span>
                     )}
-                  </td>
-                  <td className="px-6 py-4 max-w-xs truncate text-muted-foreground">
-                    {item.applicableUserGroups && item.applicableUserGroups.length > 0
-                      ? item.applicableUserGroups.map((g: any) => g.name || "Group").join(", ")
-                      : "All Groups"}
                   </td>
                   <td className="px-6 py-4">
                     <span

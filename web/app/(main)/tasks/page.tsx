@@ -8,7 +8,6 @@ import { fetchTasks } from "../../../src/lib/api";
 import { Task } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
-import { usePermissions } from "../../../src/contexts/PermissionsContext";
 
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
 const defaultPriorities = ["High", "Medium", "Low", "No Priority"];
@@ -20,7 +19,6 @@ const groupByOptions: GroupByOption[] = [
 ];
 
 export default function TasksPage() {
-  const { can } = usePermissions();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [data, setData] = useState<Record<string, Task[]>>({
     "To Do": [],
@@ -209,7 +207,7 @@ export default function TasksPage() {
         title="Tasks" 
         activeView={view} 
         onViewChange={setView} 
-        showAdd={can('tasks', 'create')}
+        showAdd={true}
         filters={filters}
         onApplyFilter={(f) => setFilters([...filters, f])}
         onRemoveFilter={(id) => setFilters(filters.filter(f => f.id !== id))}

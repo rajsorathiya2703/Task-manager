@@ -6,7 +6,7 @@ import { Board } from "../../../../src/components/board/Board";
 import { ListView } from "../../../../src/components/board/ListView";
 import { fetchTasks, fetchProjectById, updateTask } from "../../../../src/lib/api";
 import { Task, Project } from "../../../../src/lib/data";
-import { Loader2, ArrowLeft, ShieldAlert } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 
 const emptyData: Record<string, Task[]> = {
@@ -22,12 +22,10 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
   const [project, setProject] = useState<Project | null>(null);
   const [data, setData] = useState<Record<string, Task[]>>(emptyData);
   const [isLoading, setIsLoading] = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false);
 
   const loadProjectAndTasks = async () => {
     try {
       setIsLoading(true);
-      setAccessDenied(false);
 
       // Fetch project details and project tasks in parallel
       const [projData, backendTasks] = await Promise.all([
@@ -65,11 +63,7 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
         setData(emptyData);
       }
     } catch (error: any) {
-      if (error?.response?.status === 403) {
-        setAccessDenied(true);
-      } else {
-        console.error("Failed to load project or tasks", error);
-      }
+      console.error("Failed to load project or tasks", error);
     } finally {
       setIsLoading(false);
     }
@@ -114,27 +108,6 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  if (accessDenied) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-background px-4 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4 shadow-sm">
-          <ShieldAlert className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-bold text-foreground mb-2">Access Denied</h2>
-        <p className="text-sm text-muted-foreground max-w-md mb-6 leading-relaxed">
-          You do not have permission to view this project or its tasks dashboard.
-        </p>
-        <Link 
-          href="/projects"
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Projects
-        </Link>
-      </div>
-    );
-  }
-
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center h-full bg-background">
@@ -148,7 +121,7 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
 
   const titleNode = (
     <div className="flex items-center gap-2">
-      <div 
+      <div
         className="w-5 h-5 rounded-md flex items-center justify-center text-white font-bold text-[10px] shrink-0 shadow-xs"
         style={{ backgroundColor: projectColor }}
       >
@@ -160,13 +133,13 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
-      <PageHeader 
+      <PageHeader
         title={titleNode}
         breadcrumbs={[
           { label: "Projects", href: "/projects" }
         ]}
-        activeView={view} 
-        onViewChange={setView} 
+        activeView={view}
+        onViewChange={setView}
         addText="Add Task"
         addHref={`/tasks/new?projectId=${id}`}
       />

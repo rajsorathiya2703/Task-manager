@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -12,14 +12,10 @@ import { ProjectsModule } from './projects/projects.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { EmployeesModule } from './employees/employees.module';
 import { TeamsModule } from './teams/teams.module';
-import { UserGroupsModule } from './user-groups/user-groups.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
-import { PermissionsModule } from './permissions/permissions.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from './auth/guards/permissions.guard';
-import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissions.interceptor';
 
 @Module({
   imports: [
@@ -42,11 +38,9 @@ import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissio
     CloudinaryModule,
     EmployeesModule,
     TeamsModule,
-    UserGroupsModule,
     DashboardModule,
     ChatbotModule,
     DayOffModule,
-    PermissionsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -54,14 +48,6 @@ import { FieldPermissionsInterceptor } from './auth/interceptors/field-permissio
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: PermissionsGuard,
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: FieldPermissionsInterceptor,
     },
   ],
 })

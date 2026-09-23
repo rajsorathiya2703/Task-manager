@@ -9,10 +9,8 @@ import {
 import { ChatbotService } from './chatbot.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { Throttle } from '@nestjs/throttler';
-import { AllowAuthenticated } from '../auth/decorators/allow-authenticated.decorator';
 
 @Controller('chatbot')
-@AllowAuthenticated()
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 

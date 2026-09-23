@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class LeaveType extends Document {
@@ -26,9 +26,6 @@ export class LeaveType extends Document {
 
   @Prop({ default: 12, min: 0 })
   defaultAllocation: number;
-
-  @Prop({ type: [{ type: Types.ObjectId, ref: 'UserGroup' }], default: [] })
-  applicableUserGroups: Types.ObjectId[];
 
   @Prop({ default: '' })
   rules: string;

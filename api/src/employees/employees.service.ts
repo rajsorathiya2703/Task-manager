@@ -1,17 +1,15 @@
-import { Injectable, NotFoundException, ForbiddenException, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Employee } from './schemas/employee.schema';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
-import { AccessScopeService } from '../permissions/access-scope.service';
 
 @Injectable()
 export class EmployeesService {
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private usersService: UsersService,
-    @Optional() private readonly accessScopeService?: AccessScopeService,
   ) {}
 
   async create(createEmployeeDto: any): Promise<Employee> {
@@ -28,34 +26,15 @@ export class EmployeesService {
     return newEmployee.save();
   }
 
-  async findAll(userContext?: any, scope: 'own' | 'team' | 'all' = 'all'): Promise<Employee[]> {
-    if (!userContext || userContext.is_system_admin || scope === 'all') {
-      return this.employeeModel.find().populate('userId').exec();
-    }
-
-    if (this.accessScopeService) {
-      const filter = await this.accessScopeService.buildFilter('employees', userContext, scope);
-      return this.employeeModel.find(filter).populate('userId').exec();
-    }
-
+  async findAll(): Promise<Employee[]> {
     return this.employeeModel.find().populate('userId').exec();
   }
 
-  async findOne(id: string, userContext?: any, scope: 'own' | 'team' | 'all' = 'all'): Promise<Employee> {
+  async findOne(id: string): Promise<Employee> {
     const employee = await this.employeeModel.findById(id).populate('userId').exec();
     if (!employee) {
       throw new NotFoundException(`Employee #${id} not found`);
     }
-
-    if (userContext && !userContext.is_system_admin && scope !== 'all') {
-      if (this.accessScopeService) {
-        const hasAccess = await this.accessScopeService.canAccess('employees', employee, userContext, scope);
-        if (!hasAccess) {
-          throw new ForbiddenException('Access Denied: You do not have permission to view this employee profile.');
-        }
-      }
-    }
-
     return employee;
   }
 
@@ -129,15 +108,6 @@ export class EmployeesService {
 
   /**
    * Idempotently create (or link) an Employee record for a given User.
-   *
-   * Priority order:
-   *  1. If an Employee already has userId === user._id → return it (no duplicate created).
-   *  2. If user.email exists and an *unlinked* Employee has that email → link it via
-   *     linkUserByEmail() and return the updated record.
-   *  3. Otherwise → create a brand-new Employee with sensible defaults.
-   *
-   * Omits the `email` key entirely for guest users (no email) to avoid writing
-   * null/'' into the sparse-unique index (sparse skips *absent* keys, not empty strings).
    */
   async createFromUser(user: UserDocument): Promise<Employee> {
     // 1. Idempotency guard — already linked?
@@ -174,14 +144,6 @@ export class EmployeesService {
 
   /**
    * Verified, explicit link repair.
-   *
-   * Links Employee._id → userId ONLY when:
-   *  - The Employee has no userId yet (is unlinked), OR already points to this userId.
-   *  - The Employee's email matches `verifiedEmail` (the User's own email), so a
-   *    user can never claim an Employee record that belongs to a different person.
-   *
-   * Returns the (possibly updated) Employee on success, null if no match / already
-   * linked to a different user / email mismatch.
    */
   async linkByUserId(
     userId: any,
@@ -214,10 +176,7 @@ export class EmployeesService {
   }
 
   /**
-   * Returns the link status for a given Employee:
-   *  - linked: whether userId is set
-   *  - userId: the linked User._id (or null)
-   *  - employeeEmail: the Employee's email (or null)
+   * Returns the link status for a given Employee
    */
   async getLinkStatus(id: string): Promise<{
     linked: boolean;
@@ -233,4 +192,3 @@ export class EmployeesService {
     };
   }
 }
-

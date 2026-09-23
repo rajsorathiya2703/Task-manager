@@ -13,7 +13,6 @@ import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, st
 import { useTimer } from "../../../../src/contexts/TimerContext";
 import { getUserDisplayName } from "../../../../src/components/common/Comments";
 import { RecordNavigator } from "../../../../src/components/common/RecordNavigator";
-import { usePermissions } from "../../../../src/contexts/PermissionsContext";
 import Link from "next/link";
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,11 +54,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     isOwner: true,
   });
 
-  const { can, status: permStatus } = usePermissions();
-  const isOwner = taskData?.isOwner !== false;
-  const canUpdateTask = isNew 
-    ? (permStatus === 'ready' ? can('tasks', 'create') : true) 
-    : (isOwner || (permStatus === 'ready' ? can('tasks', 'update') : true));
+  const canUpdateTask = true;
 
   const [allTaskIds, setAllTaskIds] = useState<string[]>([]);
 
@@ -119,12 +114,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             }
           }
         } catch (error: any) {
-          if (error?.response?.status === 403) {
-            setAccessDenied(true);
-          } else {
-            console.error("Failed to load task", error);
-            router.push('/tasks');
-          }
+          console.error("Failed to load task", error);
+          router.push('/tasks');
         } finally {
           setIsLoading(false);
         }
@@ -347,26 +338,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  if (accessDenied) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full bg-background px-4 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4 shadow-sm">
-          <ShieldAlert className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-bold text-foreground mb-2">Access Denied</h2>
-        <p className="text-sm text-muted-foreground max-w-md mb-6 leading-relaxed">
-          You do not have permission to view or edit this task. Please contact the task owner to request an invite.
-        </p>
-        <Link 
-          href="/tasks"
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Tasks
-        </Link>
-      </div>
-    );
-  }
+
 
   if (isLoading) {
     return (

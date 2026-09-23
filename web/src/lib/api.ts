@@ -61,26 +61,9 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 403) {
-      const message = error.response?.data?.message || 'Access Denied: You do not have permission to perform this action.';
-      console.warn('[403 Forbidden]', message);
-      if (accessDeniedHandler) {
-        accessDeniedHandler(message);
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('antigravity:forbidden', { detail: { message } }));
-      }
-    }
-
     return Promise.reject(error);
   }
 );
-
-let accessDeniedHandler: ((message: string) => void) | null = null;
-
-export const setAccessDeniedHandler = (handler: ((message: string) => void) | null) => {
-  accessDeniedHandler = handler;
-};
 
 export const authEndpoints = {
 
@@ -376,49 +359,7 @@ export const deleteUser = async (id: string) => {
   return res.data;
 };
 
-// User Groups
-export const userGroupEndpoints = {
-  getAll: '/user-groups',
-  getOne: (id: any) => `/user-groups/${toId(id)}`,
-  create: '/user-groups',
-  update: (id: any) => `/user-groups/${toId(id)}`,
-  delete: (id: any) => `/user-groups/${toId(id)}`,
-};
 
-export const fetchUserGroups = async () => {
-  const res = await api.get(userGroupEndpoints.getAll);
-  return res.data;
-};
-
-export const fetchUserGroupById = async (id: string) => {
-  const res = await api.get(userGroupEndpoints.getOne(id));
-  return res.data;
-};
-
-export const createUserGroup = async (data: any) => {
-  const res = await api.post(userGroupEndpoints.create, data);
-  return res.data;
-};
-
-export const updateUserGroup = async (id: string, data: any) => {
-  const res = await api.patch(userGroupEndpoints.update(id), data);
-  return res.data;
-};
-
-export const deleteUserGroup = async (id: string) => {
-  const res = await api.delete(userGroupEndpoints.delete(id));
-  return res.data;
-};
-
-export const fetchMyPermissions = async () => {
-  const res = await api.get('/user-groups/my-permissions');
-  return res.data;
-};
-
-export const fetchPermissionsCatalog = async () => {
-  const res = await api.get('/permissions/catalog');
-  return res.data;
-};
 
 export const fetchEmployeeActivity = async (range?: string, startDate?: string, endDate?: string, employeeId?: string) => {
   const params = new URLSearchParams();
@@ -542,36 +483,7 @@ export const markAllNotificationsRead = async () => {
   return res.data;
 };
 
-// ── Phase 19: Audit Trail & Effective-Access Preview ──────────────────────────
 
-export const fetchGroupAuditLogs = async (params?: {
-  groupId?: string;
-  action?: string;
-  page?: number;
-  limit?: number;
-}) => {
-  const sp = new URLSearchParams();
-  if (params?.groupId) sp.append('groupId', params.groupId);
-  if (params?.action) sp.append('action', params.action);
-  if (params?.page != null) sp.append('page', String(params.page));
-  if (params?.limit != null) sp.append('limit', String(params.limit));
-  const qs = sp.toString();
-  const res = await api.get(qs ? `/user-groups/audit?${qs}` : '/user-groups/audit');
-  return res.data;
-};
-
-export const fetchUserEffectivePermissions = async (userId: string) => {
-  const res = await api.get(`/user-groups/users/${userId}/effective-permissions`);
-  return res.data;
-};
-
-export const checkUserPermission = async (
-  userId: string,
-  body: { module: string; action: 'create' | 'read' | 'update' | 'delete'; operation?: string; model?: string; field?: string },
-) => {
-  const res = await api.post(`/user-groups/users/${userId}/check`, body);
-  return res.data;
-};
 
 
 

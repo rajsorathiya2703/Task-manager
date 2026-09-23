@@ -1,69 +1,50 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { TeamsService } from './teams.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { RequirePermission } from '../auth/decorators/permissions.decorator';
 
 @Controller('teams')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard)
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Post()
-  @RequirePermission({ module: 'teams', action: 'create', model: 'teams' })
   create(@Body() createTeamDto: any) {
     return this.teamsService.create(createTeamDto);
   }
 
   @Get()
-  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
   findAll(@Request() req) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.teamsService.findAll(userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    return this.teamsService.findAll(userId?.toString(), req.user?.email, true, 'all');
   }
 
   @Get(':id')
-  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
   findOne(@Param('id') id: string, @Request() req) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.teamsService.findOne(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    return this.teamsService.findOne(id, userId?.toString(), req.user?.email, true, 'all');
   }
 
   @Patch(':id')
-  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
   update(@Param('id') id: string, @Body() updateTeamDto: any, @Request() req) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.teamsService.update(id, updateTeamDto, userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    return this.teamsService.update(id, updateTeamDto, userId?.toString(), req.user?.email, true, 'all');
   }
 
   @Delete(':id')
-  @RequirePermission({ module: 'teams', action: 'delete', model: 'teams' })
   remove(@Param('id') id: string, @Request() req) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.teamsService.remove(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    return this.teamsService.remove(id, userId?.toString(), req.user?.email, true, 'all');
   }
 
   @Get(':id/active-tasks')
-  @RequirePermission({ module: 'teams', action: 'read', model: 'teams' })
   getActiveTasks(@Param('id') id: string, @Request() req) {
     const userId = req.user?.id || req.user?._id;
-    const isSystemAdmin = Boolean(req.isSystemAdmin || req.user?.is_system_admin);
-    const scope = req.permissionScope || 'own';
-    return this.teamsService.getActiveTasks(id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    return this.teamsService.getActiveTasks(id, userId?.toString(), req.user?.email, true, 'all');
   }
 
   // ── Comment Endpoints ──
 
   @Post(':id/comments')
-  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
   addComment(@Request() req, @Param('id') id: string, @Body() commentData: any) {
     const userId = req.user?.id || req.user?._id;
     const user = {
@@ -77,7 +58,6 @@ export class TeamsController {
   }
 
   @Patch(':id/comments/:commentId')
-  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
   updateComment(
     @Request() req,
     @Param('id') id: string,
@@ -88,7 +68,6 @@ export class TeamsController {
   }
 
   @Delete(':id/comments/:commentId')
-  @RequirePermission({ module: 'teams', action: 'update', model: 'teams' })
   deleteComment(
     @Request() req,
     @Param('id') id: string,

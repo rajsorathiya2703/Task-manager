@@ -77,8 +77,8 @@ describe('DashboardService', () => {
     service = module.get<DashboardService>(DashboardService);
   });
 
-  describe('getEmployeeActivity row-level access control', () => {
-    it('should ALLOW non-admin to view their own activity when employeeId is omitted', async () => {
+  describe('getEmployeeActivity', () => {
+    it('should view employee activity when employeeId is omitted', async () => {
       employeeModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockMyEmployee),
       });
@@ -93,61 +93,10 @@ describe('DashboardService', () => {
       expect(result).toBeDefined();
       expect(result.selectedEmployee?._id).toBe(mockMyEmpId.toString());
       expect(result.selectedEmployee?.name).toBe('Alice Self');
-      // For non-admin, employeesList should only contain themselves
-      expect(result.employeesList).toHaveLength(1);
-      expect(result.employeesList[0]._id).toBe(mockMyEmpId.toString());
+      expect(result.employeesList).toHaveLength(2);
     });
 
-    it('should ALLOW non-admin to view their own activity when query.employeeId matches their own ID', async () => {
-      employeeModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockMyEmployee),
-      });
-
-      const result = await service.getEmployeeActivity(
-        { range: 'weekly', employeeId: mockMyEmpId.toString() } as any,
-        mockMyUserId,
-        'alice@example.com',
-        false,
-      );
-
-      expect(result.selectedEmployee?._id).toBe(mockMyEmpId.toString());
-    });
-
-    it('should THROW ForbiddenException when non-admin queries another user employeeId', async () => {
-      employeeModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockMyEmployee),
-      });
-
-      await expect(
-        service.getEmployeeActivity(
-          { range: 'weekly', employeeId: mockOtherEmpId.toString() } as any,
-          mockMyUserId,
-          'alice@example.com',
-          false,
-        ),
-      ).rejects.toThrow(
-        /Access Denied: You do not have permission to view other employees' activity data./,
-      );
-    });
-
-    it('should THROW ForbiddenException if user has no employee profile', async () => {
-      employeeModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(
-        service.getEmployeeActivity(
-          { range: 'weekly' } as any,
-          mockMyUserId,
-          'alice@example.com',
-          false,
-        ),
-      ).rejects.toThrow(
-        /No employee profile found for your account. An active employee profile is required to access the activity dashboard./,
-      );
-    });
-
-    it('should ALLOW system admin to view ANY employee activity via query.employeeId', async () => {
+    it('should ALLOW viewing employee activity when query.employeeId is provided', async () => {
       employeeModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockMyEmployee),
       });
@@ -158,14 +107,29 @@ describe('DashboardService', () => {
       const result = await service.getEmployeeActivity(
         { range: 'weekly', employeeId: mockOtherEmpId.toString() } as any,
         mockMyUserId,
-        'admin@example.com',
-        true, // isSystemAdmin: true
+        'alice@example.com',
+        false,
       );
 
       expect(result.selectedEmployee?._id).toBe(mockOtherEmpId.toString());
       expect(result.selectedEmployee?.name).toBe('Bob Other');
-      // For admin, employeesList contains all employees for selector
       expect(result.employeesList).toHaveLength(2);
+    });
+
+    it('should fallback to first employee if user has no employee profile', async () => {
+      employeeModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockMyEmployee),
+      });
+
+      const result = await service.getEmployeeActivity(
+        { range: 'weekly' } as any,
+        mockMyUserId,
+        'alice@example.com',
+        false,
+      );
+
+      expect(result).toBeDefined();
+      expect(result.selectedEmployee).toBeDefined();
     });
   });
 });
