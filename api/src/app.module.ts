@@ -16,6 +16,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
 import { AccessModule } from './access/access.module';
+import { RolesModule } from './roles/roles.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AccessGuard } from './access/access.guard';
 import { FieldAccessInterceptor } from './access/field-access.interceptor';
@@ -45,6 +46,7 @@ import { FieldAccessInterceptor } from './access/field-access.interceptor';
     ChatbotModule,
     DayOffModule,
     AccessModule,
+    RolesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -359,15 +359,55 @@ export const deleteUser = async (id: string) => {
   return res.data;
 };
 
-// Access
+// Access & Roles
 export const accessEndpoints = {
   preview: (userId: string) => `/access/preview/${userId}`,
+  catalog: '/access/catalog',
 };
 
 export const fetchAccessPreview = async (userId: string) => {
   const res = await api.get(accessEndpoints.preview(userId));
   return res.data;
 };
+
+export const fetchAccessCatalog = async () => {
+  const res = await api.get(accessEndpoints.catalog);
+  return res.data;
+};
+
+export const roleEndpoints = {
+  getAll: '/roles',
+  getOne: (id: any) => `/roles/${toId(id)}`,
+  create: '/roles',
+  update: (id: any) => `/roles/${toId(id)}`,
+  delete: (id: any) => `/roles/${toId(id)}`,
+};
+
+export const fetchRoles = async () => {
+  const res = await api.get(roleEndpoints.getAll);
+  return res.data;
+};
+
+export const fetchRoleById = async (id: string) => {
+  const res = await api.get(roleEndpoints.getOne(id));
+  return res.data;
+};
+
+export const createRole = async (data: any) => {
+  const res = await api.post(roleEndpoints.create, data);
+  return res.data;
+};
+
+export const updateRole = async (id: string, data: any) => {
+  const res = await api.patch(roleEndpoints.update(id), data);
+  return res.data;
+};
+
+export const deleteRole = async (id: string) => {
+  const res = await api.delete(roleEndpoints.delete(id));
+  return res.data;
+};
+
 
 export const fetchEmployeeActivity = async (range?: string, startDate?: string, endDate?: string, employeeId?: string) => {
   const params = new URLSearchParams();

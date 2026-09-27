@@ -2,7 +2,7 @@
 
 import { PanelLeft } from "lucide-react";
 import { useSidebar } from "../../../../src/components/layout/SidebarContext";
-import RoleAccessPreview from "../../../../src/components/roles/RoleAccessPreview";
+import RolesManagement from "../../../../src/components/roles/RolesManagement";
 
 export default function RolesPage() {
   const { isOpen, toggleSidebar } = useSidebar();
@@ -25,14 +25,14 @@ export default function RolesPage() {
             Roles & Access Control
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage roles and preview effective user permissions
+            Configure custom roles, permission matrices, field overrides, and preview user access
           </p>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <RoleAccessPreview />
+        <RolesManagement />
       </div>
     </div>
   );
