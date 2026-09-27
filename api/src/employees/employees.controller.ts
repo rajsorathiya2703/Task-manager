@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequireAccess } from '../access/decorators/require-access.decorator';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard)
@@ -19,18 +20,25 @@ export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 
   @Post()
+  @RequireAccess({ module: 'employees', action: 'create' })
   create(@Body() createEmployeeDto: any) {
     return this.employeesService.create(createEmployeeDto);
   }
 
   @Get()
+  @RequireAccess({ module: 'employees', action: 'read' })
   findAll(@Req() req: any) {
-    return this.employeesService.findAll();
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.employees?.scope || req.accessDecision?.scope || 'own';
+    return this.employeesService.findAll(req.user?.id || req.user?._id, req.user?.email, isSystemAdmin, scope);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.employeesService.findOne(id);
+  @RequireAccess({ module: 'employees', action: 'read' })
+  findOne(@Param('id') id: string, @Req() req: any) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.employees?.scope || req.accessDecision?.scope || 'own';
+    return this.employeesService.findOne(id, req.user?.id || req.user?._id, req.user?.email, isSystemAdmin, scope);
   }
 
   /**
@@ -40,8 +48,11 @@ export class EmployeesController {
    * Response: { linked: boolean, userId: string|null, employeeEmail: string|null }
    */
   @Get(':id/link-status')
-  async getLinkStatus(@Param('id') id: string) {
-    return this.employeesService.getLinkStatus(id);
+  @RequireAccess({ module: 'employees', action: 'read' })
+  async getLinkStatus(@Param('id') id: string, @Req() req: any) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.employees?.scope || req.accessDecision?.scope || 'own';
+    return this.employeesService.getLinkStatus(id, req.user?.id || req.user?._id, req.user?.email, isSystemAdmin, scope);
   }
 
   /**
@@ -53,6 +64,7 @@ export class EmployeesController {
    * Response: { linked: boolean, employee: Employee | null }
    */
   @Post(':id/link-user')
+  @RequireAccess({ module: 'employees', action: 'update' })
   async linkUser(@Param('id') _id: string, @Req() req: any) {
     const userId = req.user?.id || req.user?._id;
     const userEmail = req.user?.email;
@@ -69,12 +81,31 @@ export class EmployeesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateEmployeeDto: any) {
-    return this.employeesService.update(id, updateEmployeeDto);
+  @RequireAccess({ module: 'employees', action: 'update' })
+  update(@Param('id') id: string, @Body() updateEmployeeDto: any, @Req() req: any) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.employees?.scope || req.accessDecision?.scope || 'own';
+    return this.employeesService.update(
+      id,
+      updateEmployeeDto,
+      req.user?.id || req.user?._id,
+      req.user?.email,
+      isSystemAdmin,
+      scope,
+    );
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.employeesService.remove(id);
+  @RequireAccess({ module: 'employees', action: 'delete' })
+  remove(@Param('id') id: string, @Req() req: any) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.employees?.scope || req.accessDecision?.scope || 'own';
+    return this.employeesService.remove(
+      id,
+      req.user?.id || req.user?._id,
+      req.user?.email,
+      isSystemAdmin,
+      scope,
+    );
   }
 }

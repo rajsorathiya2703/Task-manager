@@ -14,6 +14,7 @@ import {
 import type { Response } from 'express';
 import { DayOffService } from './day-off.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { RequireAccess } from '../access/decorators/require-access.decorator';
 
 @Controller('day-off')
 export class DayOffController {
@@ -23,43 +24,51 @@ export class DayOffController {
 
   // --- Settings ---
   @Get('settings')
+  @RequireAccess({ module: 'dayoff.policies', action: 'read' })
   getSettings() {
     return this.dayOffService.getSettings();
   }
 
   @Patch('settings')
+  @RequireAccess({ module: 'dayoff.policies', action: 'update' })
   updateSettings(@Body() body: any) {
     return this.dayOffService.updateSettings(body);
   }
 
   // --- Leave Types ---
   @Get('leave-types')
+  @RequireAccess({ module: 'dayoff.policies', action: 'read' })
   getLeaveTypes(@Query('activeOnly') activeOnly?: string) {
     return this.dayOffService.getLeaveTypes({ activeOnly: activeOnly === 'true' });
   }
 
   @Get('leave-types/:id')
+  @RequireAccess({ module: 'dayoff.policies', action: 'read' })
   getLeaveTypeById(@Param('id') id: string) {
     return this.dayOffService.getLeaveTypeById(id);
   }
 
   @Post('leave-types')
+  @RequireAccess({ module: 'dayoff.policies', action: 'create' })
   createLeaveType(@Body() body: any) {
     return this.dayOffService.createLeaveType(body);
   }
 
   @Patch('leave-types/:id')
+  @RequireAccess({ module: 'dayoff.policies', action: 'update' })
   updateLeaveType(@Param('id') id: string, @Body() body: any) {
     return this.dayOffService.updateLeaveType(id, body);
   }
 
   @Delete('leave-types/:id')
+  @RequireAccess({ module: 'dayoff.policies', action: 'delete' })
   deleteLeaveType(@Param('id') id: string) {
     return this.dayOffService.deleteLeaveType(id);
   }
 
   // --- Balances ---
   @Get('balances')
+  @RequireAccess({ module: 'dayoff', action: 'read' })
   async getMyBalances(@Req() req: any, @Query('year') year?: string) {
     const userId = req.user?.id || req.user?._id;
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
@@ -72,6 +81,7 @@ export class DayOffController {
   }
 
   @Get('balances/:employeeId')
+  @RequireAccess({ module: 'dayoff', action: 'read' })
   getEmployeeBalances(@Param('employeeId') employeeId: string, @Query('year') year?: string) {
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
     return this.dayOffService.getEmployeeBalances(employeeId, y);
@@ -79,17 +89,20 @@ export class DayOffController {
 
   // --- Applications ---
   @Post('applications')
+  @RequireAccess({ module: 'dayoff', action: 'create' })
   applyLeave(@Req() req: any, @Body() body: any) {
     return this.dayOffService.applyLeave(req.user, body);
   }
 
   @Get('applications/my')
+  @RequireAccess({ module: 'dayoff', action: 'read' })
   getMyApplications(@Req() req: any, @Query('year') year?: string) {
     const y = year ? parseInt(year, 10) : undefined;
     return this.dayOffService.getMyApplications(req.user, y);
   }
 
   @Get('applications')
+  @RequireAccess({ module: 'dayoff.approvals', action: 'read' })
   async getAllApplications(
     @Req() req: any,
     @Query('status') status?: string,
@@ -100,21 +113,34 @@ export class DayOffController {
     if (scope === 'my') {
       return this.dayOffService.getMyApplications(req.user, y);
     }
-    return this.dayOffService.getAllApplications({ status, year: y }, req.user, 'all');
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const effectiveScope = req.access?.['dayoff.approvals']?.scope || req.accessDecision?.scope || 'team';
+    return this.dayOffService.getAllApplications({ status, year: y }, req.user, effectiveScope, isSystemAdmin);
   }
 
   @Patch('applications/:id/cancel')
+  @RequireAccess({ module: 'dayoff', action: 'cancel' })
   cancelApplication(@Param('id') id: string, @Req() req: any) {
     return this.dayOffService.cancelApplication(id, req.user);
   }
 
   @Patch('applications/:id/status')
+  @RequireAccess({ module: 'dayoff.approvals', action: 'approve' })
   updateApplicationStatus(
     @Param('id') id: string,
     @Body() body: { status: 'approved' | 'rejected'; reason?: string },
     @Req() req: any,
   ) {
-    return this.dayOffService.updateApplicationStatus(id, body.status, req.user, body.reason);
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const effectiveScope = req.access?.['dayoff.approvals']?.scope || req.accessDecision?.scope || 'team';
+    return this.dayOffService.updateApplicationStatus(
+      id,
+      body.status,
+      req.user,
+      body.reason,
+      effectiveScope,
+      isSystemAdmin,
+    );
   }
 
   /**

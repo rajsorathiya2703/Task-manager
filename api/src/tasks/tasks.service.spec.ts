@@ -56,11 +56,37 @@ describe('TasksService - Authorization & Role-based Access', () => {
     taskModel.updateOne = jest.fn();
 
     projectModel = {
-      findById: jest.fn(),
+      findById: jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        }),
+        exec: jest.fn().mockResolvedValue(null),
+      }),
+      find: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([]),
+          }),
+        }),
+      }),
     };
 
     teamModel = {
-      findById: jest.fn(),
+      findById: jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        }),
+      }),
+      find: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([]),
+          }),
+        }),
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue([]),
+        }),
+      }),
     };
 
     employeeModel = {
@@ -111,26 +137,30 @@ describe('TasksService - Authorization & Role-based Access', () => {
     });
 
     it('should ALLOW task owner to delete their own task', async () => {
-      taskModel.findById.mockReturnValue({
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
         exec: jest.fn().mockResolvedValue(mockTask),
-      });
+      };
+      taskModel.findById.mockReturnValue(mockExec);
       taskModel.findByIdAndDelete.mockReturnValue({
         exec: jest.fn().mockResolvedValue(mockTask),
       });
 
-      const result = await service.remove(mockTaskId, mockOwnerUserId, 'owner@example.com', false);
+      const result = await service.remove(mockTaskId, mockOwnerUserId, 'owner@example.com', false, 'own');
       expect(result).toBeDefined();
       expect(taskModel.findByIdAndDelete).toHaveBeenCalledWith(mockTaskId);
     });
 
-    it('should ALLOW any user to delete task without ownership restrictions', async () => {
-      taskModel.findByIdAndDelete.mockReturnValue({
+    it('should THROW ForbiddenException when non-admin deletes task out of scope', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
         exec: jest.fn().mockResolvedValue(mockTask),
-      });
+      };
+      taskModel.findById.mockReturnValue(mockExec);
 
-      const result = await service.remove(mockTaskId, mockOtherUserId, 'other@example.com', false);
-      expect(result).toBeDefined();
-      expect(taskModel.findByIdAndDelete).toHaveBeenCalledWith(mockTaskId);
+      await expect(
+        service.remove(mockTaskId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -273,5 +303,126 @@ describe('TasksService - Authorization & Role-based Access', () => {
       const result = await service.findOne(mockTaskId, mockAdminUserId, 'admin@example.com', true);
       expect(result.isOwner).toBe(true);
     });
+
+    it('should ALLOW task owner under scope own', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          ...mockTask,
+          toObject: () => ({ ...mockTask }),
+        }),
+      };
+      taskModel.findById.mockReturnValue(mockExec);
+
+      const result = await service.findOne(mockTaskId, mockOwnerUserId, 'owner@example.com', false, 'own');
+      expect(result).toBeDefined();
+      expect(result.isOwner).toBe(true);
+    });
+
+    it('should THROW ForbiddenException when viewing task out of scope', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          ...mockTask,
+          toObject: () => ({ ...mockTask }),
+        }),
+      };
+      taskModel.findById.mockReturnValue(mockExec);
+
+      await expect(
+        service.findOne(mockTaskId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('findAll (scope filtering)', () => {
+    it('should filter tasks by owner/assignee under scope own', async () => {
+      const mockQueryExec = {
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([mockTask]),
+      };
+      taskModel.find.mockReturnValue(mockQueryExec);
+
+      const result = await service.findAll(mockOwnerUserId, 'owner@example.com', undefined, false, 'own');
+      expect(result).toBeDefined();
+      expect(taskModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $or: expect.arrayContaining([
+            expect.objectContaining({ userId: mockOwnerUserId }),
+          ]),
+        }),
+      );
+    });
+
+    it('should return all tasks unconstrained for system admin', async () => {
+      const mockQueryExec = {
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([mockTask]),
+      };
+      taskModel.find.mockReturnValue(mockQueryExec);
+
+      const result = await service.findAll(mockOtherUserId, 'other@example.com', undefined, true, 'all');
+      expect(result).toBeDefined();
+      expect(taskModel.find).toHaveBeenCalledWith({});
+    });
+
+    it('should return empty list immediately when scope is none', async () => {
+      const result = await service.findAll(mockOtherUserId, 'other@example.com', undefined, false, 'none');
+      expect(result).toEqual([]);
+      expect(taskModel.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update & remove (scope checks)', () => {
+    it('should THROW ForbiddenException when updating a task out of scope', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          ...mockTask,
+          toObject: () => ({ ...mockTask }),
+        }),
+      };
+      taskModel.findById.mockReturnValue(mockExec);
+
+      await expect(
+        service.update(mockTaskId, { title: 'New Title' }, mockOtherUserId, 'other@example.com', undefined, false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should THROW ForbiddenException when deleting a task out of scope', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          ...mockTask,
+          toObject: () => ({ ...mockTask }),
+        }),
+      };
+      taskModel.findById.mockReturnValue(mockExec);
+
+      await expect(
+        service.remove(mockTaskId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should ALLOW task owner to delete own task under scope own', async () => {
+      const mockExec = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          ...mockTask,
+          toObject: () => ({ ...mockTask }),
+        }),
+      };
+      taskModel.findById.mockReturnValue(mockExec);
+      taskModel.findByIdAndDelete.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockTask),
+      });
+
+      const result = await service.remove(mockTaskId, mockOwnerUserId, 'owner@example.com', false, 'own');
+      expect(result).toBeDefined();
+      expect(taskModel.findByIdAndDelete).toHaveBeenCalledWith(mockTaskId);
+    });
   });
 });
+

@@ -19,6 +19,7 @@ import "react-day-picker/dist/style.css";
 import { formatDisplayDate } from "../../lib/utils";
 import { useRouter } from "next/navigation";
 import { fetchTeams } from "../../lib/api";
+import { BoundField } from "../access";
 
 export const PROJECT_COLORS = [
   { name: "Blue", value: "#3b82f6", bg: "bg-blue-500", light: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
@@ -180,251 +181,315 @@ export function ProjectDialog({
           {/* Form Content */}
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
             {/* Project Name */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">
-                Project Name <span className="text-red-500">*</span>
-              </label>
-              <input 
-                type="text" 
-                required
-                placeholder="e.g. Website Redesign"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full text-sm px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-foreground"
-              />
-            </div>
+            <BoundField module="projects" field="name">
+              {({ disabled }) => (
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    Project Name <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    required
+                    disabled={disabled}
+                    placeholder="e.g. Website Redesign"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full text-sm px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+              )}
+            </BoundField>
 
             {/* Project Description */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">
-                Description
-              </label>
-              <textarea 
-                rows={3}
-                placeholder="What is this project about?"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none text-foreground"
-              />
-            </div>
+            <BoundField module="projects" field="description">
+              {({ disabled }) => (
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">
+                    Description
+                  </label>
+                  <textarea 
+                    rows={3}
+                    disabled={disabled}
+                    placeholder="What is this project about?"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+              )}
+            </BoundField>
 
             {/* Color Mode / Badge Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-2 flex items-center justify-between">
-                <span>Project Color</span>
-                <span className="text-[11px] font-normal text-muted-foreground">
-                  Visible as project avatar badge
-                </span>
-              </label>
-              <div className="flex items-center gap-2 flex-wrap">
-                {PROJECT_COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => setColor(c.value)}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                      color === c.value 
-                        ? "ring-2 ring-primary ring-offset-2 ring-offset-card scale-110 shadow-sm" 
-                        : "hover:scale-105 opacity-80 hover:opacity-100"
-                    }`}
-                    style={{ backgroundColor: c.value }}
-                    title={c.name}
-                  >
-                    {color === c.value && <Check className="w-3.5 h-3.5 text-white" />}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <BoundField module="projects" field="color">
+              {({ disabled }) => (
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-2 flex items-center justify-between">
+                    <span>Project Color</span>
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      Visible as project avatar badge
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {PROJECT_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setColor(c.value)}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-all disabled:cursor-not-allowed ${
+                          color === c.value 
+                            ? "ring-2 ring-primary ring-offset-2 ring-offset-card scale-110 shadow-sm" 
+                            : "hover:scale-105 opacity-80 hover:opacity-100 disabled:hover:scale-100"
+                        }`}
+                        style={{ backgroundColor: c.value }}
+                        title={c.name}
+                      >
+                        {color === c.value && <Check className="w-3.5 h-3.5 text-white" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </BoundField>
 
             {/* Assigned Team Dropdown */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Assigned Team
-                </label>
-                {selectedTeamId && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTeamId(null)}
-                    className="text-[11px] text-muted-foreground hover:text-red-500 font-normal transition-colors"
-                  >
-                    Clear team
-                  </button>
-                )}
-              </div>
-              <Popover className="relative">
-                <Popover.Button className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:bg-muted/30 transition-colors outline-none focus:border-primary">
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
-                      selectedTeam ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {selectedTeam ? selectedTeam.name?.charAt(0)?.toUpperCase() : <Shield className="w-3.5 h-3.5" />}
-                    </div>
-                    {selectedTeam ? (
-                      <span className="font-semibold text-foreground truncate">{selectedTeam.name}</span>
-                    ) : (
-                      <span className="text-muted-foreground">Select team...</span>
+            <BoundField module="projects" field="teamId">
+              {({ disabled }) => (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Assigned Team
+                    </label>
+                    {selectedTeamId && !disabled && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTeamId(null)}
+                        className="text-[11px] text-muted-foreground hover:text-red-500 font-normal transition-colors"
+                      >
+                        Clear team
+                      </button>
                     )}
                   </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-2" />
-                </Popover.Button>
-
-                <Popover.Panel className="absolute left-0 top-full mt-1.5 w-full bg-card border border-border rounded-xl shadow-xl z-50 outline-none overflow-hidden">
-                  {({ close }) => (
-                    <>
-                      {/* Search */}
-                      <div className="p-2 border-b border-border">
-                        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 rounded-lg">
-                          <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                          <input
-                            type="text"
-                            placeholder="Search teams..."
-                            value={teamSearch}
-                            onChange={(e) => setTeamSearch(e.target.value)}
-                            className="bg-transparent outline-none text-xs w-full text-foreground placeholder:text-muted-foreground"
-                            autoFocus
-                          />
+                  {disabled ? (
+                    <div className="w-full flex items-center justify-between px-3 py-2 bg-muted/20 border border-border rounded-lg text-xs text-foreground cursor-not-allowed opacity-80">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
+                          selectedTeam ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {selectedTeam ? selectedTeam.name?.charAt(0)?.toUpperCase() : <Shield className="w-3.5 h-3.5" />}
                         </div>
-                      </div>
-                      {/* Team list */}
-                      <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
-                        {teams
-                          .filter((t) => {
-                            const q = teamSearch.toLowerCase();
-                            return !q || (t.name || "").toLowerCase().includes(q) || (t.description || "").toLowerCase().includes(q);
-                          })
-                          .map((t) => {
-                            const isSelected = (selectedTeam?._id || selectedTeamId) === t._id;
-                            return (
-                              <button
-                                key={t._id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedTeamId(t._id);
-                                  setTeamSearch("");
-                                  close();
-                                }}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors text-left ${
-                                  isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/60 text-foreground'
-                                }`}
-                              >
-                                <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                                  {t.name?.charAt(0)?.toUpperCase() || "T"}
-                                </div>
-                                <div className="flex-1 overflow-hidden">
-                                  <div className="text-xs font-semibold truncate">
-                                    {t.name}
-                                  </div>
-                                  <div className="text-[10px] text-muted-foreground truncate">
-                                    {t.members?.length || 0} members {t.teamLead ? `· Lead: ${t.teamLead.fullName?.firstName || ''}` : ''}
-                                  </div>
-                                </div>
-                                {isSelected && (
-                                  <Check className="w-3.5 h-3.5 text-primary shrink-0" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        {teams.length === 0 && (
-                          <div className="text-center py-5 text-xs text-muted-foreground">
-                            No teams available. Create a team in Configuration.
-                          </div>
-                        )}
-                        {teams.length > 0 && teams.filter(t => !teamSearch || (t.name || "").toLowerCase().includes(teamSearch.toLowerCase())).length === 0 && (
-                          <div className="text-center py-5 text-xs text-muted-foreground">
-                            No matching teams found.
-                          </div>
+                        {selectedTeam ? (
+                          <span className="font-semibold text-foreground truncate">{selectedTeam.name}</span>
+                        ) : (
+                          <span className="text-muted-foreground">No team assigned</span>
                         )}
                       </div>
-                    </>
+                    </div>
+                  ) : (
+                    <Popover className="relative">
+                      <Popover.Button className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:bg-muted/30 transition-colors outline-none focus:border-primary">
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${
+                            selectedTeam ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {selectedTeam ? selectedTeam.name?.charAt(0)?.toUpperCase() : <Shield className="w-3.5 h-3.5" />}
+                          </div>
+                          {selectedTeam ? (
+                            <span className="font-semibold text-foreground truncate">{selectedTeam.name}</span>
+                          ) : (
+                            <span className="text-muted-foreground">Select team...</span>
+                          )}
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-2" />
+                      </Popover.Button>
+
+                      <Popover.Panel className="absolute left-0 top-full mt-1.5 w-full bg-card border border-border rounded-xl shadow-xl z-50 outline-none overflow-hidden">
+                        {({ close }) => (
+                          <>
+                            {/* Search */}
+                            <div className="p-2 border-b border-border">
+                              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 rounded-lg">
+                                <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="Search teams..."
+                                  value={teamSearch}
+                                  onChange={(e) => setTeamSearch(e.target.value)}
+                                  className="bg-transparent outline-none text-xs w-full text-foreground placeholder:text-muted-foreground"
+                                  autoFocus
+                                />
+                              </div>
+                            </div>
+                            {/* Team list */}
+                            <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
+                              {teams
+                                .filter((t) => {
+                                  const q = teamSearch.toLowerCase();
+                                  return !q || (t.name || "").toLowerCase().includes(q) || (t.description || "").toLowerCase().includes(q);
+                                })
+                                .map((t) => {
+                                  const isSelected = (selectedTeam?._id || selectedTeamId) === t._id;
+                                  return (
+                                    <button
+                                      key={t._id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedTeamId(t._id);
+                                        setTeamSearch("");
+                                        close();
+                                      }}
+                                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors text-left ${
+                                        isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/60 text-foreground'
+                                      }`}
+                                    >
+                                      <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                                        {t.name?.charAt(0)?.toUpperCase() || "T"}
+                                      </div>
+                                      <div className="flex-1 overflow-hidden">
+                                        <div className="text-xs font-semibold truncate">
+                                          {t.name}
+                                        </div>
+                                        <div className="text-[10px] text-muted-foreground truncate">
+                                          {t.members?.length || 0} members {t.teamLead ? `· Lead: ${t.teamLead.fullName?.firstName || ''}` : ''}
+                                        </div>
+                                      </div>
+                                      {isSelected && (
+                                        <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              {teams.length === 0 && (
+                                <div className="text-center py-5 text-xs text-muted-foreground">
+                                  No teams available. Create a team in Configuration.
+                                </div>
+                              )}
+                              {teams.length > 0 && teams.filter(t => !teamSearch || (t.name || "").toLowerCase().includes(teamSearch.toLowerCase())).length === 0 && (
+                                <div className="text-center py-5 text-xs text-muted-foreground">
+                                  No matching teams found.
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </Popover.Panel>
+                    </Popover>
                   )}
-                </Popover.Panel>
-              </Popover>
-            </div>
+                </div>
+              )}
+            </BoundField>
 
             {/* Status & Priority Grid */}
             <div className="grid grid-cols-2 gap-3 pt-1">
               {/* Status */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary transition-all text-foreground"
-                >
-                  <option value="To Do">To Do</option>
-                  <option value="Doing">Doing</option>
-                  <option value="Completed">Completed</option>
-                  <option value="On Hold">On Hold</option>
-                </select>
-              </div>
+              <BoundField module="projects" field="status">
+                {({ disabled }) => (
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">Status</label>
+                    <select
+                      value={status}
+                      disabled={disabled}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary transition-all text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="To Do">To Do</option>
+                      <option value="Doing">Doing</option>
+                      <option value="Completed">Completed</option>
+                      <option value="On Hold">On Hold</option>
+                    </select>
+                  </div>
+                )}
+              </BoundField>
 
               {/* Priority */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">Priority</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary transition-all text-foreground"
-                >
-                  <option value="No Priority">No Priority</option>
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">Urgent / High</option>
-                </select>
-              </div>
+              <BoundField module="projects" field="priority">
+                {({ disabled }) => (
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">Priority</label>
+                    <select
+                      value={priority}
+                      disabled={disabled}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-background border border-border rounded-lg outline-none focus:border-primary transition-all text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="No Priority">No Priority</option>
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">Urgent / High</option>
+                    </select>
+                  </div>
+                )}
+              </BoundField>
             </div>
 
             {/* Dates (Range Picker) */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1.5">Timeline / Due Date</label>
-              <Popover className="relative">
-                <Popover.Button className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:bg-muted/30 transition-colors outline-none focus:border-primary">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>
-                      {formatDisplayDate(
-                        dateRange?.from?.toISOString(), 
-                        dateRange?.to?.toISOString()
-                      ) || "Select timeline..."}
-                    </span>
-                  </div>
-                  {dateRange?.from && (
-                    <span 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDateRange(undefined);
-                      }}
-                      className="text-[10px] text-muted-foreground hover:text-red-500 px-1 font-semibold"
-                    >
-                      Clear
-                    </span>
+            <BoundField module="projects" field="dueDate">
+              {({ disabled }) => (
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">Timeline / Due Date</label>
+                  {disabled ? (
+                    <div className="w-full flex items-center justify-between px-3 py-2 bg-muted/20 border border-border rounded-lg text-xs text-foreground cursor-not-allowed opacity-80">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span>
+                          {formatDisplayDate(
+                            dateRange?.from?.toISOString(), 
+                            dateRange?.to?.toISOString()
+                          ) || "No timeline set"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <Popover className="relative">
+                      <Popover.Button className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border rounded-lg text-xs text-foreground hover:bg-muted/30 transition-colors outline-none focus:border-primary">
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>
+                            {formatDisplayDate(
+                              dateRange?.from?.toISOString(), 
+                              dateRange?.to?.toISOString()
+                            ) || "Select timeline..."}
+                          </span>
+                        </div>
+                        {dateRange?.from && (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDateRange(undefined);
+                            }}
+                            className="text-[10px] text-muted-foreground hover:text-red-500 px-1 font-semibold"
+                          >
+                            Clear
+                          </span>
+                        )}
+                      </Popover.Button>
+                      <Popover.Panel anchor="bottom start" className="bg-card border border-border rounded-xl shadow-xl z-50 p-2 outline-none mt-1">
+                        <div className="px-2 py-1 mb-1 text-[11px] font-semibold text-muted-foreground border-b border-border">
+                          Select Start Date → Due Date
+                        </div>
+                        <DayPicker
+                          mode="range"
+                          selected={dateRange as any}
+                          onSelect={(range: any) => setDateRange(range)}
+                          className="!m-0 text-xs"
+                          style={{
+                            '--rdp-cell-size': '28px',
+                            '--rdp-caption-font-size': '13px',
+                            '--rdp-nav-height': '28px'
+                          } as React.CSSProperties}
+                          modifiersClassNames={{
+                            selected: "bg-primary text-primary-foreground font-bold rounded-full",
+                            range_start: "bg-primary text-primary-foreground font-bold rounded-l-full",
+                            range_end: "bg-primary text-primary-foreground font-bold rounded-r-full",
+                            range_middle: "bg-primary/10 text-foreground font-medium rounded-none",
+                          }}
+                        />
+                      </Popover.Panel>
+                    </Popover>
                   )}
-                </Popover.Button>
-                <Popover.Panel anchor="bottom start" className="bg-card border border-border rounded-xl shadow-xl z-50 p-2 outline-none mt-1">
-                  <div className="px-2 py-1 mb-1 text-[11px] font-semibold text-muted-foreground border-b border-border">
-                    Select Start Date → Due Date
-                  </div>
-                  <DayPicker
-                    mode="range"
-                    selected={dateRange as any}
-                    onSelect={(range: any) => setDateRange(range)}
-                    className="!m-0 text-xs"
-                    style={{
-                      '--rdp-cell-size': '28px',
-                      '--rdp-caption-font-size': '13px',
-                      '--rdp-nav-height': '28px'
-                    } as React.CSSProperties}
-                    modifiersClassNames={{
-                      selected: "bg-primary text-primary-foreground font-bold rounded-full",
-                      range_start: "bg-primary text-primary-foreground font-bold rounded-l-full",
-                      range_end: "bg-primary text-primary-foreground font-bold rounded-r-full",
-                      range_middle: "bg-primary/10 text-foreground font-medium rounded-none",
-                    }}
-                  />
-                </Popover.Panel>
-              </Popover>
-            </div>
+                </div>
+              )}
+            </BoundField>
 
             {/* Footer Buttons */}
             <div className="flex items-center justify-between pt-4 border-t border-border mt-6">

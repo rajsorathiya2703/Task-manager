@@ -7,6 +7,7 @@ import { Public } from './decorators/public.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { EmployeesService } from '../employees/employees.service';
+import { AccessService } from '../access/access.service';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +18,7 @@ export class AuthController {
     private readonly jwtService: JwtService,
     private readonly usersService: UsersService,
     private readonly employeesService: EmployeesService,
+    private readonly accessService: AccessService,
   ) {}
 
   private setCookies(res: Response, accessToken: string, refreshToken: string) {
@@ -115,6 +117,17 @@ export class AuthController {
     if (employee) {
       userObj.employeeId = employee._id;
     }
+
+    if (userId) {
+      const effectiveAccess = await this.accessService.getEffectiveAccess(userId);
+      return {
+        ...userObj,
+        roles: effectiveAccess.roles,
+        policyVersion: effectiveAccess.policyVersion,
+        access: effectiveAccess.access,
+      };
+    }
+
     return userObj;
   }
 }

@@ -11,18 +11,24 @@ import { useDraggable } from "@dnd-kit/core";
 import { formatDisplayDate } from "../../lib/utils";
 import { ProjectCapsule } from "./ProjectCapsule";
 import { deleteTask, duplicateTask } from "../../lib/api";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface TaskCardProps {
   task: Task;
   showProjectCapsule?: boolean;
+  canDrag?: boolean;
   onDelete?: (taskId: string) => void;
   onDuplicate?: (newTask: Task) => void;
 }
 
-export function TaskCard({ task, showProjectCapsule = false, onDelete, onDuplicate }: TaskCardProps) {
+export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, onDuplicate }: TaskCardProps) {
+  const { canField } = useAccessControl();
+  const canDragCard = canDrag !== undefined ? canDrag : canField("tasks", "status", "update");
+
   const taskId = task.id || (task as any)._id;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: taskId,
+    disabled: !canDragCard,
   });
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -123,9 +129,9 @@ export function TaskCard({ task, showProjectCapsule = false, onDelete, onDuplica
         href={`/tasks/${taskId}`}
         ref={setNodeRef}
         style={style}
-        {...attributes}
-        {...listeners}
-        className={`block bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow cursor-grab group ${isDragging ? "opacity-50 ring-2 ring-primary" : ""}`}
+        {...(canDragCard ? attributes : {})}
+        {...(canDragCard ? listeners : {})}
+        className={`block bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow ${canDragCard ? "cursor-grab" : "cursor-pointer"} group ${isDragging ? "opacity-50 ring-2 ring-primary" : ""}`}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex flex-col min-w-0 pr-2">

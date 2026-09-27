@@ -359,7 +359,15 @@ export const deleteUser = async (id: string) => {
   return res.data;
 };
 
+// Access
+export const accessEndpoints = {
+  preview: (userId: string) => `/access/preview/${userId}`,
+};
 
+export const fetchAccessPreview = async (userId: string) => {
+  const res = await api.get(accessEndpoints.preview(userId));
+  return res.data;
+};
 
 export const fetchEmployeeActivity = async (range?: string, startDate?: string, endDate?: string, employeeId?: string) => {
   const params = new URLSearchParams();

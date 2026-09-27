@@ -15,7 +15,9 @@ import { DayOffSettings } from './schemas/day-off-settings.schema';
 import { LeaveBalance } from './schemas/leave-balance.schema';
 import { Notification } from './schemas/notification.schema';
 import { Employee } from '../employees/schemas/employee.schema';
+import { Team } from '../teams/schemas/team.schema';
 import { DayOffMailService } from './day-off-mail.service';
+import { ScopeType } from '../access/policy.engine';
 
 @Injectable()
 export class DayOffService implements OnModuleInit {
@@ -28,6 +30,7 @@ export class DayOffService implements OnModuleInit {
     @InjectModel(LeaveBalance.name) private balanceModel: Model<LeaveBalance>,
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+    @InjectModel(Team.name) private teamModel: Model<Team>,
     private mailService: DayOffMailService,
   ) {}
 
@@ -327,11 +330,90 @@ export class DayOffService implements OnModuleInit {
       .exec();
   }
 
+  /**
+   * Resolves all Employee IDs associated with the caller user.
+   */
+  private async getCallerEmployeeIds(user: any): Promise<Types.ObjectId[]> {
+    const userId = user?.id || user?._id;
+    const email = user?.email;
+    const queryConditions: any[] = [];
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        queryConditions.push({ userId: new Types.ObjectId(userId) });
+      }
+      queryConditions.push({ userId: userId.toString() });
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const cleanEmail = email.trim();
+      queryConditions.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+    }
+    if (queryConditions.length === 0) return [];
+    const employees = await this.employeeModel
+      .find({ $or: queryConditions })
+      .select('_id')
+      .lean()
+      .exec();
+    return employees.map((e: any) => e._id as Types.ObjectId);
+  }
+
+  /**
+   * Resolves all Employee IDs belonging to teams where the caller is
+   * a team member or team lead. Includes the caller's own employee ID(s).
+   */
+  private async getTeamMemberEmployeeIds(user: any): Promise<Types.ObjectId[]> {
+    const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+    const userId = user?.id || user?._id;
+
+    const teamSearchConditions: any[] = [];
+    if (callerEmployeeIds.length > 0) {
+      teamSearchConditions.push({ members: { $in: callerEmployeeIds } });
+      teamSearchConditions.push({ teamLead: { $in: callerEmployeeIds } });
+    }
+    if (userId) {
+      const uId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+      teamSearchConditions.push({ members: uId });
+      teamSearchConditions.push({ teamLead: uId });
+    }
+
+    if (teamSearchConditions.length === 0) {
+      return callerEmployeeIds;
+    }
+
+    const teams = await this.teamModel
+      .find({ $or: teamSearchConditions })
+      .select('members teamLead')
+      .lean()
+      .exec();
+
+    const memberEmployeeIdSet = new Set<string>();
+    callerEmployeeIds.forEach((id) => memberEmployeeIdSet.add(id.toString()));
+
+    for (const team of teams) {
+      if (team.teamLead) {
+        memberEmployeeIdSet.add(team.teamLead.toString());
+      }
+      if (Array.isArray(team.members)) {
+        for (const m of team.members) {
+          if (m) memberEmployeeIdSet.add(m.toString());
+        }
+      }
+    }
+
+    return Array.from(memberEmployeeIdSet)
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+  }
+
   async getAllApplications(
     query?: { status?: string; year?: number },
     user?: any,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'all',
+    isSystemAdmin?: boolean,
   ): Promise<LeaveApplication[]> {
+    if (scope === 'none' && !isSystemAdmin) {
+      return [];
+    }
+
     const filter: any = {};
     if (query?.status) {
       filter.status = query.status;
@@ -340,6 +422,51 @@ export class DayOffService implements OnModuleInit {
       const start = new Date(`${query.year}-01-01T00:00:00.000Z`);
       const end = new Date(`${query.year}-12-31T23:59:59.999Z`);
       filter.fromDate = { $gte: start, $lte: end };
+    }
+
+    // PBAC Scope Filtering
+    if (!isSystemAdmin && scope !== 'all') {
+      if (scope === 'own') {
+        const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+        const userId = user?.id || user?._id;
+        const ownOr: any[] = [];
+        if (callerEmployeeIds.length > 0) {
+          ownOr.push({ employeeId: { $in: callerEmployeeIds } });
+        }
+        if (userId) {
+          if (Types.ObjectId.isValid(userId)) {
+            ownOr.push({ userId: new Types.ObjectId(userId) });
+          }
+          ownOr.push({ userId: userId.toString() });
+        }
+        if (ownOr.length === 0) {
+          return [];
+        }
+        filter.$or = ownOr;
+      } else if (scope === 'team') {
+        const teamMemberIds = await this.getTeamMemberEmployeeIds(user);
+        const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+        const userId = user?.id || user?._id;
+
+        const teamOr: any[] = [];
+        if (teamMemberIds.length > 0) {
+          teamOr.push({ employeeId: { $in: teamMemberIds } });
+        }
+        if (callerEmployeeIds.length > 0) {
+          teamOr.push({ employeeId: { $in: callerEmployeeIds } });
+        }
+        if (userId) {
+          if (Types.ObjectId.isValid(userId)) {
+            teamOr.push({ userId: new Types.ObjectId(userId) });
+          }
+          teamOr.push({ userId: userId.toString() });
+        }
+
+        if (teamOr.length === 0) {
+          return [];
+        }
+        filter.$or = teamOr;
+      }
     }
 
     return this.applicationModel
@@ -440,6 +567,8 @@ export class DayOffService implements OnModuleInit {
     status: 'approved' | 'rejected',
     adminUser: any,
     reason?: string,
+    scope: ScopeType = 'all',
+    isSystemAdmin?: boolean,
   ): Promise<LeaveApplication> {
     const application = await this.applicationModel
       .findById(id)
@@ -449,6 +578,25 @@ export class DayOffService implements OnModuleInit {
 
     if (!application) {
       throw new NotFoundException(`Application #${id} not found`);
+    }
+
+    // PBAC Scope Check for Approvals
+    if (!isSystemAdmin && scope !== 'all') {
+      if (scope === 'none') {
+        throw new ForbiddenException('Access denied: scope is none for this action');
+      }
+      if (scope === 'team') {
+        const teamMemberIds = await this.getTeamMemberEmployeeIds(adminUser);
+        const applicantEmployeeId = (application.employeeId as any)?._id || application.employeeId;
+        const isMember = teamMemberIds.some(
+          (mId) => mId.toString() === applicantEmployeeId?.toString(),
+        );
+        if (!isMember) {
+          throw new ForbiddenException(
+            'Access denied: applicant is not on your team',
+          );
+        }
+      }
     }
 
     if (application.status === status) {

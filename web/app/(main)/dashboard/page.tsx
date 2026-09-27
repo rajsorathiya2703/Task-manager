@@ -10,6 +10,7 @@ import { CompletionTrendChart } from "@/src/components/dashboard/CompletionTrend
 import { StatusDistributionChart } from "@/src/components/dashboard/StatusDistributionChart";
 import { LiveActivityFeed } from "@/src/components/dashboard/LiveActivityFeed";
 import { fetchEmployeeActivity, fetchMe } from "@/src/lib/api";
+import { useAccess } from "@/src/contexts/AccessContext";
 import { Loader2, RefreshCw, ShieldAlert, ArrowRight, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
@@ -19,6 +20,19 @@ export default function DashboardPage() {
   const [isNonEmployee, setIsNonEmployee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const accessContext = useAccess();
+
+  useEffect(() => {
+    if (!accessContext.loading) {
+      console.log("[AccessContext] Loaded snapshot from /auth/me:", {
+        roles: accessContext.roles,
+        isSystemAdmin: accessContext.isSystemAdmin,
+        policyVersion: accessContext.policyVersion,
+        access: accessContext.access,
+        canDashboardRead: accessContext.can("dashboard", "read"),
+      });
+    }
+  }, [accessContext.loading, accessContext.policyVersion]);
 
   const loadDashboard = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);

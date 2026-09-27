@@ -6,16 +6,22 @@ import { PriorityBadge } from "../board/PriorityBadge";
 import { Calendar, MoreHorizontal, Folder, ArrowRight } from "lucide-react";
 import { formatDisplayDate } from "../../lib/utils";
 import Link from "next/link";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
+  canDrag?: boolean;
 }
 
-export function ProjectCard({ project, onClick }: ProjectCardProps) {
+export function ProjectCard({ project, onClick, canDrag }: ProjectCardProps) {
+  const { canField } = useAccessControl();
+  const canDragCard = canDrag !== undefined ? canDrag : canField("projects", "status", "update");
+
   const projectId = project.id || (project as any)._id;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: projectId,
+    disabled: !canDragCard,
   });
 
   const style = transform ? {
@@ -31,10 +37,12 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(canDragCard ? attributes : {})}
+      {...(canDragCard ? listeners : {})}
       onClick={onClick}
-      className={`block bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group ${
+      className={`block bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${
+        canDragCard ? "cursor-grab" : "cursor-pointer"
+      } group ${
         isDragging ? "opacity-50 ring-2 ring-primary" : ""
       }`}
     >

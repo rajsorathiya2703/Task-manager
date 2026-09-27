@@ -12,11 +12,13 @@ interface ColumnProps {
   tasks: Task[];
   projectId?: string;
   showProjectCapsule?: boolean;
+  canDrag?: boolean;
 }
 
-export function Column({ title, tasks: initialTasks, projectId, showProjectCapsule = false }: ColumnProps) {
+export function Column({ title, tasks: initialTasks, projectId, showProjectCapsule = false, canDrag = true }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: title,
+    disabled: !canDrag,
   });
 
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
@@ -68,6 +70,7 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
             key={task.id || task._id || index} 
             task={task} 
             showProjectCapsule={showProjectCapsule}
+            canDrag={canDrag}
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
           />

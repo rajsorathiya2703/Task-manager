@@ -1,16 +1,142 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Employee } from './schemas/employee.schema';
+import { Team } from '../teams/schemas/team.schema';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
+import {
+  isEmployeeInScope,
+  EmployeeSubject,
+  EmployeeResource,
+  EmployeeTeamContext,
+  ScopeType,
+} from '../access/resolvers/employees.resolver';
 
 @Injectable()
 export class EmployeesService {
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+    @InjectModel(Team.name) private teamModel: Model<Team>,
     private usersService: UsersService,
   ) {}
+
+  /**
+   * Pure read-only helper: resolves all Employee IDs that correspond to a
+   * given userId and/or email. Used to build access-check query conditions.
+   */
+  private async getCallerEmployeeIds(userId?: string, email?: string): Promise<Types.ObjectId[]> {
+    const employeeQuery: any[] = [];
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        employeeQuery.push({ userId: new Types.ObjectId(userId) });
+      }
+      employeeQuery.push({ userId: userId.toString() });
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const cleanEmail = email.trim();
+      employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+    }
+
+    if (employeeQuery.length === 0) {
+      return [];
+    }
+
+    const employees = await this.employeeModel
+      .find({ $or: employeeQuery })
+      .select('_id')
+      .lean()
+      .exec();
+
+    return employees.map((e: any) => e._id as Types.ObjectId);
+  }
+
+  /**
+   * Builds Mongo query criteria for employees according to the user's effective scope:
+   *   - 'all' / isSystemAdmin: {} (no extra criteria)
+   *   - 'none': null (empty set -> short-circuit to [])
+   *   - 'own': matches only the caller's own employee record (isSelf)
+   *   - 'team': matches caller's own employee record + colleagues who share at least one team
+   */
+  private async buildEmployeeScopeFilter(
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'all',
+  ): Promise<any> {
+    if (isSystemAdmin || scope === 'all') {
+      return {};
+    }
+    if (scope === 'none') {
+      return null;
+    }
+
+    const callerEmployeeIds = await this.getCallerEmployeeIds(userId, email);
+
+    // Build conditions for caller's own employee record
+    const ownConditions: any[] = [];
+    if (callerEmployeeIds.length > 0) {
+      ownConditions.push({ _id: { $in: callerEmployeeIds } });
+    }
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        ownConditions.push({ userId: new Types.ObjectId(userId) });
+      }
+      ownConditions.push({ userId: userId.toString() });
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const cleanEmail = email.trim();
+      ownConditions.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+    }
+
+    if (scope === 'own') {
+      if (ownConditions.length === 0) {
+        return null;
+      }
+      return { $or: ownConditions };
+    }
+
+    if (scope === 'team') {
+      // Find teams where caller is member or teamLead
+      const teamSearchConditions: any[] = [];
+      if (callerEmployeeIds.length > 0) {
+        teamSearchConditions.push({ members: { $in: callerEmployeeIds } });
+        teamSearchConditions.push({ teamLead: { $in: callerEmployeeIds } });
+      }
+      if (userId) {
+        const uId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+        teamSearchConditions.push({ members: uId });
+        teamSearchConditions.push({ teamLead: uId });
+      }
+
+      let colleagueEmployeeIds: any[] = [];
+      if (teamSearchConditions.length > 0) {
+        const teams = await this.teamModel
+          .find({ $or: teamSearchConditions })
+          .select('members teamLead')
+          .lean()
+          .exec();
+
+        for (const t of teams) {
+          if (t.teamLead) colleagueEmployeeIds.push(t.teamLead);
+          if (Array.isArray(t.members)) colleagueEmployeeIds.push(...t.members);
+        }
+      }
+
+      const teamConditions: any[] = [...ownConditions];
+      if (colleagueEmployeeIds.length > 0) {
+        teamConditions.push({ _id: { $in: colleagueEmployeeIds } });
+      }
+
+      if (teamConditions.length === 0) {
+        return null;
+      }
+
+      return { $or: teamConditions };
+    }
+
+    return null;
+  }
 
   async create(createEmployeeDto: any): Promise<Employee> {
     if (createEmployeeDto.email && typeof createEmployeeDto.email === 'string') {
@@ -26,15 +152,128 @@ export class EmployeesService {
     return newEmployee.save();
   }
 
-  async findAll(): Promise<Employee[]> {
-    return this.employeeModel.find().populate('userId').exec();
+  async findAll(
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'all',
+  ): Promise<Employee[]> {
+    if (scope === 'none' && !isSystemAdmin) {
+      return [];
+    }
+
+    const scopeFilter = await this.buildEmployeeScopeFilter(userId, email, isSystemAdmin, scope);
+    if (scopeFilter === null) {
+      return [];
+    }
+
+    return this.employeeModel.find(scopeFilter).populate('userId').exec();
   }
 
-  async findOne(id: string): Promise<Employee> {
+  async findOne(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
+  ): Promise<Employee> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Employee #${id} not found`);
+    }
+
     const employee = await this.employeeModel.findById(id).populate('userId').exec();
     if (!employee) {
       throw new NotFoundException(`Employee #${id} not found`);
     }
+
+    // ─── PBAC Record-Level Scope Check (§6.2, §6.3) ─────────────────────────
+    if (!isSystemAdmin && scope !== 'all') {
+      if (scope === 'none') {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Access denied: scope is none for this action',
+        });
+      }
+
+      const callerEmployeeIds = await this.getCallerEmployeeIds(userId, email);
+      const primaryEmpId = callerEmployeeIds.length > 0 ? String(callerEmployeeIds[0]) : undefined;
+
+      // Find teams where caller is member or teamLead
+      const teamSearchConditions: any[] = [];
+      if (callerEmployeeIds.length > 0) {
+        teamSearchConditions.push({ members: { $in: callerEmployeeIds } });
+        teamSearchConditions.push({ teamLead: { $in: callerEmployeeIds } });
+      }
+      if (userId) {
+        const uId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+        teamSearchConditions.push({ members: uId });
+        teamSearchConditions.push({ teamLead: uId });
+      }
+
+      const callerTeams =
+        teamSearchConditions.length > 0
+          ? await this.teamModel
+              .find({ $or: teamSearchConditions })
+              .select('_id members teamLead')
+              .lean()
+              .exec()
+          : [];
+
+      const callerTeamIds = callerTeams.map((t: any) => String(t._id));
+      const callerLeadingTeamIds = callerTeams
+        .filter(
+          (t: any) =>
+            t.teamLead &&
+            (callerEmployeeIds.some((e) => String(e) === String(t.teamLead)) ||
+              (userId && String(t.teamLead) === String(userId))),
+        )
+        .map((t: any) => String(t._id));
+
+      // Find teams where target employee is a member or lead
+      const targetEmpId = employee._id;
+      const targetTeamConditions: any[] = [
+        { members: targetEmpId },
+        { teamLead: targetEmpId },
+      ];
+      if (employee.userId) {
+        targetTeamConditions.push(
+          { members: employee.userId },
+          { teamLead: employee.userId },
+        );
+      }
+
+      const targetTeams = await this.teamModel
+        .find({ $or: targetTeamConditions })
+        .select('_id')
+        .lean()
+        .exec();
+      const targetEmployeeTeamIds = targetTeams.map((t: any) => String(t._id));
+
+      const subject: EmployeeSubject = {
+        userId,
+        email,
+        employeeId: primaryEmpId,
+        teamIds: callerTeamIds,
+        leadingTeamIds: callerLeadingTeamIds,
+        isSystemAdmin,
+      };
+
+      const context: EmployeeTeamContext = {
+        targetEmployeeTeamIds,
+        teams: callerTeams,
+      };
+
+      const inScope = isEmployeeInScope(scope, employee, subject, context);
+      if (!inScope) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: `Access denied: employee is out of scope (granted scope: '${scope}')`,
+        });
+      }
+    }
+
     return employee;
   }
 
@@ -66,7 +305,22 @@ export class EmployeesService {
     return updated;
   }
 
-  async update(id: string, updateEmployeeDto: any): Promise<Employee> {
+  async update(
+    id: string,
+    updateEmployeeDto: any,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
+  ): Promise<Employee> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Employee #${id} not found`);
+    }
+
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    }
+
     if (updateEmployeeDto.email !== undefined) {
       if (updateEmployeeDto.email && typeof updateEmployeeDto.email === 'string') {
         updateEmployeeDto.email = updateEmployeeDto.email.trim().toLowerCase();
@@ -92,7 +346,21 @@ export class EmployeesService {
     return existingEmployee;
   }
 
-  async remove(id: string): Promise<any> {
+  async remove(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
+  ): Promise<any> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Employee #${id} not found`);
+    }
+
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    }
+
     const deletedEmployee = await this.employeeModel.findByIdAndDelete(id).exec();
     if (!deletedEmployee) {
       throw new NotFoundException(`Employee #${id} not found`);
@@ -178,11 +446,25 @@ export class EmployeesService {
   /**
    * Returns the link status for a given Employee
    */
-  async getLinkStatus(id: string): Promise<{
+  async getLinkStatus(
+    id: string,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
+  ): Promise<{
     linked: boolean;
     userId: string | null;
     employeeEmail: string | null;
   }> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Employee #${id} not found`);
+    }
+
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    }
+
     const employee = await this.employeeModel.findById(id).exec();
     if (!employee) return { linked: false, userId: null, employeeEmail: null };
     return {

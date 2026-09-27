@@ -8,24 +8,33 @@ import { Team } from '../teams/schemas/team.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { Task } from '../tasks/schemas/task.schema';
 
-describe('ProjectsService - Authorization & Role-based Access', () => {
+describe('ProjectsService - Authorization & Role-based Access (P1-09)', () => {
   let service: ProjectsService;
   let projectModel: any;
   let teamModel: any;
   let employeeModel: any;
   let taskModel: any;
 
+  // Personas
   const mockAdminUserId = new Types.ObjectId().toString();
-  const mockOwnerUserId = new Types.ObjectId().toString();
-  const mockOtherUserId = new Types.ObjectId().toString();
+  const mockOwnerUserId = new Types.ObjectId().toString(); // User A
+  const mockOtherUserId = new Types.ObjectId().toString(); // User B
 
-  const mockProjectId = new Types.ObjectId().toString();
+  // Projects
+  const mockProjectId = new Types.ObjectId().toString();     // Project Alpha (owned by User A)
+  const mockProjectBetaId = new Types.ObjectId().toString(); // Project Beta (owned by User B)
 
-  const mockProject: any = {
+  const mockProjectAlpha: any = {
     _id: new Types.ObjectId(mockProjectId),
     name: 'Project Alpha',
     userId: new Types.ObjectId(mockOwnerUserId),
-    members: [],
+    teamId: null,
+  };
+
+  const mockProjectBeta: any = {
+    _id: new Types.ObjectId(mockProjectBetaId),
+    name: 'Project Beta',
+    userId: new Types.ObjectId(mockOtherUserId),
     teamId: null,
   };
 
@@ -41,14 +50,23 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
     projectModel.findByIdAndDelete = jest.fn();
     projectModel.find = jest.fn();
 
+    const mockTeamQuery = {
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([]),
+    };
+
     teamModel = {
-      find: jest.fn(),
+      find: jest.fn().mockReturnValue(mockTeamQuery),
       findById: jest.fn(),
     };
 
     employeeModel = {
       find: jest.fn().mockReturnValue({
         exec: jest.fn().mockResolvedValue([]),
+      }),
+      findById: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
       }),
     };
 
@@ -72,26 +90,51 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
     service = module.get<ProjectsService>(ProjectsService);
   });
 
-  describe('findAll', () => {
-    it('should ALLOW system admin to view all projects', async () => {
+  describe('findAll (scope filtering)', () => {
+    it('should ALLOW system admin to view all projects unconstrained', async () => {
       const mockQuery = {
         populate: jest.fn().mockReturnThis(),
         sort: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue([mockProject]),
+        exec: jest.fn().mockResolvedValue([mockProjectAlpha, mockProjectBeta]),
       };
       projectModel.find.mockReturnValue(mockQuery);
 
-      const result = await service.findAll(mockAdminUserId, 'admin@example.com', true);
+      const result = await service.findAll(mockAdminUserId, 'admin@example.com', true, 'all');
+      expect(result).toHaveLength(2);
+      expect(projectModel.find).toHaveBeenCalledWith({});
+    });
+
+    it('should filter projects by userId for User B under scope own (filtering out User A project)', async () => {
+      const mockQuery = {
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([mockProjectBeta]),
+      };
+      projectModel.find.mockReturnValue(mockQuery);
+
+      const result = await service.findAll(mockOtherUserId, 'other@example.com', false, 'own');
       expect(result).toHaveLength(1);
-      expect(projectModel.find).toHaveBeenCalledWith();
+      expect(projectModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $or: expect.arrayContaining([
+            expect.objectContaining({ userId: mockOtherUserId }),
+          ]),
+        }),
+      );
+    });
+
+    it('should return empty array immediately when scope is none', async () => {
+      const result = await service.findAll(mockOtherUserId, 'other@example.com', false, 'none');
+      expect(result).toEqual([]);
+      expect(projectModel.find).not.toHaveBeenCalled();
     });
   });
 
-  describe('findOne', () => {
-    it('should ALLOW system admin to view any project without team/member restrictions', async () => {
+  describe('findOne (two users / two projects record-level checks)', () => {
+    it('should ALLOW system admin to view any project', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
 
       const result = await service.findOne(mockProjectId, mockAdminUserId, 'admin@example.com', true);
@@ -99,27 +142,87 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
       expect(result?._id.toString()).toBe(mockProjectId);
     });
 
-    it('should ALLOW regular user to view project without access restrictions', async () => {
+    it('should ALLOW User A to view their own project (Project Alpha) under scope own', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
 
-      const result = await service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false);
+      const result = await service.findOne(mockProjectId, mockOwnerUserId, 'owner@example.com', false, 'own');
       expect(result).toBeDefined();
       expect(result?._id.toString()).toBe(mockProjectId);
     });
+
+    it('should THROW ForbiddenException when User B attempts to view User A project under scope own', async () => {
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
+      });
+
+      await expect(
+        service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should ALLOW User B to view User A project under scope team when User B belongs to project team', async () => {
+      const teamId = new Types.ObjectId();
+      const projectWithTeam = {
+        ...mockProjectAlpha,
+        teamId: {
+          _id: teamId,
+          members: [new Types.ObjectId()],
+          teamLead: null,
+        },
+      };
+
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(projectWithTeam),
+      });
+
+      // Mock user teams for User B to include teamId
+      teamModel.find.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([{ _id: teamId }]),
+      });
+
+      const result = await service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false, 'team');
+      expect(result).toBeDefined();
+    });
+
+    it('should THROW ForbiddenException when User B attempts to view User A project under scope team if not on team', async () => {
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
+      });
+
+      await expect(
+        service.findOne(mockProjectId, mockOtherUserId, 'other@example.com', false, 'team'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should THROW ForbiddenException when viewing under scope none', async () => {
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
+      });
+
+      await expect(
+        service.findOne(mockProjectId, mockOwnerUserId, 'owner@example.com', false, 'none'),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
-  describe('update', () => {
+  describe('update (two users / two projects)', () => {
     it('should ALLOW system admin to update any project', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
       projectModel.findByIdAndUpdate.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ ...mockProject, name: 'Updated Alpha' }),
+        exec: jest.fn().mockResolvedValue({ ...mockProjectAlpha, name: 'Updated Alpha' }),
       });
 
       const result = await service.update(
@@ -127,21 +230,22 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
         { name: 'Updated Alpha' },
         mockAdminUserId,
         'admin@example.com',
-        true, // isSystemAdmin
+        true,
+        'all',
       );
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('Updated Alpha');
     });
 
-    it('should ALLOW project owner to update project details', async () => {
+    it('should ALLOW User A to update their own Project Alpha', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
       projectModel.findByIdAndUpdate.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ ...mockProject, name: 'Owner Updated' }),
+        exec: jest.fn().mockResolvedValue({ ...mockProjectAlpha, name: 'Owner Updated' }),
       });
 
       const result = await service.update(
@@ -150,41 +254,61 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
         mockOwnerUserId,
         'owner@example.com',
         false,
+        'own',
       );
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('Owner Updated');
     });
+
+    it('should THROW ForbiddenException when User B attempts to update User A Project Alpha under scope own', async () => {
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
+      });
+
+      await expect(
+        service.update(
+          mockProjectId,
+          { name: 'Hacked Title' },
+          mockOtherUserId,
+          'other@example.com',
+          false,
+          'own',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
-  describe('remove', () => {
+  describe('remove (two users / two projects)', () => {
     it('should ALLOW system admin to delete any project', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
       projectModel.findByIdAndDelete.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
 
       const result = await service.remove(
         mockProjectId,
         mockAdminUserId,
         'admin@example.com',
-        true, // isSystemAdmin
+        true,
+        'all',
       );
 
       expect(result).toBeDefined();
       expect(projectModel.findByIdAndDelete).toHaveBeenCalledWith(mockProjectId);
     });
 
-    it('should ALLOW project owner to delete their project', async () => {
+    it('should ALLOW User A to delete their own Project Alpha', async () => {
       projectModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
       projectModel.findByIdAndDelete.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockProject),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
 
       const result = await service.remove(
@@ -192,20 +316,22 @@ describe('ProjectsService - Authorization & Role-based Access', () => {
         mockOwnerUserId,
         'owner@example.com',
         false,
+        'own',
       );
 
       expect(result).toBeDefined();
       expect(projectModel.findByIdAndDelete).toHaveBeenCalledWith(mockProjectId);
     });
 
-    it('should ALLOW any user to delete project without ownership restrictions', async () => {
-      projectModel.findByIdAndDelete.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockProject),
+    it('should THROW ForbiddenException when User B attempts to delete User A Project Alpha under scope own', async () => {
+      projectModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(mockProjectAlpha),
       });
 
-      const result = await service.remove(mockProjectId, mockOtherUserId, 'other@example.com', false);
-      expect(result).toBeDefined();
-      expect(projectModel.findByIdAndDelete).toHaveBeenCalledWith(mockProjectId);
+      await expect(
+        service.remove(mockProjectId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

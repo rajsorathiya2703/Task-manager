@@ -5,6 +5,12 @@ import { Team } from './schemas/team.schema';
 import { Task } from '../tasks/schemas/task.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { CommentsService } from '../comments/comments.service';
+import {
+  isTeamInScope,
+  TeamSubject,
+  TeamResource,
+  ScopeType,
+} from '../access/resolvers/teams.resolver';
 
 @Injectable()
 export class TeamsService {
@@ -15,6 +21,71 @@ export class TeamsService {
     private commentsService: CommentsService,
   ) {}
 
+  /**
+   * Pure read-only helper: resolves all Employee IDs that correspond to a
+   * given userId and/or email. Used to build access-check query conditions.
+   */
+  private async getEmployeeIdsForUser(userId?: string, email?: string): Promise<any[]> {
+    const { Types } = require('mongoose');
+    const employeeQuery: any[] = [];
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        employeeQuery.push({ userId: new Types.ObjectId(userId) });
+      }
+      employeeQuery.push({ userId: userId.toString() });
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const cleanEmail = email.trim();
+      employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+    }
+
+    const employees: any[] =
+      employeeQuery.length > 0
+        ? await this.employeeModel.find({ $or: employeeQuery }).exec()
+        : [];
+
+    const ids: any[] = employees.map((e) => e._id);
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        ids.push(new Types.ObjectId(userId));
+      }
+      ids.push(userId.toString());
+    }
+    return ids;
+  }
+
+  /**
+   * Builds Mongo query criteria for teams according to the user's effective scope:
+   *   - 'all' / isSystemAdmin: {} (no extra criteria)
+   *   - 'own' / 'team': matches teams where user's employeeId is in members or is teamLead
+   *   - 'none': null (empty set)
+   */
+  private async buildTeamScopeFilter(
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'all',
+  ): Promise<any> {
+    if (isSystemAdmin || scope === 'all') {
+      return {};
+    }
+    if (scope === 'none') {
+      return null;
+    }
+
+    const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+    if (employeeIds.length === 0) {
+      return null;
+    }
+
+    return {
+      $or: [
+        { members: { $in: employeeIds } },
+        { teamLead: { $in: employeeIds } },
+      ],
+    };
+  }
+
   async create(createTeamDto: any): Promise<Team> {
     const newTeam = new this.teamModel(createTeamDto);
     return newTeam.save();
@@ -24,10 +95,19 @@ export class TeamsService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'all',
   ): Promise<Team[]> {
+    if (scope === 'none' && !isSystemAdmin) {
+      return [];
+    }
+
+    const scopeFilter = await this.buildTeamScopeFilter(userId, email, isSystemAdmin, scope);
+    if (scopeFilter === null) {
+      return [];
+    }
+
     return this.teamModel
-      .find()
+      .find(scopeFilter)
       .populate('members')
       .populate('teamLead')
       .exec();
@@ -38,7 +118,7 @@ export class TeamsService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'own',
   ): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
@@ -47,6 +127,59 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException(`Team #${id} not found`);
     }
+
+    // ─── PBAC Record-Level Scope Check (§6.2, §6.3) ─────────────────────────
+    if (!isSystemAdmin && scope !== 'all') {
+      if (scope === 'none') {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Access denied: scope is none for this action',
+        });
+      }
+
+      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+      const primaryEmpId = employeeIds.length > 0 ? String(employeeIds[0]) : undefined;
+
+      const userTeams = await this.teamModel
+        .find({
+          $or: [
+            { members: { $in: employeeIds } },
+            { teamLead: { $in: employeeIds } },
+          ],
+        })
+        .select('_id teamLead')
+        .lean()
+        .exec();
+
+      const teamIds = userTeams.map((t) => String(t._id));
+      const leadingTeamIds = userTeams
+        .filter(
+          (t) =>
+            t.teamLead &&
+            employeeIds.some((e) => String(e) === String(t.teamLead)),
+        )
+        .map((t) => String(t._id));
+
+      const subject: TeamSubject = {
+        userId,
+        email,
+        employeeId: primaryEmpId,
+        teamIds,
+        leadingTeamIds,
+        isSystemAdmin,
+      };
+
+      const inScope = isTeamInScope(scope, team, subject);
+      if (!inScope) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: `Access denied: team is out of scope (granted scope: '${scope}')`,
+        });
+      }
+    }
+
     return team;
   }
 
@@ -56,10 +189,13 @@ export class TeamsService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'own',
   ): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
+    }
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
     }
     const updatedTeam = await this.teamModel.findByIdAndUpdate(
       id,
@@ -79,10 +215,13 @@ export class TeamsService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'own',
   ): Promise<any> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Team #${id} not found`);
+    }
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
     }
     const deletedTeam = await this.teamModel.findByIdAndDelete(id).exec();
     if (!deletedTeam) {
@@ -96,7 +235,7 @@ export class TeamsService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'all',
+    scope: ScopeType = 'all',
   ): Promise<Task[]> {
     const team = await this.findOne(teamId, userId, email, isSystemAdmin, scope);
     if (!team) {
@@ -111,6 +250,8 @@ export class TeamsService {
 
     return activeTasks;
   }
+
+  // ── Comment Endpoints ──
 
   async addComment(id: string, commentData: any, userId?: string, email?: string): Promise<Team> {
     if (!Types.ObjectId.isValid(id)) {

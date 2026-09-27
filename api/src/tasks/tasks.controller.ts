@@ -6,6 +6,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { RequireAccess } from '../access/decorators/require-access.decorator';
 
 function validateAttachmentFile(file: Express.Multer.File) {
   if (!file) {
@@ -57,27 +58,35 @@ export class TasksController {
   ) {}
 
   @Post()
+  @RequireAccess({ module: 'tasks', action: 'create' })
   create(@Request() req, @Body() createTaskDto: CreateTaskDto) {
-    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, true);
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, isSystemAdmin);
   }
 
   @Get()
+  @RequireAccess({ module: 'tasks', action: 'read' })
   findAll(@Request() req, @Query('projectId') projectId?: string) {
-    return this.tasksService.findAll(req.user.id, req.user.email, projectId, true, 'all');
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin, scope);
   }
 
   @Get('timeline')
+  @RequireAccess({ module: 'timeline', action: 'read' })
   getTimeline(@Request() req, @Query() query: any) {
     return this.tasksService.getTimeline(req.user.id, req.user.email, query);
   }
 
   @Get('timer/active')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async getActiveTimer(@Request() req) {
     const activeTask = await this.tasksService.getActiveTimer(req.user.email);
     return activeTask || null;
   }
 
   @Get('file/view')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async viewFile(
     @Query('url') fileUrl: string,
     @Query('name') fileName: string,
@@ -130,31 +139,42 @@ export class TasksController {
   }
 
   @Get(':id')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   findOne(@Request() req, @Param('id') id: string) {
-    return this.tasksService.findOne(id, req.user.id, req.user.email, true, 'all');
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Patch(':id')
+  @RequireAccess({ module: 'tasks', action: 'update' })
   update(@Request() req, @Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
       avatarUrl: req.user?.avatarUrl,
       email: req.user?.email,
     };
-    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, true, 'all');
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin, scope);
   }
 
   @Delete(':id')
+  @RequireAccess({ module: 'tasks', action: 'delete' })
   remove(@Request() req, @Param('id') id: string) {
-    return this.tasksService.remove(id, req.user.id, req.user.email, true, 'all');
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin, scope);
   }
 
   @Post(':id/duplicate')
+  @RequireAccess({ module: 'tasks', action: 'create' })
   duplicate(@Request() req, @Param('id') id: string) {
     return this.tasksService.duplicate(id, req.user.id, req.user.email);
   }
 
   @Post('upload')
+  @RequireAccess({ module: 'tasks', action: 'create' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadGenericFiles(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files || files.length === 0) {
@@ -176,6 +196,7 @@ export class TasksController {
   }
 
   @Post(':id/upload')
+  @RequireAccess({ module: 'tasks', action: 'update' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
     @Request() req,
@@ -214,6 +235,7 @@ export class TasksController {
   }
 
   @Post(':id/comments')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async addComment(
     @Request() req,
     @Param('id') id: string,
@@ -230,6 +252,7 @@ export class TasksController {
   }
 
   @Patch(':id/comments/:commentId')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async updateComment(
     @Request() req,
     @Param('id') id: string,
@@ -240,6 +263,7 @@ export class TasksController {
   }
 
   @Delete(':id/comments/:commentId')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async deleteComment(
     @Request() req,
     @Param('id') id: string,
@@ -249,14 +273,16 @@ export class TasksController {
   }
 
   @Post(':id/invite')
+  @RequireAccess({ module: 'tasks', action: 'update' })
   async inviteMember(
     @Request() req,
     @Param('id') id: string,
     @Body() body: { email: string; name: string },
   ) {
     try {
+      const isSystemAdmin = req.user?.is_system_admin === true;
       const inviterName = req.user?.name || 'A team member';
-      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, true);
+      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, isSystemAdmin);
     } catch (e) {
       require('fs').writeFileSync('invite-error.log', e.stack || e.message);
       throw e;
@@ -264,6 +290,7 @@ export class TasksController {
   }
 
   @Post(':id/timer/start')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async startTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
@@ -274,6 +301,7 @@ export class TasksController {
   }
 
   @Post(':id/timer/stop')
+  @RequireAccess({ module: 'tasks', action: 'read' })
   async stopTimer(@Request() req, @Param('id') id: string) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',

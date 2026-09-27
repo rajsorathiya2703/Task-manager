@@ -8,6 +8,7 @@ import { fetchTasks } from "../../../src/lib/api";
 import { Task } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
+import { ModuleGate } from "../../../src/components/access";
 
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
 const defaultPriorities = ["High", "Medium", "Low", "No Priority"];
@@ -202,39 +203,41 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <PageHeader 
-        title="Tasks" 
-        activeView={view} 
-        onViewChange={setView} 
-        showAdd={true}
-        filters={filters}
-        onApplyFilter={(f) => setFilters([...filters, f])}
-        onRemoveFilter={(id) => setFilters(filters.filter(f => f.id !== id))}
-        onClearFilters={() => setFilters([])}
-        availableStages={["To Do", "Doing", "Completed", "On Hold"]}
-        availablePriorities={["Low", "Medium", "High"]}
-        searchQuery={searchQuery}
-        searchContext={searchContext}
-        onSearchChange={(q, ctx) => {
-          setSearchQuery(q);
-          setSearchContext(ctx);
-        }}
-        groupByOptions={groupByOptions}
-        selectedGroupBy={groupBy}
-        onGroupByChange={setGroupBy}
-      />
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : (
-        view === 'board' ? (
-          <Board data={data} onTaskStatusChange={handleTaskStatusChange} showProjectCapsule={true} />
+    <ModuleGate module="tasks">
+      <div className="flex flex-col h-full overflow-hidden">
+        <PageHeader 
+          title="Tasks" 
+          activeView={view} 
+          onViewChange={setView} 
+          showAdd={true}
+          filters={filters}
+          onApplyFilter={(f) => setFilters([...filters, f])}
+          onRemoveFilter={(id) => setFilters(filters.filter(f => f.id !== id))}
+          onClearFilters={() => setFilters([])}
+          availableStages={["To Do", "Doing", "Completed", "On Hold"]}
+          availablePriorities={["Low", "Medium", "High"]}
+          searchQuery={searchQuery}
+          searchContext={searchContext}
+          onSearchChange={(q, ctx) => {
+            setSearchQuery(q);
+            setSearchContext(ctx);
+          }}
+          groupByOptions={groupByOptions}
+          selectedGroupBy={groupBy}
+          onGroupByChange={setGroupBy}
+        />
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
         ) : (
-          <ListView data={data} showProjectCapsule={true} isFiltered={filters.length > 0 || !!searchQuery} />
-        )
-      )}
-    </div>
+          view === 'board' ? (
+            <Board data={data} onTaskStatusChange={handleTaskStatusChange} showProjectCapsule={true} />
+          ) : (
+            <ListView data={data} showProjectCapsule={true} isFiltered={filters.length > 0 || !!searchQuery} />
+          )
+        )}
+      </div>
+    </ModuleGate>
   );
 }

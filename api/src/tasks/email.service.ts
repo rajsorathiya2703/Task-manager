@@ -27,7 +27,7 @@ export class EmailService {
 
     if (!user || !pass) {
       if (process.env.NODE_ENV === 'production') {
-        this.logger.warn(
+      this.logger.warn(
           'CRITICAL: Neither BREVO_API_KEY nor SMTP_USER/SMTP_PASS are configured! Real emails will not be sent.',
         );
       }
@@ -38,10 +38,10 @@ export class EmailService {
         this.logger.log(`Generated Ethereal test credentials: ${user} / ${pass}`);
       } catch (err) {
         this.logger.error('Failed to create Ethereal test account. Emails will not be sent.', err);
-        return;
-      }
+      return;
+    }
     } else {
-      this.logger.log(`Using SMTP credentials from environment variables (User: ${user})`);
+    this.logger.log(`Using SMTP credentials from environment variables (User: ${user})`);
     }
 
     const rawPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;

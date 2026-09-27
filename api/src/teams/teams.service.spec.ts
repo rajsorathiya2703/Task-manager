@@ -8,23 +8,30 @@ import { Task } from '../tasks/schemas/task.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { CommentsService } from '../comments/comments.service';
 
-describe('TeamsService', () => {
+describe('TeamsService - Authorization & Scope Filtering (P1-12)', () => {
   let service: TeamsService;
   let teamModel: any;
   let taskModel: any;
   let employeeModel: any;
   let commentsService: any;
 
-  const mockTeamId = new Types.ObjectId().toString();
+  // Personas
+  const mockTeamId = new Types.ObjectId().toString(); // Team X
+  const mockLeadUserId = new Types.ObjectId().toString();
+  const mockLeadEmpId = new Types.ObjectId();
+
   const mockMemberUserId = new Types.ObjectId().toString();
   const mockMemberEmpId = new Types.ObjectId();
-  const mockLeadEmpId = new Types.ObjectId();
-  const mockOtherUserId = new Types.ObjectId().toString();
+
+  const mockOtherUserId = new Types.ObjectId().toString(); // Not on Team X
+  const mockOtherEmpId = new Types.ObjectId();
+
+  const mockAdminUserId = new Types.ObjectId().toString();
 
   const mockTeam = {
     _id: new Types.ObjectId(mockTeamId),
-    name: 'Frontend Team',
-    description: 'UI engineering team',
+    name: 'Team X',
+    description: 'Frontend engineering team',
     teamLead: {
       _id: mockLeadEmpId,
       email: 'lead@example.com',
@@ -40,8 +47,15 @@ describe('TeamsService', () => {
   };
 
   beforeEach(async () => {
+    const mockFindChain = {
+      populate: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([]),
+    };
+
     teamModel = {
-      find: jest.fn(),
+      find: jest.fn().mockReturnValue(mockFindChain),
       findById: jest.fn(),
       findByIdAndUpdate: jest.fn(),
       findByIdAndDelete: jest.fn(),
@@ -53,7 +67,9 @@ describe('TeamsService', () => {
     };
 
     employeeModel = {
-      find: jest.fn(),
+      find: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([]),
+      }),
     };
 
     commentsService = {
@@ -94,7 +110,7 @@ describe('TeamsService', () => {
       );
     });
 
-    it('should ALLOW system admin to view any team without membership check', async () => {
+    it('should ALLOW team lead to view team under scope own', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -103,11 +119,21 @@ describe('TeamsService', () => {
         }),
       });
 
-      const result = await service.findOne(mockTeamId, mockOtherUserId, 'admin@example.com', true);
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockLeadEmpId }]),
+      });
+
+      const result = await service.findOne(
+        mockTeamId,
+        mockLeadUserId,
+        'lead@example.com',
+        false,
+        'own',
+      );
       expect(result).toBe(mockTeam);
     });
 
-    it('should ALLOW team member to view team', async () => {
+    it('should ALLOW team member to view team under scope team', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -125,11 +151,145 @@ describe('TeamsService', () => {
         mockMemberUserId,
         'member@example.com',
         false,
+        'team',
       );
       expect(result).toBe(mockTeam);
     });
 
-    it('should ALLOW team lead to view team', async () => {
+    it('should THROW ForbiddenException when user NOT on Team X reads it under scope own', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockOtherEmpId }]),
+      });
+
+      await expect(
+        service.findOne(mockTeamId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should THROW ForbiddenException when user NOT on Team X reads it under scope team', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockOtherEmpId }]),
+      });
+
+      await expect(
+        service.findOne(mockTeamId, mockOtherUserId, 'other@example.com', false, 'team'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should ALLOW Manager-role user with all scope to read Team X even if not a member', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      const result = await service.findOne(
+        mockTeamId,
+        mockOtherUserId,
+        'manager@example.com',
+        false,
+        'all',
+      );
+      expect(result).toBe(mockTeam);
+    });
+
+    it('should ALLOW System Admin to read Team X without restrictions', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      const result = await service.findOne(
+        mockTeamId,
+        mockAdminUserId,
+        'admin@example.com',
+        true,
+        'all',
+      );
+      expect(result).toBe(mockTeam);
+    });
+
+    it('should THROW ForbiddenException when reading under scope none', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      await expect(
+        service.findOne(mockTeamId, mockLeadUserId, 'lead@example.com', false, 'none'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('findAll', () => {
+    it('should return all teams unconstrained for scope all', async () => {
+      const mockQuery = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([mockTeam]),
+      };
+      teamModel.find.mockReturnValue(mockQuery);
+
+      const result = await service.findAll(mockOtherUserId, 'manager@example.com', false, 'all');
+      expect(result).toEqual([mockTeam]);
+      expect(teamModel.find).toHaveBeenCalledWith({});
+    });
+
+    it('should return empty array immediately when scope is none', async () => {
+      const result = await service.findAll(mockOtherUserId, 'other@example.com', false, 'none');
+      expect(result).toEqual([]);
+      expect(teamModel.find).not.toHaveBeenCalled();
+    });
+
+    it('should filter teams by member/lead for user under scope own', async () => {
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockLeadEmpId }]),
+      });
+
+      const mockQuery = {
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([mockTeam]),
+      };
+      teamModel.find.mockReturnValue(mockQuery);
+
+      await service.findAll(mockLeadUserId, 'lead@example.com', false, 'own');
+
+      expect(teamModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $or: expect.arrayContaining([
+            expect.objectContaining({ members: expect.any(Object) }),
+            expect.objectContaining({ teamLead: expect.any(Object) }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  describe('update', () => {
+    it('should ALLOW team lead to update Team X under scope own', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -142,16 +302,27 @@ describe('TeamsService', () => {
         exec: jest.fn().mockResolvedValue([{ _id: mockLeadEmpId }]),
       });
 
-      const result = await service.findOne(
+      const updatedTeam = { ...mockTeam, name: 'Updated Team' };
+      teamModel.findByIdAndUpdate.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(updatedTeam),
+          }),
+        }),
+      });
+
+      const result = await service.update(
         mockTeamId,
-        'leadUserId',
+        { name: 'Updated Team' },
+        mockLeadUserId,
         'lead@example.com',
         false,
+        'own',
       );
-      expect(result).toBe(mockTeam);
+      expect(result).toBe(updatedTeam);
     });
 
-    it('should ALLOW any user to view team regardless of membership', async () => {
+    it('should THROW ForbiddenException when user NOT on Team X updates it under scope own', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -160,13 +331,94 @@ describe('TeamsService', () => {
         }),
       });
 
-      const result = await service.findOne(mockTeamId, mockOtherUserId, 'other@example.com', false);
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockOtherEmpId }]),
+      });
+
+      await expect(
+        service.update(
+          mockTeamId,
+          { name: 'Hacked Team' },
+          mockOtherUserId,
+          'other@example.com',
+          false,
+          'own',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should ALLOW Manager with scope all to update Team X', async () => {
+      const updatedTeam = { ...mockTeam, name: 'Manager Updated' };
+      teamModel.findByIdAndUpdate.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(updatedTeam),
+          }),
+        }),
+      });
+
+      const result = await service.update(
+        mockTeamId,
+        { name: 'Manager Updated' },
+        mockOtherUserId,
+        'manager@example.com',
+        false,
+        'all',
+      );
+      expect(result).toBe(updatedTeam);
+    });
+  });
+
+  describe('remove', () => {
+    it('should ALLOW team lead to delete Team X under scope own', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockLeadEmpId }]),
+      });
+
+      teamModel.findByIdAndDelete.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockTeam),
+      });
+
+      const result = await service.remove(
+        mockTeamId,
+        mockLeadUserId,
+        'lead@example.com',
+        false,
+        'own',
+      );
       expect(result).toBe(mockTeam);
+      expect(teamModel.findByIdAndDelete).toHaveBeenCalledWith(mockTeamId);
+    });
+
+    it('should THROW ForbiddenException when user NOT on Team X deletes it under scope own', async () => {
+      teamModel.findById.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(mockTeam),
+          }),
+        }),
+      });
+
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockOtherEmpId }]),
+      });
+
+      await expect(
+        service.remove(mockTeamId, mockOtherUserId, 'other@example.com', false, 'own'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('getActiveTasks', () => {
-    it('should ALLOW member to get active tasks', async () => {
+    it('should ALLOW team member to get active tasks under scope team', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -193,13 +445,12 @@ describe('TeamsService', () => {
         mockMemberUserId,
         'member@example.com',
         false,
+        'team',
       );
       expect(result).toBe(mockTasks);
     });
-  });
 
-  describe('update', () => {
-    it('should ALLOW any user to update team', async () => {
+    it('should THROW ForbiddenException when user NOT on Team X gets active tasks under scope own', async () => {
       teamModel.findById.mockReturnValue({
         populate: jest.fn().mockReturnValue({
           populate: jest.fn().mockReturnValue({
@@ -208,39 +459,19 @@ describe('TeamsService', () => {
         }),
       });
 
-      const updatedTeam = { ...mockTeam, name: 'Updated Team' };
-      teamModel.findByIdAndUpdate.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue(updatedTeam),
-          }),
-        }),
+      employeeModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: mockOtherEmpId }]),
       });
 
-      const result = await service.update(
-        mockTeamId,
-        { name: 'Updated Team' },
-        mockOtherUserId,
-        'other@example.com',
-        false,
-      );
-      expect(result).toBe(updatedTeam);
-    });
-  });
-
-  describe('findAll', () => {
-    it('should return all teams for any user', async () => {
-      teamModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            exec: jest.fn().mockResolvedValue([mockTeam]),
-          }),
-        }),
-      });
-
-      const result = await service.findAll(mockMemberUserId, 'member@example.com', false);
-      expect(result).toEqual([mockTeam]);
-      expect(teamModel.find).toHaveBeenCalledWith();
+      await expect(
+        service.getActiveTasks(
+          mockTeamId,
+          mockOtherUserId,
+          'other@example.com',
+          false,
+          'own',
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

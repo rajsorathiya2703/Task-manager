@@ -9,6 +9,7 @@ import {
 import { ChatbotService } from './chatbot.service';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { Throttle } from '@nestjs/throttler';
+import { RequireAccess } from '../access/decorators/require-access.decorator';
 
 @Controller('chatbot')
 export class ChatbotController {
@@ -23,6 +24,7 @@ export class ChatbotController {
    * Rate-limited to 30 requests per minute per user to prevent API quota abuse.
    */
   @Post('chat')
+  @RequireAccess({ module: 'chatbot', action: 'use' })
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async chat(

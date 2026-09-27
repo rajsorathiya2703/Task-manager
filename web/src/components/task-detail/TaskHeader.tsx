@@ -3,6 +3,7 @@ import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Squ
 import { Popover } from "@headlessui/react";
 import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
 import { useEffect } from "react";
+import { BoundField } from "../access";
 
 interface TaskHeaderProps {
   taskId?: string;
@@ -136,28 +137,36 @@ export function TaskHeader({
     <div className="space-y-6 mb-8">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2 flex-1">
-          {canEditTitle ? (
-            <input 
-              type="text" 
-              value={title} 
-              onChange={handleTitleChange}
-              placeholder="Task Title..."
-              className="text-2xl font-bold text-foreground w-full bg-transparent border-none outline-none focus:ring-0 placeholder:text-muted-foreground/50 p-0"
-            />
-          ) : (
-            <h1 className="text-2xl font-bold text-foreground flex-1">{title || 'Untitled Task'}</h1>
-          )}
+          <BoundField module="tasks" field="title">
+            {({ disabled }) => (
+              canEditTitle && !disabled ? (
+                <input 
+                  type="text" 
+                  value={title} 
+                  onChange={handleTitleChange}
+                  placeholder="Task Title..."
+                  className="text-2xl font-bold text-foreground w-full bg-transparent border-none outline-none focus:ring-0 placeholder:text-muted-foreground/50 p-0"
+                />
+              ) : (
+                <h1 className="text-2xl font-bold text-foreground flex-1">{title || 'Untitled Task'}</h1>
+              )
+            )}
+          </BoundField>
           
-          {canEditDescription ? (
-            <textarea 
-              value={description} 
-              onChange={handleDescChange}
-              placeholder="Add a description..."
-              className="text-muted-foreground text-sm w-full bg-transparent border-none outline-none focus:ring-0 resize-none min-h-[60px] p-0"
-            />
-          ) : (
-            <p className="text-muted-foreground text-sm flex-1">{description || <span className="italic opacity-50">No description</span>}</p>
-          )}
+          <BoundField module="tasks" field="description">
+            {({ disabled }) => (
+              canEditDescription && !disabled ? (
+                <textarea 
+                  value={description} 
+                  onChange={handleDescChange}
+                  placeholder="Add a description..."
+                  className="text-muted-foreground text-sm w-full bg-transparent border-none outline-none focus:ring-0 resize-none min-h-[60px] p-0"
+                />
+              ) : (
+                <p className="text-muted-foreground text-sm flex-1">{description || <span className="italic opacity-50">No description</span>}</p>
+              )
+            )}
+          </BoundField>
         </div>
 
         {/* Start / Stop Timer Button */}
@@ -201,96 +210,104 @@ export function TaskHeader({
           {!(taskData?.tags?.length) && <span className="text-xs text-muted-foreground italic flex items-center h-6">None</span>}
         </div>
 
-        <div className="text-muted-foreground font-medium self-start mt-1.5">Resources</div>
-        <div className="flex flex-col gap-2">
-          {taskData?.resources?.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-1">
-              {taskData.resources.map((res: any, idx: number) => {
-                const fileUrl = getAttachmentUrl(res.url, res.name);
-                const ext = res.name?.split('.').pop()?.toLowerCase() || '';
-                const isPdf = ext === 'pdf';
-                const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
-                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
+        <BoundField module="tasks" field="resources">
+          {({ disabled }) => (
+            <>
+              <div className="text-muted-foreground font-medium self-start mt-1.5">Resources</div>
+              <div className="flex flex-col gap-2">
+                {taskData?.resources?.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-1">
+                    {taskData.resources.map((res: any, idx: number) => {
+                      const fileUrl = getAttachmentUrl(res.url, res.name);
+                      const ext = res.name?.split('.').pop()?.toLowerCase() || '';
+                      const isPdf = ext === 'pdf';
+                      const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
+                      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
 
-                let icon = <File className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
-                if (res.type === 'link') icon = <ExternalLink className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
-                else if (isPdf) icon = <FileText className="w-3.5 h-3.5 text-red-500 shrink-0" />;
-                else if (isVideo) icon = <Video className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
-                else if (isImage) icon = <ImageIcon className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+                      let icon = <File className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
+                      if (res.type === 'link') icon = <ExternalLink className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
+                      else if (isPdf) icon = <FileText className="w-3.5 h-3.5 text-red-500 shrink-0" />;
+                      else if (isVideo) icon = <Video className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
+                      else if (isImage) icon = <ImageIcon className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
 
-                return (
-                  <a 
-                    key={idx}
-                    href={fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download={res.name}
-                    className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors"
-                    title={res.name}
-                  >
-                    {icon}
-                    <span className="truncate max-w-[200px]">{res.name}</span>
-                  </a>
-                );
-              })}
-            </div>
-          )}
-
-          {uploadError && (
-            <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-2.5 py-1.5 rounded-md flex items-center justify-between">
-              <span>{uploadError}</span>
-              <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-75">×</button>
-            </div>
-          )}
-
-          {canEditResources && (
-            <Popover className="relative">
-              <Popover.Button 
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium outline-none w-fit cursor-pointer"
-              >
-                {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
-                {isUploading ? 'Uploading...' : 'Add document or link...'}
-              </Popover.Button>
-              <Popover.Panel className="absolute left-0 top-full mt-1 w-64 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none flex flex-col gap-2">
-                {isNew ? (
-                  <div className="text-xs text-muted-foreground p-2 text-center">
-                    Please save the task first before attaching files.
+                      return (
+                        <a 
+                          key={idx}
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={res.name}
+                          className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors"
+                          title={res.name}
+                        >
+                          {icon}
+                          <span className="truncate max-w-[200px]">{res.name}</span>
+                        </a>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <>
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded-md text-xs text-left w-full transition-colors cursor-pointer"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                      Upload Document (PDF, Video, Image)
-                    </button>
-                    <div className="px-2 pb-1 border-t border-border/50 pt-2 mt-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
-                        <Link2 className="w-3.5 h-3.5" />
-                        Attach Link
-                      </div>
-                      <input 
-                        type="url" 
-                        placeholder="https://... (Press Enter)"
-                        className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary"
-                        onKeyDown={handleAddLink}
-                      />
-                    </div>
-                  </>
                 )}
-              </Popover.Panel>
-            </Popover>
+
+                {uploadError && (
+                  <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 px-2.5 py-1.5 rounded-md flex items-center justify-between">
+                    <span>{uploadError}</span>
+                    <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-75">×</button>
+                  </div>
+                )}
+
+                {canEditResources && !disabled && (
+                  <Popover className="relative">
+                    <Popover.Button 
+                      className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-xs font-medium outline-none w-fit cursor-pointer"
+                    >
+                      {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+                      {isUploading ? 'Uploading...' : 'Add document or link...'}
+                    </Popover.Button>
+                    <Popover.Panel className="absolute left-0 top-full mt-1 w-64 bg-card border border-border rounded-lg shadow-lg z-50 p-2 outline-none flex flex-col gap-2">
+                      {isNew ? (
+                        <div className="text-xs text-muted-foreground p-2 text-center">
+                          Please save the task first before attaching files.
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 rounded-md text-xs text-left w-full transition-colors cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                            Upload Document (PDF, Video, Image)
+                          </button>
+                          <div className="px-2 pb-1 border-t border-border/50 pt-2 mt-1">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                              <Link2 className="w-3.5 h-3.5" />
+                              Attach Link
+                            </div>
+                            <input 
+                              type="url" 
+                              placeholder="https://... (Press Enter)"
+                              className="w-full text-xs px-2 py-1.5 bg-muted/50 border border-border rounded-md outline-none focus:border-primary"
+                              onKeyDown={handleAddLink}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </Popover.Panel>
+                  </Popover>
+                )}
+                {canEditResources && !disabled && (
+                  <input 
+                    type="file" 
+                    multiple 
+                    accept="image/*,video/*,application/pdf,.pdf"
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                  />
+                )}
+              </div>
+            </>
           )}
-          <input 
-            type="file" 
-            multiple 
-            accept="image/*,video/*,application/pdf,.pdf"
-            className="hidden" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-          />
-        </div>
+        </BoundField>
       </div>
     </div>
   );

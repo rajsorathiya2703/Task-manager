@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Task } from './schemas/task.schema';
@@ -11,6 +11,12 @@ import { CommentsService } from '../comments/comments.service';
 
 import { Team } from '../teams/schemas/team.schema';
 import { Employee } from '../employees/schemas/employee.schema';
+import {
+  isTaskInScope,
+  TaskSubject,
+  TaskProjectContext,
+  ScopeType,
+} from '../access/resolvers/tasks.resolver';
 
 @Injectable()
 export class TasksService {
@@ -61,14 +67,114 @@ export class TasksService {
   }
 
 
+  /**
+   * Builds Mongo query criteria according to the user's effective scope:
+   *   - 'all' / isSystemAdmin: {} (no extra criteria)
+   *   - 'own': matches task owner, assignee, or collaborator
+   *   - 'team': own criteria OR project belongs to one of user's teams
+   *   - 'none': null (empty set)
+   */
+  private async buildTaskScopeFilter(
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
+  ): Promise<any> {
+    if (isSystemAdmin || scope === 'all') {
+      return {};
+    }
+    if (scope === 'none') {
+      return null;
+    }
+
+    const { Types } = require('mongoose');
+    const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+
+    const ownConditions: any[] = [];
+    if (userId) {
+      if (Types.ObjectId.isValid(userId)) {
+        ownConditions.push({ userId: new Types.ObjectId(userId) });
+      }
+      ownConditions.push({ userId: userId.toString() });
+    }
+    if (employeeIds.length > 0) {
+      ownConditions.push({ assignee: { $in: employeeIds } });
+      ownConditions.push({ assigneeId: { $in: employeeIds } });
+      ownConditions.push({ assignedBy: { $in: employeeIds } });
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const emailRegex = new RegExp(`^${email.trim()}$`, 'i');
+      ownConditions.push({ assigneeEmail: { $regex: emailRegex } });
+      ownConditions.push({ 'members.email': { $regex: emailRegex } });
+    }
+
+    if (scope === 'own') {
+      return ownConditions.length > 0 ? { $or: ownConditions } : null;
+    }
+
+    if (scope === 'team') {
+      const teamConditions: any[] = [...ownConditions];
+
+      // Find teams where user's employees are member or teamLead
+      const teamQuery: any[] = [];
+      if (employeeIds.length > 0) {
+        teamQuery.push({ members: { $in: employeeIds } });
+        teamQuery.push({ teamLead: { $in: employeeIds } });
+      }
+      if (userId) {
+        if (Types.ObjectId.isValid(userId)) {
+          teamQuery.push({ members: new Types.ObjectId(userId) });
+          teamQuery.push({ teamLead: new Types.ObjectId(userId) });
+        }
+        teamQuery.push({ members: userId.toString() });
+        teamQuery.push({ teamLead: userId.toString() });
+      }
+
+      if (teamQuery.length > 0) {
+        const teams = await this.teamModel
+          .find({ $or: teamQuery })
+          .select('_id')
+          .lean()
+          .exec();
+        const teamIds = teams.map((t) => t._id);
+
+        if (teamIds.length > 0) {
+          const projects = await this.projectModel
+            .find({ teamId: { $in: teamIds } })
+            .select('_id')
+            .lean()
+            .exec();
+          const projectIds = projects.map((p) => p._id);
+
+          if (projectIds.length > 0) {
+            teamConditions.push({ projectId: { $in: projectIds } });
+          }
+          teamConditions.push({ projectTeamId: { $in: teamIds } });
+          teamConditions.push({ teamId: { $in: teamIds } });
+        }
+      }
+
+      return teamConditions.length > 0 ? { $or: teamConditions } : null;
+    }
+
+    return null;
+  }
+
   async hasTaskAccess(
-    _task: Task,
-    _userId?: string,
-    _email?: string,
-    _isSystemAdmin?: boolean,
-    _scope: 'own' | 'team' | 'all' = 'all',
+    task: Task,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'all',
   ): Promise<boolean> {
-    return true;
+    if (isSystemAdmin || scope === 'all') return true;
+    if (scope === 'none') return false;
+    try {
+      await this.findOne(task._id.toString(), userId, email, isSystemAdmin, scope);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async create(userId: string, createTaskDto: CreateTaskDto, email?: string, _isSystemAdmin?: boolean): Promise<Task> {
@@ -128,20 +234,44 @@ export class TasksService {
   }
 
   async findAll(
-    _userId?: string,
-    _email?: string,
+    userId?: string,
+    email?: string,
     projectId?: string,
-    _isSystemAdmin?: boolean,
-    _scope: 'own' | 'team' | 'all' = 'all',
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'all',
   ): Promise<Task[]> {
     const { Types } = require('mongoose');
-    const query: any = {};
+
+    if (scope === 'none' && !isSystemAdmin) {
+      return [];
+    }
+
+    const scopeFilter = await this.buildTaskScopeFilter(userId, email, isSystemAdmin, scope);
+    if (scopeFilter === null) {
+      return [];
+    }
+
+    const queryParts: any[] = [];
+    if (Object.keys(scopeFilter).length > 0) {
+      queryParts.push(scopeFilter);
+    }
+
     if (projectId) {
       const projIdObj = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
-      query.$or = [{ projectId: projIdObj }, { projectId: projectId.toString() }];
+      queryParts.push({
+        $or: [{ projectId: projIdObj }, { projectId: projectId.toString() }],
+      });
     }
+
+    const finalQuery =
+      queryParts.length === 0
+        ? {}
+        : queryParts.length === 1
+        ? queryParts[0]
+        : { $and: queryParts };
+
     return this.taskModel
-      .find(query)
+      .find(finalQuery)
       .populate('projectId', 'name color')
       .populate('assignee')
       .populate('assignedBy')
@@ -154,7 +284,7 @@ export class TasksService {
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'own',
+    scope: ScopeType = 'own',
   ): Promise<any | null> {
     const { Types } = require('mongoose');
     if (!Types.ObjectId.isValid(id)) {
@@ -162,6 +292,74 @@ export class TasksService {
     }
     const task = await this.taskModel.findById(id).populate('assignee').populate('assignedBy').exec();
     if (!task) return null;
+
+    // ─── PBAC Record-Level Scope Check (§6.2, §6.3) ─────────────────────────
+    if (!isSystemAdmin && scope !== 'all') {
+      if (scope === 'none') {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Access denied: scope is none for this action',
+        });
+      }
+
+      // Resolve relational context
+      let project: any = null;
+      let team: any = null;
+      if (task.projectId) {
+        const projId = (task.projectId as any)?._id || task.projectId;
+        project = await this.projectModel.findById(projId).lean().exec();
+        if (project?.teamId) {
+          team = await this.teamModel.findById(project.teamId).lean().exec();
+        }
+      }
+
+      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+      const primaryEmpId = employeeIds.length > 0 ? String(employeeIds[0]) : undefined;
+
+      const userTeams = await this.teamModel
+        .find({
+          $or: [
+            { members: { $in: employeeIds } },
+            { teamLead: { $in: employeeIds } },
+          ],
+        })
+        .lean()
+        .exec();
+
+      const teamIds = userTeams.map((t) => String(t._id));
+      const leadingTeamIds = userTeams
+        .filter(
+          (t) =>
+            t.teamLead &&
+            employeeIds.some((e) => String(e) === String(t.teamLead)),
+        )
+        .map((t) => String(t._id));
+
+      const subject: TaskSubject = {
+        userId,
+        email,
+        employeeId: primaryEmpId,
+        teamIds,
+        leadingTeamIds,
+        isSystemAdmin,
+      };
+
+      const context: TaskProjectContext = {
+        project,
+        team,
+        teamId: project?.teamId,
+      };
+
+      const inScope = isTaskInScope(scope, task, subject, context);
+      if (!inScope) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: `Access denied: task is out of scope (granted scope: '${scope}')`,
+        });
+      }
+    }
     
     if (task.isTimerRunning && task.timerStartedAt && task.estimatedHours && task.estimatedHours > 0) {
       const alreadyLoggedSeconds = (task.timeEntries || []).reduce((acc: number, entry: any) => acc + (entry.durationSeconds || 0), 0);
@@ -259,7 +457,7 @@ export class TasksService {
     email?: string,
     user?: { name: string; avatarUrl?: string; email?: string },
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' = 'own',
+    scope: ScopeType = 'own',
   ): Promise<Task | null> {
     let existingTask: any = null;
     if (userId) {
@@ -479,11 +677,14 @@ export class TasksService {
 
   async remove(
     id: string,
-    _userId?: string,
-    _email?: string,
-    _isSystemAdmin?: boolean,
-    _scope: 'own' | 'team' | 'all' = 'all',
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope: ScopeType = 'own',
   ): Promise<Task | null> {
+    if (!isSystemAdmin && scope !== 'all') {
+      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    }
     return this.taskModel.findByIdAndDelete(id).exec();
   }
 

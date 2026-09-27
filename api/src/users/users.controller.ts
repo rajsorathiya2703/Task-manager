@@ -14,6 +14,7 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { EmployeesService } from '../employees/employees.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { RequireAccess } from '../access/decorators/require-access.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -25,11 +26,13 @@ export class UsersController {
   ) {}
 
   @Get()
+  @RequireAccess({ module: 'users', action: 'read' })
   async findAll() {
     return this.usersService.findAll();
   }
 
   @Get(':id')
+  @RequireAccess({ module: 'users', action: 'read' })
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
     if (!user) {
@@ -39,6 +42,7 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @RequireAccess({ module: 'users', action: 'update' })
   async update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
@@ -58,6 +62,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @RequireAccess({ module: 'users', action: 'delete' })
   async remove(@Param('id') id: string) {
     const targetUser = await this.usersService.findById(id);
     if (!targetUser) {

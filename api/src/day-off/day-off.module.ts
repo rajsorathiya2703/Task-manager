@@ -6,6 +6,7 @@ import { DayOffSettings, DayOffSettingsSchema } from './schemas/day-off-settings
 import { LeaveBalance, LeaveBalanceSchema } from './schemas/leave-balance.schema';
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
+import { Team, TeamSchema } from '../teams/schemas/team.schema';
 import { DayOffService } from './day-off.service';
 import { DayOffMailService } from './day-off-mail.service';
 import { DayOffController } from './day-off.controller';
@@ -22,6 +23,7 @@ import { UsersModule } from '../users/users.module';
       { name: LeaveBalance.name, schema: LeaveBalanceSchema },
       { name: Notification.name, schema: NotificationSchema },
       { name: Employee.name, schema: EmployeeSchema },
+      { name: Team.name, schema: TeamSchema },
     ]),
     forwardRef(() => EmployeesModule),
     forwardRef(() => UsersModule),

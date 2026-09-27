@@ -4,6 +4,7 @@ import { DndContext, DragEndEvent, MouseSensor, TouchSensor, useSensor, useSenso
 import { Project } from "../../lib/data";
 import { ProjectCard } from "./ProjectCard";
 import { Plus } from "lucide-react";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ProjectBoardProps {
   data: Record<string, Project[]>;
@@ -17,14 +18,17 @@ function ProjectColumn({
   projects,
   onProjectClick,
   onAddProjectClick,
+  canDrag = true,
 }: {
   status: string;
   projects: Project[];
   onProjectClick: (project: Project) => void;
   onAddProjectClick?: () => void;
+  canDrag?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: status,
+    disabled: !canDrag,
   });
 
   const getStatusDot = (st: string) => {
@@ -75,6 +79,7 @@ function ProjectColumn({
             key={project.id || (project as any)._id}
             project={project}
             onClick={() => onProjectClick(project)}
+            canDrag={canDrag}
           />
         ))}
 
@@ -94,6 +99,9 @@ export function ProjectBoard({
   onProjectClick,
   onAddProjectClick,
 }: ProjectBoardProps) {
+  const { canField } = useAccessControl();
+  const canUpdateStatus = canField("projects", "status", "update");
+
   const stages = Object.keys(data);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -101,6 +109,8 @@ export function ProjectBoard({
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canUpdateStatus) return;
+
     const { active, over } = event;
     if (!over) return;
 
@@ -131,6 +141,7 @@ export function ProjectBoard({
               projects={data[stage] || []}
               onProjectClick={onProjectClick}
               onAddProjectClick={onAddProjectClick}
+              canDrag={canUpdateStatus}
             />
           ))}
         </div>

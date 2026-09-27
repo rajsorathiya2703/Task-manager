@@ -10,6 +10,8 @@ import {
 import { useSidebar } from "../../../../../src/components/layout/SidebarContext";
 import { fetchEmployeeById, fetchEmployees, createEmployee, api } from "../../../../../src/lib/api";
 import { RecordNavigator } from "../../../../../src/components/common/RecordNavigator";
+import { useAccess } from "../../../../../src/contexts/AccessContext";
+import { BoundField } from "../../../../../src/components/access";
 import Link from "next/link";
 
 const EMPTY_EMPLOYEE = {
@@ -45,7 +47,8 @@ export default function EmployeeDetailPage({
   const isNew = id === "new";
   const router = useRouter();
   const { isOpen, toggleSidebar } = useSidebar();
-  const canReadPayroll = true;
+  const { canField } = useAccess();
+  const canReadPayroll = canField("employees", "baseSalary", "read");
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
@@ -426,71 +429,101 @@ export default function EmployeeDetailPage({
                 </div>
                 <div className="p-5 space-y-5">
                   <div className="grid grid-cols-3 gap-4">
-                    <Field label="Base Salary" required>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
-                          {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
-                        </span>
-                        <input
-                          type="number"
-                          value={employeeData.baseSalary || 0}
-                          onChange={(e) => set("baseSalary", parseFloat(e.target.value) || 0)}
-                          className="w-full text-sm pl-7 pr-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
-                        />
-                      </div>
-                    </Field>
-                    <Field label="Currency">
-                      <select
-                        value={employeeData.currency || "USD"}
-                        onChange={(e) => set("currency", e.target.value)}
-                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
-                      >
-                        <option value="USD">USD ($)</option>
-                        <option value="EUR">EUR (€)</option>
-                        <option value="GBP">GBP (£)</option>
-                        <option value="INR">INR (₹)</option>
-                      </select>
-                    </Field>
-                    <Field label="Pay Frequency">
-                      <select
-                        value={employeeData.payFrequency || "Monthly"}
-                        onChange={(e) => set("payFrequency", e.target.value)}
-                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all"
-                      >
-                        <option value="Weekly">Weekly</option>
-                        <option value="Bi-weekly">Bi-weekly</option>
-                        <option value="Monthly">Monthly</option>
-                      </select>
-                    </Field>
+                    <BoundField module="employees" field="baseSalary">
+                      {({ disabled }) => (
+                        <Field label="Base Salary" required>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
+                              {employeeData.currency === "USD" ? "$" : employeeData.currency === "EUR" ? "€" : employeeData.currency === "GBP" ? "£" : "₹"}
+                            </span>
+                            <input
+                              type="number"
+                              disabled={disabled}
+                              value={employeeData.baseSalary || 0}
+                              onChange={(e) => set("baseSalary", parseFloat(e.target.value) || 0)}
+                              className="w-full text-sm pl-7 pr-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </Field>
+                      )}
+                    </BoundField>
+                    <BoundField module="employees" field="currency">
+                      {({ disabled }) => (
+                        <Field label="Currency">
+                          <select
+                            disabled={disabled}
+                            value={employeeData.currency || "USD"}
+                            onChange={(e) => set("currency", e.target.value)}
+                            className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="USD">USD ($)</option>
+                            <option value="EUR">EUR (€)</option>
+                            <option value="GBP">GBP (£)</option>
+                            <option value="INR">INR (₹)</option>
+                          </select>
+                        </Field>
+                      )}
+                    </BoundField>
+                    <BoundField module="employees" field="payFrequency">
+                      {({ disabled }) => (
+                        <Field label="Pay Frequency">
+                          <select
+                            disabled={disabled}
+                            value={employeeData.payFrequency || "Monthly"}
+                            onChange={(e) => set("payFrequency", e.target.value)}
+                            className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="Weekly">Weekly</option>
+                            <option value="Bi-weekly">Bi-weekly</option>
+                            <option value="Monthly">Monthly</option>
+                          </select>
+                        </Field>
+                      )}
+                    </BoundField>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="Bank Account Number">
-                      <input
-                        type="text"
-                        value={employeeData.bankAccountNumber || ""}
-                        onChange={(e) => set("bankAccountNumber", e.target.value)}
-                        placeholder="•••• •••• ••••"
-                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                      />
-                    </Field>
-                    <Field label="Bank Routing Number">
-                      <input
-                        type="text"
-                        value={employeeData.bankRoutingNumber || ""}
-                        onChange={(e) => set("bankRoutingNumber", e.target.value)}
-                        placeholder="•••••••••"
-                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                      />
-                    </Field>
-                    <Field label="Tax ID / SSN">
-                      <input
-                        type="password"
-                        value={employeeData.taxId || ""}
-                        onChange={(e) => set("taxId", e.target.value)}
-                        placeholder="•••-••-••••"
-                        className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono"
-                      />
-                    </Field>
+                    <BoundField module="employees" field="bankAccountNumber">
+                      {({ disabled }) => (
+                        <Field label="Bank Account Number">
+                          <input
+                            type="text"
+                            disabled={disabled}
+                            value={employeeData.bankAccountNumber || ""}
+                            onChange={(e) => set("bankAccountNumber", e.target.value)}
+                            placeholder="•••• •••• ••••"
+                            className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                        </Field>
+                      )}
+                    </BoundField>
+                    <BoundField module="employees" field="bankRoutingNumber">
+                      {({ disabled }) => (
+                        <Field label="Bank Routing Number">
+                          <input
+                            type="text"
+                            disabled={disabled}
+                            value={employeeData.bankRoutingNumber || ""}
+                            onChange={(e) => set("bankRoutingNumber", e.target.value)}
+                            placeholder="•••••••••"
+                            className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                        </Field>
+                      )}
+                    </BoundField>
+                    <BoundField module="employees" field="taxId">
+                      {({ disabled }) => (
+                        <Field label="Tax ID / SSN">
+                          <input
+                            type="password"
+                            disabled={disabled}
+                            value={employeeData.taxId || ""}
+                            onChange={(e) => set("taxId", e.target.value)}
+                            placeholder="•••-••-••••"
+                            className="w-full text-sm px-3 py-2 bg-muted/40 border border-border/60 rounded-lg outline-none focus:border-primary focus:bg-muted/60 transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                        </Field>
+                      )}
+                    </BoundField>
                   </div>
                 </div>
               </div>

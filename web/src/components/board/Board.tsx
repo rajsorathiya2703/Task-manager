@@ -3,6 +3,7 @@
 import { DndContext, DragEndEvent, MouseSensor, TouchSensor, useSensor, useSensors, closestCorners } from "@dnd-kit/core";
 import { Column } from "./Column";
 import { Task } from "../../lib/data";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface BoardProps {
   data: Record<string, Task[]>;
@@ -12,6 +13,9 @@ interface BoardProps {
 }
 
 export function Board({ data, onTaskStatusChange, projectId, showProjectCapsule = false }: BoardProps) {
+  const { canField } = useAccessControl();
+  const canUpdateStatus = canField("tasks", "status", "update");
+
   const stages = Object.keys(data);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -19,6 +23,8 @@ export function Board({ data, onTaskStatusChange, projectId, showProjectCapsule 
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canUpdateStatus) return;
+
     const { active, over } = event;
     if (!over) return;
 
@@ -50,6 +56,7 @@ export function Board({ data, onTaskStatusChange, projectId, showProjectCapsule 
               tasks={data[stage] || []} 
               projectId={projectId} 
               showProjectCapsule={showProjectCapsule}
+              canDrag={canUpdateStatus}
             />
           ))}
         </div>
