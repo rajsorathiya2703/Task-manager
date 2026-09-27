@@ -56,7 +56,29 @@ export class TasksService {
         ? await this.employeeModel.find({ $or: employeeQuery }).exec()
         : [];
 
-    const ids: any[] = employees.map((e) => e._id);
+    const ids: any[] = [];
+    for (const e of employees) {
+      if (e._id) {
+        if (Types.ObjectId.isValid(e._id)) {
+          ids.push(new Types.ObjectId(e._id));
+        }
+        ids.push(e._id.toString());
+      }
+      if (e.userId) {
+        if (Types.ObjectId.isValid(e.userId)) {
+          ids.push(new Types.ObjectId(e.userId));
+        }
+        ids.push(e.userId.toString());
+      }
+      // Self-heal: link userId on employee record if missing
+      if (userId && !e.userId && Types.ObjectId.isValid(userId)) {
+        this.employeeModel.updateOne(
+          { _id: e._id },
+          { $set: { userId: new Types.ObjectId(userId) } },
+        ).exec().catch(() => {});
+      }
+    }
+
     if (userId) {
       if (Types.ObjectId.isValid(userId)) {
         ids.push(new Types.ObjectId(userId));
@@ -65,6 +87,7 @@ export class TasksService {
     }
     return ids;
   }
+
 
 
   /**
@@ -207,6 +230,31 @@ export class TasksService {
           employee = await this.employeeModel.findOne({ $or: [{ userId: targetAssigneeId }, { _id: targetAssigneeId }] }).exec();
         }
         if (employee && employee.email) {
+          if (!employee.userId) {
+            try {
+              const cleanEmpEmail = employee.email.trim();
+              const existingUser = await this.employeeModel.db.collection('users').findOne({
+                email: { $regex: new RegExp(`^${cleanEmpEmail}$`, 'i') },
+              });
+              if (existingUser) {
+                await this.employeeModel.updateOne(
+                  { _id: employee._id },
+                  { $set: { userId: existingUser._id } },
+                );
+                await this.employeeModel.db.collection('users').updateOne(
+                  { _id: existingUser._id },
+                  { $set: { is_employee: true } },
+                );
+                await this.employeeModel.db.collection('roles').updateOne(
+                  { slug: 'employee' },
+                  { $addToSet: { members: existingUser._id } },
+                );
+              }
+            } catch (linkErr) {
+              // ignore
+            }
+          }
+
           const employeeName = employee.fullName
             ? `${employee.fullName.firstName} ${employee.fullName.lastName || ''}`.trim()
             : (employee.email.split('@')[0] || 'Team Member');
@@ -580,6 +628,27 @@ export class TasksService {
               employeeName = `${employee.fullName.firstName} ${employee.fullName.lastName || ''}`.trim();
             } else if (employee && employee.email) {
               employeeName = employee.email.split('@')[0];
+            }
+
+            if (employee && employee.email && !employee.userId) {
+              const cleanEmpEmail = employee.email.trim();
+              const existingUser = await this.employeeModel.db.collection('users').findOne({
+                email: { $regex: new RegExp(`^${cleanEmpEmail}$`, 'i') },
+              });
+              if (existingUser) {
+                await this.employeeModel.updateOne(
+                  { _id: employee._id },
+                  { $set: { userId: existingUser._id } },
+                );
+                await this.employeeModel.db.collection('users').updateOne(
+                  { _id: existingUser._id },
+                  { $set: { is_employee: true } },
+                );
+                await this.employeeModel.db.collection('roles').updateOne(
+                  { slug: 'employee' },
+                  { $addToSet: { members: existingUser._id } },
+                );
+              }
             }
           } catch (e) {
             console.error('Failed to find assignee employee info:', e);

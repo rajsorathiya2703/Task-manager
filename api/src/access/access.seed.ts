@@ -48,9 +48,80 @@ export class AccessSeedService {
       } else {
         // Idempotent migration: ensure existing admins are in System Admin members
         await this.syncSystemAdminMembers(adminUserIds);
+        await this.syncEmployeeMembers();
       }
     } catch (err: any) {
       this.logger.error(`Failed to seed default access roles: ${err?.message || err}`, err?.stack);
+    }
+  }
+
+  /**
+   * Ensures all non-admin users have the default 'employee' role and links matching employee records.
+   */
+  private async syncEmployeeMembers(): Promise<void> {
+    const employeeRole = await this.roleModel.findOne({ slug: 'employee' });
+    if (!employeeRole) return;
+
+    // Find all users who are not system admins
+    const regularUsers = await this.userModel.find({ is_system_admin: { $ne: true } }).exec();
+    const existingRoles = await this.roleModel.find({ isActive: true }).select('members').exec();
+
+    // Map which users already have ANY role
+    const usersWithAnyRole = new Set<string>();
+    for (const r of existingRoles) {
+      for (const m of r.members || []) {
+        if (m) usersWithAnyRole.add(m.toString());
+      }
+    }
+
+    let addedToEmployeeRole = 0;
+    for (const u of regularUsers) {
+      const uId = u._id.toString();
+      if (!usersWithAnyRole.has(uId)) {
+        employeeRole.members.push(u._id as Types.ObjectId);
+        usersWithAnyRole.add(uId);
+        addedToEmployeeRole++;
+      }
+    }
+
+    if (addedToEmployeeRole > 0) {
+      await employeeRole.save();
+      await this.policyCompilerService.compileAndPersist();
+      this.logger.log(`Assigned default 'employee' role to ${addedToEmployeeRole} regular user(s).`);
+    }
+
+    // Auto-link any unlinked Employee records matching a User email
+    try {
+      const employeesCollection = this.userModel.db.collection('employees');
+      const unlinkedEmployees = await employeesCollection.find({ userId: { $in: [null, undefined] } }).toArray();
+      let linkedCount = 0;
+
+      for (const emp of unlinkedEmployees) {
+        if (emp.email && typeof emp.email === 'string' && emp.email.trim()) {
+          const cleanEmail = emp.email.trim();
+          const matchingUser = await this.userModel.findOne({
+            email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+          }).exec();
+
+          if (matchingUser) {
+            await employeesCollection.updateOne(
+              { _id: emp._id },
+              { $set: { userId: matchingUser._id } },
+            );
+            await this.userModel.updateOne(
+              { _id: matchingUser._id },
+              { $set: { is_employee: true } },
+            );
+            linkedCount++;
+          }
+        }
+      }
+
+      if (linkedCount > 0) {
+        this.logger.log(`Auto-linked ${linkedCount} unlinked employee record(s) to user accounts.`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed during employee sync: ${err?.message || err}`);
     }
   }
 

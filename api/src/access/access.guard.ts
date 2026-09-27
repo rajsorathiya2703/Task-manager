@@ -15,7 +15,7 @@ import { PolicyCompilerService } from './policy-compiler.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { Subject, Decision, ActionType } from './policy.engine';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Role, RoleDocument } from './schemas/role.schema';
 
 /**
@@ -101,11 +101,29 @@ export class AccessGuard implements CanActivate {
     const userId = (user._id?.toString?.() ?? user.id) as string;
 
     // Look up all roles where this user is a member
-    const userRoles = await this.roleModel
+    let userRoles = await this.roleModel
       .find({ members: userId, isActive: true })
       .select('_id slug')
       .lean()
       .exec();
+
+    // Default Role Fallback: If user has no roles and is not System Admin, assign 'employee' role
+    if (userRoles.length === 0 && !user.is_system_admin && typeof this.roleModel.findOne === 'function') {
+      const defaultRole = await this.roleModel
+        .findOne({ slug: 'employee', isActive: true })
+        .select('_id slug')
+        .lean()
+        .exec();
+      if (defaultRole) {
+        userRoles = [defaultRole];
+        const userObjId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+        this.roleModel.updateOne(
+          { _id: defaultRole._id },
+          { $addToSet: { members: userObjId } }
+        ).exec().catch(() => {});
+      }
+    }
+
 
     const subject: Subject = {
       userId,
