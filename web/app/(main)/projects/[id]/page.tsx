@@ -8,6 +8,7 @@ import { fetchTasks, fetchProjectById, updateTask } from "../../../../src/lib/ap
 import { Task, Project } from "../../../../src/lib/data";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useAccessControl } from "../../../../src/contexts/AccessContext";
 
 const emptyData: Record<string, Task[]> = {
   "To Do": [],
@@ -18,6 +19,8 @@ const emptyData: Record<string, Task[]> = {
 
 export default function ProjectTasksPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { can } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
   const [view, setView] = useState<'board' | 'list'>('board');
   const [project, setProject] = useState<Project | null>(null);
   const [data, setData] = useState<Record<string, Task[]>>(emptyData);
@@ -142,6 +145,7 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
         onViewChange={setView}
         addText="Add Task"
         addHref={`/tasks/new?projectId=${id}`}
+        showAdd={canCreateTask}
       />
 
       {view === 'board' ? (

@@ -6,6 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { TaskCard } from "./TaskCard";
 import { Task } from "../../lib/data";
 import Link from "next/link";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ColumnProps {
   title: string;
@@ -26,6 +27,9 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
   useEffect(() => {
     setTasks(initialTasks);
   }, [initialTasks]);
+
+  const { can } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
 
   const addTaskHref = `/tasks/new?status=${encodeURIComponent(title)}${projectId ? `&projectId=${projectId}` : ''}`;
 
@@ -54,9 +58,11 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
           <h3 className="font-semibold text-foreground text-sm">{title}</h3>
         </div>
         <div className="flex items-center gap-1">
-          <Link href={addTaskHref} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors">
-            <Plus className="w-4 h-4" />
-          </Link>
+          {canCreateTask && (
+            <Link href={addTaskHref} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors" title="Add Task">
+              <Plus className="w-4 h-4" />
+            </Link>
+          )}
           <button className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors">
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -78,12 +84,14 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
       </div>
 
       {/* Column Footer */}
-      <div className="p-3 pt-1">
-        <Link href={addTaskHref} className="w-full flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground py-1.5 px-3 rounded-lg hover:bg-muted/50 transition-colors">
-          <Plus className="w-4 h-4" />
-          Add Task
-        </Link>
-      </div>
+      {canCreateTask && (
+        <div className="p-3 pt-1">
+          <Link href={addTaskHref} className="w-full flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground py-1.5 px-3 rounded-lg hover:bg-muted/50 transition-colors">
+            <Plus className="w-4 h-4" />
+            Add Task
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -22,7 +22,10 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, onDuplicate }: TaskCardProps) {
-  const { canField } = useAccessControl();
+  const { canField, can } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
+  const canDeleteTask = can("tasks", "delete");
+  const hasActions = canCreateTask || canDeleteTask;
   const canDragCard = canDrag !== undefined ? canDrag : canField("tasks", "status", "update");
 
   const taskId = task.id || (task as any)._id;
@@ -103,21 +106,25 @@ export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, 
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: 160, zIndex: 9999 }}
           className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 text-sm"
         >
-          <button
-            onClick={handleDuplicate}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors text-foreground"
-          >
-            <Copy className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            Duplicate
-          </button>
-          <div className="border-t border-border/50 my-1" />
-          <button
-            onClick={handleDelete}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-red-600 dark:text-red-400"
-          >
-            <Trash2 className="w-3.5 h-3.5 shrink-0" />
-            Delete
-          </button>
+          {canCreateTask && (
+            <button
+              onClick={handleDuplicate}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors text-foreground"
+            >
+              <Copy className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              Duplicate
+            </button>
+          )}
+          {canCreateTask && canDeleteTask && <div className="border-t border-border/50 my-1" />}
+          {canDeleteTask && (
+            <button
+              onClick={handleDelete}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-red-600 dark:text-red-400"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              Delete
+            </button>
+          )}
         </div>,
         document.body
       )
@@ -144,19 +151,21 @@ export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, 
           </div>
 
           {/* Actions button */}
-          <div className="shrink-0">
-            {isActionLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-            ) : (
-              <button
-                ref={btnRef}
-                onClick={openMenu}
-                className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {hasActions && (
+            <div className="shrink-0">
+              {isActionLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              ) : (
+                <button
+                  ref={btnRef}
+                  onClick={openMenu}
+                  className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between mb-4">

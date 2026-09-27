@@ -6,6 +6,7 @@ import { Task } from "../../lib/data";
 import { ListRow } from "./ListRow";
 
 import Link from "next/link";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ListGroupProps {
   title: string;
@@ -22,6 +23,9 @@ export function ListGroup({ title, tasks: initialTasks, addTaskHref, showAddTask
   useEffect(() => {
     setTasks(initialTasks);
   }, [initialTasks]);
+
+  const { can } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
 
   const handleDelete = (taskId: string) => {
     setTasks((prev) => prev.filter((t) => (t.id || (t as any)._id) !== taskId));
@@ -72,7 +76,7 @@ export function ListGroup({ title, tasks: initialTasks, addTaskHref, showAddTask
           </div>
 
           {/* Footer Add Task Row */}
-          {showAddTask && addTaskHref !== null && (
+          {showAddTask && addTaskHref !== null && canCreateTask && (
             (() => {
               const baseHref = addTaskHref || "/tasks/new";
               const finalHref = baseHref.includes("?") 

@@ -10,6 +10,7 @@ import { FilterDropdown, FilterRule, FilterFieldDefinition } from "../common/Fil
 import { GroupByDropdown, GroupByOption } from "../common/GroupByDropdown";
 import { GlobalTimerDisplay } from "../common/GlobalTimerDisplay";
 import { NotificationDropdown } from "../common/NotificationDropdown";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 export type SearchContext = string;
 
@@ -73,6 +74,14 @@ export function PageHeader({
   const { isOpen, toggleSidebar } = useSidebar();
   const { isOpen: isChatbotOpen, toggleChatbot } = useChatbot();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { can } = useAccessControl();
+
+  const isTaskCreate = Boolean(
+    addHref?.startsWith("/tasks/new") ||
+    (typeof addText === "string" && addText.toLowerCase().includes("task") && (!addHref || addHref.startsWith("/tasks/new")))
+  );
+  const isPermitted = isTaskCreate ? can("tasks", "create") : true;
+  const shouldShowAdd = showAdd && isPermitted;
 
   const defaultContexts: SearchContextItem[] = useMemo(() => [
     { key: 'title', label: 'Title', icon: Type },
@@ -345,7 +354,7 @@ export function PageHeader({
         </button>
 
         {/* Add Button */}
-        {showAdd && (
+        {shouldShowAdd && (
           onAddClick ? (
             <Button onClick={onAddClick} variant="primary" className="gap-1.5 h-7 px-3 rounded-md ml-1 text-xs">
               <Plus className="w-3.5 h-3.5" />

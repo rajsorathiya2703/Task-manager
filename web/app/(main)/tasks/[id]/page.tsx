@@ -13,6 +13,8 @@ import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, st
 import { useTimer } from "../../../../src/contexts/TimerContext";
 import { getUserDisplayName } from "../../../../src/components/common/Comments";
 import { RecordNavigator } from "../../../../src/components/common/RecordNavigator";
+import { useAccessControl } from "../../../../src/contexts/AccessContext";
+import { AccessDenied } from "../../../../src/components/access/AccessDenied";
 import Link from "next/link";
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +28,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   
   const { refreshTimer } = useTimer();
+  const { can, loading: accessLoading } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(!isNew);
   const [isTimerLoading, setIsTimerLoading] = useState(false);
@@ -247,6 +251,10 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   const handleSave = async () => {
+    if (isNew && !canCreateTask) {
+      alert("You do not have permission to create tasks.");
+      return;
+    }
     try {
       setIsSaving(true);
       if (isNew) {
@@ -348,6 +356,18 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     );
   }
 
+  if (isNew && !accessLoading && !canCreateTask) {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden items-center justify-center">
+        <AccessDenied
+          module="tasks"
+          action="create"
+          message="You do not have permission to create new tasks. Please contact your organization administrator if you need access."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Top Toolbar */}
@@ -393,14 +413,16 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             />
           )}
           {isNew ? (
-            <button 
-              onClick={handleSave}
-              disabled={isSaving || !taskData.title?.trim()}
-              className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {isSaving ? 'Saving...' : 'Save Task'}
-            </button>
+            canCreateTask && (
+              <button 
+                onClick={handleSave}
+                disabled={isSaving || !taskData.title?.trim()}
+                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {isSaving ? 'Saving...' : 'Save Task'}
+              </button>
+            )
           ) : hasChanges ? (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <button 

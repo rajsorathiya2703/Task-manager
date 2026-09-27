@@ -8,6 +8,7 @@ import { formatDisplayDate } from "../../lib/utils";
 import { startTaskTimer, stopTaskTimer, deleteTask, duplicateTask } from "../../lib/api";
 import { useTimer } from "../../contexts/TimerContext";
 import { ProjectCapsule } from "./ProjectCapsule";
+import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ListRowProps {
   task: Task;
@@ -25,6 +26,10 @@ function formatDuration(seconds: number): string {
 
 export function ListRow({ task: initialTask, showProjectCapsule = false, onDelete, onDuplicate }: ListRowProps) {
   const { refreshTimer } = useTimer();
+  const { can } = useAccessControl();
+  const canCreateTask = can("tasks", "create");
+  const canDeleteTask = can("tasks", "delete");
+  const hasActions = canCreateTask || canDeleteTask;
   const [task, setTask] = useState<Task>(initialTask);
   const [isTimerLoading, setIsTimerLoading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -146,21 +151,25 @@ export function ListRow({ task: initialTask, showProjectCapsule = false, onDelet
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: 160, zIndex: 9999 }}
           className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 text-sm"
         >
-          <button
-            onClick={handleDuplicate}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors text-foreground"
-          >
-            <Copy className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            Duplicate
-          </button>
-          <div className="border-t border-border/50 my-1" />
-          <button
-            onClick={handleDelete}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-red-600 dark:text-red-400"
-          >
-            <Trash2 className="w-3.5 h-3.5 shrink-0" />
-            Delete
-          </button>
+          {canCreateTask && (
+            <button
+              onClick={handleDuplicate}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors text-foreground"
+            >
+              <Copy className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              Duplicate
+            </button>
+          )}
+          {canCreateTask && canDeleteTask && <div className="border-t border-border/50 my-1" />}
+          {canDeleteTask && (
+            <button
+              onClick={handleDelete}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-red-600 dark:text-red-400"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              Delete
+            </button>
+          )}
         </div>,
         document.body
       )
@@ -248,16 +257,18 @@ export function ListRow({ task: initialTask, showProjectCapsule = false, onDelet
 
         {/* Actions */}
         <div className="w-12 flex items-center justify-end pr-2">
-          {isActionLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          ) : (
-            <button
-              ref={btnRef}
-              onClick={openMenu}
-              className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
+          {hasActions && (
+            isActionLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            ) : (
+              <button
+                ref={btnRef}
+                onClick={openMenu}
+                className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            )
           )}
         </div>
       </Link>
