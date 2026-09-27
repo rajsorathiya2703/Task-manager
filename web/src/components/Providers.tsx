@@ -5,6 +5,7 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import { TimerProvider } from "../contexts/TimerContext";
 import { AccessProvider } from "../contexts/AccessContext";
+import { AccessErrorNotification } from "./access";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "placeholder-client-id";
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <AccessProvider>
           <TimerProvider>
             {children}
+            <AccessErrorNotification />
           </TimerProvider>
         </AccessProvider>
       </GoogleOAuthProvider>

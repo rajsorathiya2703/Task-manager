@@ -119,6 +119,10 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           }
         } catch (error: any) {
           console.error("Failed to load task", error);
+          if (error?.response?.status === 403) {
+            setAccessDenied(true);
+            return;
+          }
           router.push('/tasks');
         } finally {
           setIsLoading(false);
@@ -352,6 +356,18 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden items-center justify-center">
+        <AccessDenied
+          module="tasks"
+          action="read"
+          message="You do not have permission to access or view this task."
+        />
       </div>
     );
   }

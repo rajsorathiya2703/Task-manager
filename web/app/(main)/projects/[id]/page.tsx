@@ -9,6 +9,7 @@ import { Task, Project } from "../../../../src/lib/data";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useAccessControl } from "../../../../src/contexts/AccessContext";
+import { AccessDenied } from "../../../../src/components/access";
 
 const emptyData: Record<string, Task[]> = {
   "To Do": [],
@@ -25,6 +26,7 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
   const [project, setProject] = useState<Project | null>(null);
   const [data, setData] = useState<Record<string, Task[]>>(emptyData);
   const [isLoading, setIsLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const loadProjectAndTasks = async () => {
     try {
@@ -67,6 +69,9 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
       }
     } catch (error: any) {
       console.error("Failed to load project or tasks", error);
+      if (error?.response?.status === 403) {
+        setAccessDenied(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -115,6 +120,18 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
     return (
       <div className="flex-1 flex items-center justify-center h-full bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden items-center justify-center">
+        <AccessDenied
+          module="projects"
+          action="read"
+          message="You do not have permission to view this project or its tasks."
+        />
       </div>
     );
   }

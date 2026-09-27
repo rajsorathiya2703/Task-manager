@@ -61,6 +61,33 @@ api.interceptors.response.use(
       }
     }
 
+    // ─── 403 Forbidden Access Error Handling ─────────────────────────────
+    if (error.response?.status === 403) {
+      const data = error.response.data;
+      const message =
+        typeof data?.message === 'string'
+          ? data.message
+          : Array.isArray(data?.message)
+          ? data.message.join(', ')
+          : data?.error || 'Access Denied: You do not have permission to perform this action.';
+
+      const detail = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        message,
+        module: data?.module,
+        action: data?.action,
+        code: data?.code,
+        fields: data?.fields,
+        url: originalRequest?.url,
+        method: originalRequest?.method?.toUpperCase(),
+        timestamp: Date.now(),
+      };
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:access-denied', { detail }));
+      }
+    }
+
     return Promise.reject(error);
   }
 );

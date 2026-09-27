@@ -8,7 +8,7 @@ import { fetchTasks } from "../../../src/lib/api";
 import { Task } from "../../../src/lib/data";
 import { FilterRule } from "../../../src/components/common/FilterDropdown";
 import { GroupByOption } from "../../../src/components/common/GroupByDropdown";
-import { ModuleGate } from "../../../src/components/access";
+import { ModuleGate, AccessDenied } from "../../../src/components/access";
 import { useAccessControl } from "../../../src/contexts/AccessContext";
 
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
@@ -36,6 +36,7 @@ export default function TasksPage() {
   const [searchContext, setSearchContext] = useState<SearchContext>('all');
   const [groupBy, setGroupBy] = useState<string>("stage");
   const [isLoading, setIsLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const processAndSetData = (
     tasksToProcess: any[], 
@@ -144,8 +145,11 @@ export default function TasksPage() {
         const backendTasks = await fetchTasks();
         setRawTasks(backendTasks || []);
         processAndSetData(backendTasks || [], filters, searchQuery, searchContext, groupBy);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch tasks from backend", error);
+        if (error?.response?.status === 403) {
+          setAccessDenied(true);
+        }
         const emptyStages: Record<string, Task[]> = {};
         defaultStages.forEach(s => { emptyStages[s] = []; });
         setData(emptyStages);
@@ -207,7 +211,16 @@ export default function TasksPage() {
 
   return (
     <ModuleGate module="tasks">
-      <div className="flex flex-col h-full overflow-hidden">
+      {accessDenied ? (
+        <div className="flex flex-col h-full bg-background overflow-hidden items-center justify-center">
+          <AccessDenied
+            module="tasks"
+            action="read"
+            message="You do not have permission to view tasks."
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col h-full overflow-hidden">
         <PageHeader 
           title="Tasks" 
           activeView={view} 
@@ -241,6 +254,7 @@ export default function TasksPage() {
           )
         )}
       </div>
+      )}
     </ModuleGate>
   );
 }
