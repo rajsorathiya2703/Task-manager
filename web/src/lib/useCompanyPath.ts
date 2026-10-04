@@ -13,32 +13,35 @@ export function useCompanyPath(): (path: string) => string {
   const company = useCompany();
   const activeSlug = company?.slug || getCompanySlug() || '';
 
-  return (path: string): string => {
-    if (!path) return `/${activeSlug}`;
+  return React.useCallback(
+    (path: string): string => {
+      if (!path) return `/${activeSlug}`;
 
-    // Leave external links, hashes, and mailto untouched
-    if (
-      path.startsWith('http://') ||
-      path.startsWith('https://') ||
-      path.startsWith('mailto:') ||
-      path.startsWith('#')
-    ) {
-      return path;
-    }
+      // Leave external links, hashes, and mailto untouched
+      if (
+        path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('mailto:') ||
+        path.startsWith('#')
+      ) {
+        return path;
+      }
 
-    // If company slug is not available yet, return raw normalized path
-    if (!activeSlug) {
-      return path.startsWith('/') ? path : `/${path}`;
-    }
+      // If company slug is not available yet, return raw normalized path
+      if (!activeSlug) {
+        return path.startsWith('/') ? path : `/${path}`;
+      }
 
-    // Avoid double-prefixing if already prefixed with active slug
-    if (path === `/${activeSlug}` || path.startsWith(`/${activeSlug}/`)) {
-      return path;
-    }
+      // Avoid double-prefixing if already prefixed with active slug
+      if (path === `/${activeSlug}` || path.startsWith(`/${activeSlug}/`)) {
+        return path;
+      }
 
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `/${activeSlug}${cleanPath}`;
-  };
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      return `/${activeSlug}${cleanPath}`;
+    },
+    [activeSlug],
+  );
 }
 
 export interface CompanyLinkProps

@@ -73,15 +73,18 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({ slug, children
     refresh();
   }, [slug, refresh]);
 
-  const value: CompanyContextValue = {
-    slug,
-    companyName,
-    membership,
-    user,
-    loading,
-    error,
-    refresh,
-  };
+  const value = React.useMemo<CompanyContextValue>(
+    () => ({
+      slug,
+      companyName,
+      membership,
+      user,
+      loading,
+      error,
+      refresh,
+    }),
+    [slug, companyName, membership, user, loading, error, refresh],
+  );
 
   return (
     <CompanyContext.Provider value={value}>

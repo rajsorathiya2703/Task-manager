@@ -33,10 +33,12 @@ export default function UserDetailPage({
   const [name, setName] = useState("");
 
   useEffect(() => {
+    let isMounted = true;
     const load = async () => {
       try {
         setIsLoading(true);
         const data = await fetchUserById(id);
+        if (!isMounted) return;
         if (!data) {
           router.push(cp("/configuration/users"));
           return;
@@ -45,23 +47,35 @@ export default function UserDetailPage({
         setName(data.name || "");
         setOriginalName(data.name || "");
       } catch (err) {
+        if (!isMounted) return;
         console.error("Failed to load user", err);
         router.push(cp("/configuration/users"));
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     load();
-  }, [id, router, cp]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
   const [allUserIds, setAllUserIds] = useState<string[]>([]);
 
   useEffect(() => {
+    let isMounted = true;
     fetchUsers().then((users) => {
-      if (users && Array.isArray(users)) {
+      if (isMounted && users && Array.isArray(users)) {
         setAllUserIds(users.map((u: any) => u._id || u.id));
       }
     }).catch((err) => console.error("Failed to load user list", err));
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const hasChanges = name !== originalName;
