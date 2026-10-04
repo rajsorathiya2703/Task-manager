@@ -1,11 +1,14 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
 import { OAuth2Client } from 'google-auth-library';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
-import { EmployeesService } from '../employees/employees.service';
+import { Company } from '../companies/schemas/company.schema';
+import { Membership } from '../companies/schemas/membership.schema';
 
 @Injectable()
 export class AuthService {
@@ -14,16 +17,17 @@ export class AuthService {
 
   constructor(
     private usersService: UsersService,
-    private employeesService: EmployeesService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    @InjectModel(Company.name) private companyModel: Model<Company>,
+    @InjectModel(Membership.name) private membershipModel: Model<Membership>,
   ) {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID') || 'placeholder';
     this.googleClient = new OAuth2Client(clientId);
   }
 
   async createGuest() {
-    const guestId = uuidv4();
+    const guestId = randomUUID();
     const user = await this.usersService.createUser({
       authType: 'guest',
       guestId,
@@ -113,20 +117,90 @@ export class AuthService {
       }
     }
 
-    // Auto-link any existing Employee record that shares this email
-    if (cleanEmail && user?._id) {
-      try {
-        const linkedEmployee = await this.employeesService.linkUserByEmail(cleanEmail, user._id);
-        if (linkedEmployee) {
-          this.logger.log(`Auto-linked Employee #${linkedEmployee._id} to User #${user._id} via email (${cleanEmail})`);
-        }
-      } catch (linkErr) {
-        this.logger.warn(`Failed to auto-link employee for ${cleanEmail}: ${linkErr}`);
-      }
-    }
+    // Auto-linking is removed per MC-33 (linking now happens on join, per company)
 
     const tokens = await this.issueTokens(user._id.toString());
     return { user, tokens };
+  }
+
+  /**
+   * Retrieves all company memberships for a user.
+   * Returns: [{ companySlug, companyName, isCompanyOwner, status }]
+   */
+  async getUserMemberships(userId: string): Promise<Array<{
+    companySlug: string;
+    companyName: string;
+    isCompanyOwner: boolean;
+    status: string;
+  }>> {
+    if (!Types.ObjectId.isValid(userId)) return [];
+
+    const memberships = await this.membershipModel
+      .find({ userId: new Types.ObjectId(userId) })
+      .populate('companyId', 'slug name status')
+      .lean()
+      .exec();
+
+    const results: Array<{
+      companySlug: string;
+      companyName: string;
+      isCompanyOwner: boolean;
+      status: string;
+    }> = [];
+
+    for (const m of memberships) {
+      const comp = m.companyId as any;
+      if (comp && comp.slug) {
+        results.push({
+          companySlug: comp.slug,
+          companyName: comp.name,
+          isCompanyOwner: !!m.isCompanyOwner,
+          status: m.status,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Retrieves active membership details for a user in a specific company.
+   * Returns: { roleIds, isCompanyOwner, employeeId } or null if not an active member.
+   */
+  async getCompanyMembership(
+    userId: string,
+    companySlug: string,
+  ): Promise<{
+    roleIds: string[];
+    isCompanyOwner: boolean;
+    employeeId: string | null;
+  } | null> {
+    if (!Types.ObjectId.isValid(userId) || !companySlug) return null;
+
+    const company = await this.companyModel
+      .findOne({ slug: companySlug.trim().toLowerCase(), status: 'active' })
+      .select('_id')
+      .lean()
+      .exec();
+
+    if (!company) return null;
+
+    const membership = await this.membershipModel
+      .findOne({
+        userId: new Types.ObjectId(userId),
+        companyId: company._id,
+        status: 'active',
+      })
+      .lean()
+      .exec();
+
+    if (!membership) return null;
+
+    return {
+      roleIds: (membership.roleIds || []).map((r: any) => r.toString()),
+      isCompanyOwner: !!membership.isCompanyOwner,
+      employeeId: membership.employeeId ? membership.employeeId.toString() : null,
+    };
   }
 
   async issueTokens(userId: string) {

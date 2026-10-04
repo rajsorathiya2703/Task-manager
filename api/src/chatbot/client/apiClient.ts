@@ -4,6 +4,19 @@ import { requestContext } from '../client/requestContext';
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
 
 /**
+ * Prefixes an API route with '/companies/{companySlug}' using the current AsyncLocalStorage context.
+ */
+export function companyPath(path: string): string {
+  const ctx = requestContext.getStore();
+  const slug = ctx?.companySlug;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (!slug) {
+    return cleanPath;
+  }
+  return `/companies/${slug}${cleanPath}`;
+}
+
+/**
  * Shared Axios client for chatbot tool calls. Automatically attaches the
  * current user's JWT Bearer token via AsyncLocalStorage.
  */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { CompanyLink } from "@/src/lib/useCompanyPath";
 import { 
   Activity, 
   Clock, 
@@ -294,13 +294,13 @@ export function LiveActivityFeed({
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
                     Active Task
                   </span>
-                  <Link
+                  <CompanyLink
                     href={`/tasks/${activeTask._id}`}
                     className="group inline-flex items-center gap-1 text-sm font-bold text-foreground hover:text-primary transition-colors line-clamp-2"
                   >
                     <span>{activeTask.title}</span>
                     <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                  </Link>
+                  </CompanyLink>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -335,12 +335,12 @@ export function LiveActivityFeed({
                     <span>Stop Timer</span>
                   </button>
 
-                  <Link
+                  <CompanyLink
                     href={`/tasks/${activeTask._id}`}
                     className="px-3 py-2 rounded-lg bg-card hover:bg-muted text-foreground border border-border text-xs font-semibold transition-colors"
                   >
                     Task Details
-                  </Link>
+                  </CompanyLink>
                 </div>
               </div>
             </div>
@@ -376,13 +376,13 @@ export function LiveActivityFeed({
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Start tracking your work time on any assigned task. Live progress will display right here in real time.
                 </p>
-                <Link
+                <CompanyLink
                   href="/tasks"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity shadow-sm"
                 >
                   <Play className="w-3 h-3 fill-current" />
                   <span>Go to My Tasks</span>
-                </Link>
+                </CompanyLink>
               </div>
             </div>
           )}
@@ -497,13 +497,13 @@ export function LiveActivityFeed({
                           Task: <span className="text-foreground font-semibold">{activity.taskTitle}</span>
                         </span>
                         {activity.taskId && (
-                          <Link
+                          <CompanyLink
                             href={`/tasks/${activity.taskId}`}
                             className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5 shrink-0"
                           >
                             <span>View</span>
                             <ArrowUpRight className="w-2.5 h-2.5" />
-                          </Link>
+                          </CompanyLink>
                         )}
                       </div>
                     )}

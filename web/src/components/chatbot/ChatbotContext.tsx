@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { getCompanySlug, API_URL } from "@/src/lib/api";
 
-const CHATBOT_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const CHATBOT_API_URL = process.env.NEXT_PUBLIC_API_URL || API_URL || 'http://localhost:3001';
 
 
 export interface TaskItemAction {
@@ -120,8 +121,13 @@ export function ChatbotProvider({ children }: { children: ReactNode }) {
     setIsTyping(true);
 
     try {
+      const slug = getCompanySlug();
+      const endpoint = slug
+        ? `${CHATBOT_API_URL}/companies/${slug}/chatbot/chat`
+        : `${CHATBOT_API_URL}/chatbot/chat`;
+
       // Call the real AI chatbot API
-      const res = await fetch(`${CHATBOT_API_URL}/chatbot/chat`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include', // sends HttpOnly cookie for browser sessions

@@ -5,7 +5,7 @@ import { Search, Filter, Plus, LayoutGrid, List, Menu, X, Tag, Type, AlignLeft, 
 import { Button } from "../ui/Button";
 import { useSidebar } from "./SidebarContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { FilterDropdown, FilterRule, FilterFieldDefinition } from "../common/FilterDropdown";
 import { GroupByDropdown, GroupByOption } from "../common/GroupByDropdown";
 import { GlobalTimerDisplay } from "../common/GlobalTimerDisplay";
@@ -77,8 +77,8 @@ export function PageHeader({
   const { can } = useAccessControl();
 
   const isTaskCreate = Boolean(
-    addHref?.startsWith("/tasks/new") ||
-    (typeof addText === "string" && addText.toLowerCase().includes("task") && (!addHref || addHref.startsWith("/tasks/new")))
+    addHref?.includes("/tasks/new") ||
+    (typeof addText === "string" && addText.toLowerCase().includes("task") && (!addHref || addHref.includes("/tasks/new")))
   );
   const isPermitted = isTaskCreate ? can("tasks", "create") : true;
   const shouldShowAdd = showAdd && isPermitted;
@@ -166,9 +166,9 @@ export function PageHeader({
             {breadcrumbs.map((bc, i) => (
               <span key={i} className="flex items-center gap-2">
                 {bc.href ? (
-                  <Link href={bc.href} className="hover:text-foreground transition-colors">
+                  <CompanyLink href={bc.href} className="hover:text-foreground transition-colors">
                     {bc.label}
-                  </Link>
+                  </CompanyLink>
                 ) : (
                   <span>{bc.label}</span>
                 )}
@@ -361,12 +361,12 @@ export function PageHeader({
               {addText}
             </Button>
           ) : (
-            <Link href={addHref}>
+            <CompanyLink href={addHref}>
               <Button variant="primary" className="gap-1.5 h-7 px-3 rounded-md ml-1 text-xs">
                 <Plus className="w-3.5 h-3.5" />
                 {addText}
               </Button>
-            </Link>
+            </CompanyLink>
           )
         )}
       </div>

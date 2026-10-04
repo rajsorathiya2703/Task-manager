@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Task } from '../tasks/schemas/task.schema';
@@ -72,9 +72,48 @@ export class DashboardService {
     query: EmployeeActivityQueryDto,
     userId?: string,
     email?: string,
+    companyId?: Types.ObjectId | string,
+    employeeId?: Types.ObjectId | string,
     isSystemAdmin?: boolean,
-    scope: 'own' | 'team' | 'all' | 'none' = 'all',
-  ) {
+    scope?: 'own' | 'team' | 'all' | 'none',
+  ): Promise<any>;
+  async getEmployeeActivity(
+    query: EmployeeActivityQueryDto,
+    userId?: string,
+    email?: string,
+    isSystemAdmin?: boolean,
+    scope?: 'own' | 'team' | 'all' | 'none',
+  ): Promise<any>;
+  async getEmployeeActivity(
+    query: EmployeeActivityQueryDto,
+    userId?: string,
+    email?: string,
+    arg4?: any,
+    arg5?: any,
+    arg6?: any,
+    arg7?: any,
+  ): Promise<any> {
+    let companyId: Types.ObjectId | undefined;
+    let callerEmployeeId: Types.ObjectId | string | undefined;
+    let isSystemAdmin = false;
+    let scope: 'own' | 'team' | 'all' | 'none' = 'all';
+
+    if (typeof arg4 === 'boolean') {
+      isSystemAdmin = arg4;
+      scope = arg5 || 'all';
+    } else if (arg4) {
+      companyId = arg4 instanceof Types.ObjectId ? arg4 : new Types.ObjectId(arg4);
+      if (typeof arg5 === 'boolean') {
+        isSystemAdmin = arg5;
+        scope = arg6 || 'all';
+        callerEmployeeId = arg7;
+      } else {
+        callerEmployeeId = arg5;
+        isSystemAdmin = typeof arg6 === 'boolean' ? arg6 : false;
+        scope = arg7 || 'all';
+      }
+    }
+
     if (!isSystemAdmin && scope === 'none') {
       throw new ForbiddenException('You do not have access to the dashboard');
     }
@@ -84,17 +123,32 @@ export class DashboardService {
 
     // 1. Resolve calling user's own employee record
     let callingUserEmployee: any = null;
-    if (userId) {
+
+    if (callerEmployeeId && Types.ObjectId.isValid(callerEmployeeId)) {
+      const callerFilter: any = { _id: new Types.ObjectId(callerEmployeeId) };
+      if (companyId) callerFilter.companyId = companyId;
+      callingUserEmployee = await this.employeeModel.findOne(callerFilter).exec();
+    }
+
+    if (!callingUserEmployee && userId) {
+      const baseFilter: any = companyId ? { companyId } : {};
       if (Types.ObjectId.isValid(userId)) {
-        callingUserEmployee = await this.employeeModel.findOne({ userId: new Types.ObjectId(userId) }).exec();
+        callingUserEmployee = await this.employeeModel
+          .findOne({ ...baseFilter, userId: new Types.ObjectId(userId) })
+          .exec();
       }
       if (!callingUserEmployee) {
-        callingUserEmployee = await this.employeeModel.findOne({ userId: userId.toString() }).exec();
+        callingUserEmployee = await this.employeeModel
+          .findOne({ ...baseFilter, userId: userId.toString() })
+          .exec();
       }
     }
+
     if (!callingUserEmployee && email) {
+      const baseFilter: any = companyId ? { companyId } : {};
+      const escapedEmail = email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       callingUserEmployee = await this.employeeModel
-        .findOne({ email: { $regex: new RegExp(`^${email.trim()}$`, 'i') } })
+        .findOne({ ...baseFilter, email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') } })
         .exec();
     }
 
@@ -103,18 +157,32 @@ export class DashboardService {
     let allEmployees: any[] = [];
 
     if (isSystemAdmin || scope === 'all') {
-      if (query.employeeId && Types.ObjectId.isValid(query.employeeId)) {
-        selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
+      if (query.employeeId) {
+        if (!Types.ObjectId.isValid(query.employeeId)) {
+          throw new NotFoundException(`Employee #${query.employeeId} not found in this company`);
+        }
+        if (companyId) {
+          selectedEmployee = await this.employeeModel
+            .findOne({ _id: new Types.ObjectId(query.employeeId), companyId })
+            .exec();
+          if (!selectedEmployee) {
+            throw new NotFoundException(`Employee #${query.employeeId} not found in this company`);
+          }
+        } else {
+          selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
+        }
       } else {
         selectedEmployee = callingUserEmployee;
       }
 
       if (!selectedEmployee) {
-        selectedEmployee = await this.employeeModel.findOne().exec();
+        const fallbackFilter: any = companyId ? { companyId } : {};
+        selectedEmployee = await this.employeeModel.findOne(fallbackFilter).exec();
       }
 
+      const empFilter: any = companyId ? { companyId } : {};
       allEmployees = await this.employeeModel
-        .find({}, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
+        .find(empFilter, { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 })
         .sort({ 'fullName.firstName': 1 })
         .exec();
     } else if (scope === 'own') {
@@ -134,10 +202,13 @@ export class DashboardService {
       let teamMemberIds: Types.ObjectId[] = [];
 
       if (callerEmpId) {
+        const teamFilter: any = {
+          $or: [{ members: callerEmpId }, { teamLead: callerEmpId }],
+        };
+        if (companyId) teamFilter.companyId = companyId;
+
         const callerTeams = await this.teamModel
-          .find({
-            $or: [{ members: callerEmpId }, { teamLead: callerEmpId }],
-          })
+          .find(teamFilter)
           .select('members teamLead')
           .lean()
           .exec();
@@ -162,16 +233,34 @@ export class DashboardService {
         if (!isTeamMember) {
           throw new ForbiddenException('You do not have permission to view activity for employees outside your team');
         }
-        selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
+        if (!Types.ObjectId.isValid(query.employeeId)) {
+          throw new NotFoundException(`Employee #${query.employeeId} not found in this company`);
+        }
+        if (companyId) {
+          selectedEmployee = await this.employeeModel
+            .findOne({ _id: new Types.ObjectId(query.employeeId), companyId })
+            .exec();
+          if (!selectedEmployee) {
+            throw new NotFoundException(`Employee #${query.employeeId} not found in this company`);
+          }
+        } else {
+          selectedEmployee = await this.employeeModel.findById(query.employeeId).exec();
+        }
       } else {
         selectedEmployee =
           callingUserEmployee ||
-          (teamMemberIds.length > 0 ? await this.employeeModel.findById(teamMemberIds[0]).exec() : null);
+          (teamMemberIds.length > 0
+            ? (companyId
+                ? await this.employeeModel.findOne({ _id: teamMemberIds[0], companyId }).exec()
+                : await this.employeeModel.findById(teamMemberIds[0]).exec())
+            : null);
       }
 
+      const teamEmpFilter: any = { _id: { $in: teamMemberIds } };
+      if (companyId) teamEmpFilter.companyId = companyId;
       allEmployees = await this.employeeModel
         .find(
-          { _id: { $in: teamMemberIds } },
+          teamEmpFilter,
           { fullName: 1, email: 1, role: 1, department: 1, status: 1, joiningDate: 1 },
         )
         .sort({ 'fullName.firstName': 1 })
@@ -179,264 +268,284 @@ export class DashboardService {
     }
 
     // 3. Facet Aggregation on Task model for overall workspace metrics
-    const [facetResults] = await this.taskModel.aggregate([
-      {
-        $facet: {
-          tasksCompleted: [
-            {
-              $match: {
-                completedAt: { $gte: currentStart, $lte: currentEnd },
-              },
+    const facetPipeline: any[] = [];
+    if (companyId) {
+      facetPipeline.push({ $match: { companyId } });
+    }
+
+    const employeeLookupMatch: any = {
+      $expr: { $eq: ['$_id', '$$assigneeId'] },
+    };
+    if (companyId) {
+      employeeLookupMatch.companyId = companyId;
+    }
+
+    facetPipeline.push({
+      $facet: {
+        tasksCompleted: [
+          {
+            $match: {
+              completedAt: { $gte: currentStart, $lte: currentEnd },
             },
-            { $count: 'count' },
-          ],
-          tasksCompletedPrev: [
-            {
-              $match: {
-                completedAt: { $gte: prevStart, $lte: prevEnd },
-              },
+          },
+          { $count: 'count' },
+        ],
+        tasksCompletedPrev: [
+          {
+            $match: {
+              completedAt: { $gte: prevStart, $lte: prevEnd },
             },
-            { $count: 'count' },
-          ],
-          openTasks: [
-            {
-              $match: {
-                status: { $ne: 'Done' },
-              },
+          },
+          { $count: 'count' },
+        ],
+        openTasks: [
+          {
+            $match: {
+              status: { $ne: 'Done' },
             },
-            {
-              $group: {
-                _id: null,
-                total: { $sum: 1 },
-                overdue: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $and: [
-                          { $ne: ['$dueDate', null] },
-                          { $ne: ['$dueDate', ''] },
-                          {
-                            $lt: [
-                              {
-                                $dateFromString: {
-                                  dateString: '$dueDate',
-                                  onError: new Date(8640000000000000),
-                                  onNull: new Date(8640000000000000),
-                                },
-                              },
-                              now,
-                            ],
-                          },
-                        ],
-                      },
-                      1,
-                      0,
-                    ],
-                  },
-                },
-              },
-            },
-          ],
-          hoursLogged: [
-            { $unwind: '$timeEntries' },
-            {
-              $match: {
-                'timeEntries.startTime': { $gte: currentStart, $lte: currentEnd },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalSeconds: { $sum: '$timeEntries.durationSeconds' },
-              },
-            },
-          ],
-          hoursLoggedPrev: [
-            { $unwind: '$timeEntries' },
-            {
-              $match: {
-                'timeEntries.startTime': { $gte: prevStart, $lte: prevEnd },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalSeconds: { $sum: '$timeEntries.durationSeconds' },
-              },
-            },
-          ],
-          completionTrend: [
-            {
-              $match: {
-                completedAt: { $gte: currentStart, $lte: currentEnd },
-              },
-            },
-            {
-              $group: {
-                _id: {
-                  $dateToString: { format: '%Y-%m-%d', date: '$completedAt' },
-                },
-                completed: { $sum: 1 },
-              },
-            },
-            { $sort: { _id: 1 } },
-            {
-              $project: {
-                _id: 0,
-                date: '$_id',
-                completed: 1,
-              },
-            },
-          ],
-          departmentPerformance: [
-            {
-              $match: {
-                completedAt: { $gte: currentStart, $lte: currentEnd },
-                assignee: { $exists: true, $ne: null },
-              },
-            },
-            {
-              $lookup: {
-                from: 'employees',
-                localField: 'assignee',
-                foreignField: '_id',
-                as: 'employee',
-              },
-            },
-            { $unwind: { path: '$employee', preserveNullAndEmptyArrays: true } },
-            {
-              $group: {
-                _id: { $ifNull: ['$employee.department', 'General'] },
-                tasksCompleted: { $sum: 1 },
-              },
-            },
-            { $sort: { tasksCompleted: -1 } },
-            {
-              $project: {
-                _id: 0,
-                department: '$_id',
-                tasksCompleted: 1,
-              },
-            },
-          ],
-          statusDistribution: [
-            {
-              $group: {
-                _id: { $ifNull: ['$status', 'To Do'] },
-                count: { $sum: 1 },
-              },
-            },
-            { $sort: { count: -1 } },
-          ],
-          topPerformersCompleted: [
-            {
-              $match: {
-                completedAt: { $gte: currentStart, $lte: currentEnd },
-                assignee: { $exists: true, $ne: null },
-              },
-            },
-            {
-              $group: {
-                _id: '$assignee',
-                tasksCompleted: { $sum: 1 },
-              },
-            },
-          ],
-          topPerformersHours: [
-            { $unwind: '$timeEntries' },
-            {
-              $match: {
-                'timeEntries.startTime': { $gte: currentStart, $lte: currentEnd },
-              },
-            },
-            {
-              $project: {
-                assigneeId: {
-                  $ifNull: ['$timeEntries.assigneeId', '$assignee'],
-                },
-                durationSeconds: '$timeEntries.durationSeconds',
-              },
-            },
-            {
-              $match: {
-                assigneeId: { $exists: true, $ne: null },
-              },
-            },
-            {
-              $group: {
-                _id: '$assigneeId',
-                totalSeconds: { $sum: '$durationSeconds' },
-              },
-            },
-          ],
-          recentActivity: [
-            { $unwind: '$updates' },
-            { $sort: { 'updates.timestamp': -1 } },
-            { $limit: 20 },
-            {
-              $project: {
-                _id: 0,
-                taskId: { $toString: '$_id' },
-                taskTitle: '$title',
-                user: {
-                  name: { $ifNull: ['$updates.user.name', 'User'] },
-                  avatarUrl: '$updates.user.avatarUrl',
-                },
-                type: '$updates.type',
-                message: '$updates.message',
-                timestamp: '$updates.timestamp',
-              },
-            },
-          ],
-          liveNow: [
-            {
-              $match: {
-                isTimerRunning: true,
-              },
-            },
-            {
-              $lookup: {
-                from: 'employees',
-                localField: 'assignee',
-                foreignField: '_id',
-                as: 'employee',
-              },
-            },
-            { $unwind: { path: '$employee', preserveNullAndEmptyArrays: true } },
-            {
-              $project: {
-                _id: 0,
-                employeeId: {
-                  $ifNull: [
-                    { $toString: '$employee._id' },
-                    { $toString: '$assignee' },
-                  ],
-                },
-                name: {
-                  $ifNull: [
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              overdue: {
+                $sum: {
+                  $cond: [
                     {
-                      $trim: {
-                        input: {
-                          $concat: [
-                            { $ifNull: ['$employee.fullName.firstName', ''] },
-                            ' ',
-                            { $ifNull: ['$employee.fullName.lastName', ''] },
+                      $and: [
+                        { $ne: ['$dueDate', null] },
+                        { $ne: ['$dueDate', ''] },
+                        {
+                          $lt: [
+                            {
+                              $dateFromString: {
+                                dateString: '$dueDate',
+                                onError: new Date(8640000000000000),
+                                onNull: new Date(8640000000000000),
+                              },
+                            },
+                            now,
                           ],
                         },
-                      },
+                      ],
                     },
-                    { $ifNull: ['$timerUser.name', 'Team Member'] },
+                    1,
+                    0,
                   ],
                 },
-                avatarUrl: { $ifNull: ['$timerUser.avatarUrl', ''] },
-                taskTitle: '$title',
-                startedAt: '$timerStartedAt',
               },
             },
-          ],
-        },
+          },
+        ],
+        hoursLogged: [
+          { $unwind: '$timeEntries' },
+          {
+            $match: {
+              'timeEntries.startTime': { $gte: currentStart, $lte: currentEnd },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalSeconds: { $sum: '$timeEntries.durationSeconds' },
+            },
+          },
+        ],
+        hoursLoggedPrev: [
+          { $unwind: '$timeEntries' },
+          {
+            $match: {
+              'timeEntries.startTime': { $gte: prevStart, $lte: prevEnd },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalSeconds: { $sum: '$timeEntries.durationSeconds' },
+            },
+          },
+        ],
+        completionTrend: [
+          {
+            $match: {
+              completedAt: { $gte: currentStart, $lte: currentEnd },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: '%Y-%m-%d', date: '$completedAt' },
+              },
+              completed: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+          {
+            $project: {
+              _id: 0,
+              date: '$_id',
+              completed: 1,
+            },
+          },
+        ],
+        departmentPerformance: [
+          {
+            $match: {
+              completedAt: { $gte: currentStart, $lte: currentEnd },
+              assignee: { $exists: true, $ne: null },
+            },
+          },
+          {
+            $lookup: {
+              from: 'employees',
+              let: { assigneeId: '$assignee' },
+              pipeline: [
+                {
+                  $match: employeeLookupMatch,
+                },
+              ],
+              as: 'employee',
+            },
+          },
+          { $unwind: { path: '$employee', preserveNullAndEmptyArrays: true } },
+          {
+            $group: {
+              _id: { $ifNull: ['$employee.department', 'General'] },
+              tasksCompleted: { $sum: 1 },
+            },
+          },
+          { $sort: { tasksCompleted: -1 } },
+          {
+            $project: {
+              _id: 0,
+              department: '$_id',
+              tasksCompleted: 1,
+            },
+          },
+        ],
+        statusDistribution: [
+          {
+            $group: {
+              _id: { $ifNull: ['$status', 'To Do'] },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { count: -1 } },
+        ],
+        topPerformersCompleted: [
+          {
+            $match: {
+              completedAt: { $gte: currentStart, $lte: currentEnd },
+              assignee: { $exists: true, $ne: null },
+            },
+          },
+          {
+            $group: {
+              _id: '$assignee',
+              tasksCompleted: { $sum: 1 },
+            },
+          },
+        ],
+        topPerformersHours: [
+          { $unwind: '$timeEntries' },
+          {
+            $match: {
+              'timeEntries.startTime': { $gte: currentStart, $lte: currentEnd },
+            },
+          },
+          {
+            $project: {
+              assigneeId: {
+                $ifNull: ['$timeEntries.assigneeId', '$assignee'],
+              },
+              durationSeconds: '$timeEntries.durationSeconds',
+            },
+          },
+          {
+            $match: {
+              assigneeId: { $exists: true, $ne: null },
+            },
+          },
+          {
+            $group: {
+              _id: '$assigneeId',
+              totalSeconds: { $sum: '$durationSeconds' },
+            },
+          },
+        ],
+        recentActivity: [
+          { $unwind: '$updates' },
+          { $sort: { 'updates.timestamp': -1 } },
+          { $limit: 20 },
+          {
+            $project: {
+              _id: 0,
+              taskId: { $toString: '$_id' },
+              taskTitle: '$title',
+              user: {
+                name: { $ifNull: ['$updates.user.name', 'User'] },
+                avatarUrl: '$updates.user.avatarUrl',
+              },
+              type: '$updates.type',
+              message: '$updates.message',
+              timestamp: '$updates.timestamp',
+            },
+          },
+        ],
+        liveNow: [
+          {
+            $match: {
+              isTimerRunning: true,
+            },
+          },
+          {
+            $lookup: {
+              from: 'employees',
+              let: { assigneeId: '$assignee' },
+              pipeline: [
+                {
+                  $match: employeeLookupMatch,
+                },
+              ],
+              as: 'employee',
+            },
+          },
+          { $unwind: { path: '$employee', preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              _id: 0,
+              employeeId: {
+                $ifNull: [
+                  { $toString: '$employee._id' },
+                  { $toString: '$assignee' },
+                ],
+              },
+              name: {
+                $ifNull: [
+                  {
+                    $trim: {
+                      input: {
+                        $concat: [
+                          { $ifNull: ['$employee.fullName.firstName', ''] },
+                          ' ',
+                          { $ifNull: ['$employee.fullName.lastName', ''] },
+                        ],
+                      },
+                    },
+                  },
+                  { $ifNull: ['$timerUser.name', 'Team Member'] },
+                ],
+              },
+              avatarUrl: { $ifNull: ['$timerUser.avatarUrl', ''] },
+              taskTitle: '$title',
+              startedAt: '$timerStartedAt',
+            },
+          },
+        ],
       },
-    ]);
+    });
+
+    const [facetResults] = await this.taskModel.aggregate(facetPipeline);
 
     // 5. Per-employee KPIs: tasks completed & open tasks for the selected (current-user) employee
     let userTasksCompleted = 0;
@@ -447,24 +556,30 @@ export class DashboardService {
       const empId = selectedEmployee._id;
 
       // Tasks completed by this employee in the selected date range
+      const completedMatch: any = {
+        assignee: empId,
+        completedAt: { $gte: currentStart, $lte: currentEnd },
+      };
+      if (companyId) completedMatch.companyId = companyId;
+
       const [completedResult] = await this.taskModel.aggregate([
         {
-          $match: {
-            assignee: empId,
-            completedAt: { $gte: currentStart, $lte: currentEnd },
-          },
+          $match: completedMatch,
         },
         { $count: 'count' },
       ]);
       userTasksCompleted = completedResult?.count || 0;
 
       // Open tasks assigned to this employee (status != Done)
+      const openMatch: any = {
+        assignee: empId,
+        status: { $ne: 'Done' },
+      };
+      if (companyId) openMatch.companyId = companyId;
+
       const openResult = await this.taskModel.aggregate([
         {
-          $match: {
-            assignee: empId,
-            status: { $ne: 'Done' },
-          },
+          $match: openMatch,
         },
         {
           $group: {
@@ -511,12 +626,15 @@ export class DashboardService {
       const empId = selectedEmployee._id;
 
       // Completion trend: tasks completed by this employee, grouped by day
+      const trendMatch: any = {
+        assignee: empId,
+        completedAt: { $gte: currentStart, $lte: currentEnd },
+      };
+      if (companyId) trendMatch.companyId = companyId;
+
       const trendResult = await this.taskModel.aggregate([
         {
-          $match: {
-            assignee: empId,
-            completedAt: { $gte: currentStart, $lte: currentEnd },
-          },
+          $match: trendMatch,
         },
         {
           $group: {
@@ -530,8 +648,11 @@ export class DashboardService {
       userCompletionTrend = trendResult;
 
       // Status distribution: all tasks assigned to this employee, grouped by status
+      const statusMatch: any = { assignee: empId };
+      if (companyId) statusMatch.companyId = companyId;
+
       const statusResult = await this.taskModel.aggregate([
-        { $match: { assignee: empId } },
+        { $match: statusMatch },
         {
           $group: {
             _id: { $ifNull: ['$status', 'To Do'] },
@@ -570,25 +691,31 @@ export class DashboardService {
 
     if (allAssigneeIds.length > 0) {
       const validObjectIds = allAssigneeIds.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-      const employees = await this.employeeModel.find({ _id: { $in: validObjectIds } }).exec();
+      const empFilter: any = { _id: { $in: validObjectIds } };
+      if (companyId) {
+        empFilter.companyId = companyId;
+      }
+      const employees = await this.employeeModel.find(empFilter).exec();
       const employeeMap = new Map<string, Employee>();
       for (const emp of employees) {
         employeeMap.set(emp._id.toString(), emp);
       }
 
-      topPerformers = allAssigneeIds.map((empId) => {
-        const emp = employeeMap.get(empId);
-        const empName = emp
-          ? `${emp.fullName?.firstName || ''} ${emp.fullName?.lastName || ''}`.trim() || emp.email || 'Employee'
-          : 'Employee';
-        return {
-          employeeId: empId,
-          name: empName,
-          avatarUrl: '',
-          tasksCompleted: completedByAssignee.get(empId) || 0,
-          hoursLogged: hoursByAssignee.get(empId) || 0,
-        };
-      });
+      topPerformers = allAssigneeIds
+        .filter((empId) => !companyId || employeeMap.has(empId))
+        .map((empId) => {
+          const emp = employeeMap.get(empId);
+          const empName = emp
+            ? `${emp.fullName?.firstName || ''} ${emp.fullName?.lastName || ''}`.trim() || emp.email || 'Employee'
+            : 'Employee';
+          return {
+            employeeId: empId,
+            name: empName,
+            avatarUrl: '',
+            tasksCompleted: completedByAssignee.get(empId) || 0,
+            hoursLogged: hoursByAssignee.get(empId) || 0,
+          };
+        });
 
       topPerformers.sort((a, b) => {
         if (b.tasksCompleted !== a.tasksCompleted) {
@@ -631,7 +758,11 @@ export class DashboardService {
       }
 
       // A) Daily Hours for Selected Range (for Employee Working Hours Chart)
-      const dailyAgg = await this.taskModel.aggregate([
+      const dailyPipeline: any[] = [];
+      if (companyId) {
+        dailyPipeline.push({ $match: { companyId } });
+      }
+      dailyPipeline.push(
         { $unwind: '$timeEntries' },
         {
           $match: {
@@ -651,7 +782,9 @@ export class DashboardService {
           },
         },
         { $sort: { _id: 1 } },
-      ]);
+      );
+
+      const dailyAgg = await this.taskModel.aggregate(dailyPipeline);
 
       const dailyMap = new Map<string, { seconds: number; tasksCount: number }>();
       for (const d of dailyAgg) {
@@ -685,7 +818,11 @@ export class DashboardService {
       yearStart.setDate(yearStart.getDate() + diffToMon);
       yearStart.setHours(0, 0, 0, 0);
 
-      const yearlyAgg = await this.taskModel.aggregate([
+      const yearlyPipeline: any[] = [];
+      if (companyId) {
+        yearlyPipeline.push({ $match: { companyId } });
+      }
+      yearlyPipeline.push(
         { $unwind: '$timeEntries' },
         {
           $match: {
@@ -704,7 +841,9 @@ export class DashboardService {
             tasksCount: { $sum: 1 },
           },
         },
-      ]);
+      );
+
+      const yearlyAgg = await this.taskModel.aggregate(yearlyPipeline);
 
       const yearlyMap = new Map<string, { seconds: number; count: number }>();
       for (const item of yearlyAgg) {
@@ -801,6 +940,9 @@ export class DashboardService {
       };
       if (userId && Types.ObjectId.isValid(userId)) {
         matchQuery.$or.push({ userId: new Types.ObjectId(userId) });
+      }
+      if (companyId) {
+        matchQuery.companyId = companyId;
       }
 
       try {

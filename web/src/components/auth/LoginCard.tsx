@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
-import { api, authEndpoints } from "../../lib/api";
+import { api, authEndpoints, fetchMembershipStatus } from "../../lib/api";
+import { Building2, Loader2 } from "lucide-react";
 
 const GoogleIcon = () => (
-  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg className="w-5 h-5 mr-2 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
@@ -26,7 +28,14 @@ const PyramidLogo = () => (
   </div>
 );
 
-export function LoginCard() {
+export interface LoginCardProps {
+  companyName?: string;
+  logoUrl?: string;
+  slug?: string;
+}
+
+export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
+  const router = useRouter();
   const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +46,24 @@ export function LoginCard() {
         setIsLoadingGoogle(true);
         setError(null);
         await api.post(authEndpoints.googleLogin, { token: tokenResponse.access_token });
-        window.location.href = "/tasks";
+
+        if (slug) {
+          try {
+            const status = await fetchMembershipStatus(slug);
+            if (status?.isMember) {
+              try {
+                localStorage.setItem("lastCompany", slug);
+              } catch {}
+              router.push(`/${slug}/dashboard`);
+            } else {
+              router.push(`/${slug}/join`);
+            }
+          } catch {
+            router.push(`/${slug}/join`);
+          }
+        } else {
+          router.push("/");
+        }
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to login with Google");
       } finally {
@@ -52,7 +78,7 @@ export function LoginCard() {
       setIsLoadingGuest(true);
       setError(null);
       await api.post(authEndpoints.guestLogin);
-      window.location.href = "/dashboard";
+      router.push("/dashboard");
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to continue as guest");
     } finally {
@@ -60,41 +86,82 @@ export function LoginCard() {
     }
   };
 
+  const isCompanyLogin = !!slug;
+
   return (
     <div className="w-full max-w-sm px-4 sm:px-0 mx-auto">
-      <PyramidLogo />
+      {/* Brand Header */}
+      {isCompanyLogin ? (
+        <div className="flex flex-col items-center justify-center mb-8">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={companyName || "Company Logo"}
+              className="w-14 h-14 rounded-2xl object-cover mb-4 border border-border shadow-sm"
+            />
+          ) : (
+            <div className="w-14 h-14 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center mb-4 text-primary shadow-xs">
+              <Building2 className="w-7 h-7" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold tracking-tight text-foreground text-center">
+            {companyName || "Pyramid Workspace"}
+          </h1>
+          <p className="text-xs font-mono text-muted-foreground mt-1">/{slug}</p>
+        </div>
+      ) : (
+        <PyramidLogo />
+      )}
 
-      <Card className="mb-6">
-        <CardContent className="flex flex-col gap-6 text-center">
+      <Card className="mb-6 shadow-md border-border">
+        <CardContent className="flex flex-col gap-6 text-center p-6 sm:p-8">
           <div>
-            <h2 className="text-xl font-bold tracking-tight mb-2">Let&apos;s get back on track</h2>
-            <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
+            <h2 className="text-xl font-bold tracking-tight mb-2 text-foreground">
+              {companyName ? `Sign in to ${companyName}` : "Let's get back on track"}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {companyName
+                ? "Sign in with your Google account to access this company workspace"
+                : "Sign in to your account to continue"}
+            </p>
           </div>
 
           {error && (
-            <div className="p-3 text-sm text-red-500 bg-red-50 dark:bg-red-500/10 rounded-md">
+            <div className="p-3 text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl text-left">
               {error}
             </div>
           )}
 
           <div className="flex flex-col gap-3">
-            <Button
-              variant="primary"
-              fullWidth
-              onClick={handleGuestLogin}
-              disabled={isLoadingGuest || isLoadingGoogle}
-            >
-              {isLoadingGuest ? "Loading..." : "Continue as Guest"}
-            </Button>
+            {!isCompanyLogin && (
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={handleGuestLogin}
+                disabled={isLoadingGuest || isLoadingGoogle}
+                className="h-11 rounded-xl shadow-xs"
+              >
+                {isLoadingGuest ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Continue as Guest"
+                )}
+              </Button>
+            )}
 
             <Button
               variant="google"
               fullWidth
               onClick={() => loginGoogle()}
               disabled={isLoadingGuest || isLoadingGoogle}
+              className="h-11 rounded-xl shadow-xs gap-2"
             >
-              <GoogleIcon />
-              {isLoadingGoogle ? "Loading..." : "Login with Google"}
+              {isLoadingGoogle ? (
+                <Loader2 className="w-4 h-4 animate-spin text-foreground" />
+              ) : (
+                <GoogleIcon />
+              )}
+              <span className="font-semibold text-sm">Sign in with Google</span>
             </Button>
           </div>
         </CardContent>

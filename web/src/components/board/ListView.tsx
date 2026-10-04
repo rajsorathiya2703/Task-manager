@@ -2,6 +2,7 @@
 
 import { Task } from "../../lib/data";
 import { ListGroup } from "./ListGroup";
+import { useCompanyPath } from "../../lib/useCompanyPath";
 
 interface ListViewProps {
   data: Record<string, Task[]>;
@@ -11,8 +12,9 @@ interface ListViewProps {
 }
 
 export function ListView({ data, projectId, showProjectCapsule = false, isFiltered = false }: ListViewProps) {
+  const cp = useCompanyPath();
   const stages = Object.keys(data);
-  const addTaskHref = projectId ? `/tasks/new?projectId=${projectId}` : undefined;
+  const addTaskHref = projectId ? cp(`/tasks/new?projectId=${projectId}`) : undefined;
 
   if (isFiltered) {
     const allTasks = Object.values(data).flat();

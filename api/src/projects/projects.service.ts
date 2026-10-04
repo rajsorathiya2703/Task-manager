@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Project } from './schemas/project.schema';
@@ -26,9 +31,13 @@ export class ProjectsService {
 
   /**
    * Pure read-only helper: resolves all Employee IDs that correspond to a
-   * given userId and/or email. Used to build access-check query conditions.
+   * given userId and/or email within the given company. Used to build access-check query conditions.
    */
-  private async getEmployeeIdsForUser(userId?: string, email?: string): Promise<any[]> {
+  private async getEmployeeIdsForUser(
+    companyId: Types.ObjectId,
+    userId?: string,
+    email?: string,
+  ): Promise<any[]> {
     const { Types } = require('mongoose');
     const employeeQuery: any[] = [];
     if (userId) {
@@ -44,7 +53,7 @@ export class ProjectsService {
 
     const employees: any[] =
       employeeQuery.length > 0
-        ? await this.employeeModel.find({ $or: employeeQuery }).exec()
+        ? await this.employeeModel.find({ companyId, $or: employeeQuery }).exec()
         : [];
 
     const ids: any[] = employees.map((e) => e._id);
@@ -58,6 +67,30 @@ export class ProjectsService {
   }
 
   /**
+   * Validates that the specified team belongs to the current company.
+   * Throws BadRequestException on mismatch.
+   */
+  private async validateTeamBelongsToCompany(
+    companyId: Types.ObjectId,
+    teamId?: any,
+  ): Promise<void> {
+    if (!teamId) {
+      return;
+    }
+    if (!Types.ObjectId.isValid(teamId)) {
+      throw new BadRequestException(`Invalid teamId: ${teamId}`);
+    }
+    const team = await this.teamModel
+      .findOne({ _id: new Types.ObjectId(teamId), companyId })
+      .select('_id')
+      .exec();
+
+    if (!team) {
+      throw new BadRequestException('Team does not belong to this company');
+    }
+  }
+
+  /**
    * Builds Mongo query criteria for projects according to the user's effective scope:
    *   - 'all' / isSystemAdmin: {} (no extra criteria)
    *   - 'own': matches project owner
@@ -65,6 +98,7 @@ export class ProjectsService {
    *   - 'none': null (empty set)
    */
   private async buildProjectScopeFilter(
+    companyId: Types.ObjectId,
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
@@ -91,9 +125,10 @@ export class ProjectsService {
     }
 
     if (scope === 'team') {
-      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+      const employeeIds = await this.getEmployeeIdsForUser(companyId, userId, email);
       const userTeams = await this.teamModel
         .find({
+          companyId,
           $or: [
             { members: { $in: employeeIds } },
             { teamLead: { $in: employeeIds } },
@@ -117,9 +152,17 @@ export class ProjectsService {
     return null;
   }
 
-  async create(userId: string, createProjectDto: CreateProjectDto): Promise<Project> {
+  async create(
+    companyId: Types.ObjectId,
+    userId: string,
+    createProjectDto: CreateProjectDto,
+  ): Promise<Project> {
+    if (createProjectDto.teamId) {
+      await this.validateTeamBelongsToCompany(companyId, createProjectDto.teamId);
+    }
     const createdProject = new this.projectModel({
       ...createProjectDto,
+      companyId,
       userId,
       color: createProjectDto.color || '#3b82f6',
     });
@@ -127,6 +170,7 @@ export class ProjectsService {
   }
 
   async findAll(
+    companyId: Types.ObjectId,
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
@@ -136,19 +180,20 @@ export class ProjectsService {
       return [];
     }
 
-    const scopeFilter = await this.buildProjectScopeFilter(userId, email, isSystemAdmin, scope);
+    const scopeFilter = await this.buildProjectScopeFilter(companyId, userId, email, isSystemAdmin, scope);
     if (scopeFilter === null) {
       return [];
     }
 
     return this.projectModel
-      .find(scopeFilter)
+      .find({ companyId, ...scopeFilter })
       .populate('teamId')
       .sort({ createdAt: -1 })
       .exec();
   }
 
   async findOne(
+    companyId: Types.ObjectId,
     id: string,
     userId?: string,
     email?: string,
@@ -158,7 +203,10 @@ export class ProjectsService {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
-    const project = await this.projectModel.findById(id).populate('teamId').exec();
+    const project = await this.projectModel
+      .findOne({ _id: id, companyId })
+      .populate('teamId')
+      .exec();
     if (!project) return null;
 
     // ─── PBAC Record-Level Scope Check (§6.2, §6.3) ─────────────────────────
@@ -171,11 +219,12 @@ export class ProjectsService {
         });
       }
 
-      const employeeIds = await this.getEmployeeIdsForUser(userId, email);
+      const employeeIds = await this.getEmployeeIdsForUser(companyId, userId, email);
       const primaryEmpId = employeeIds.length > 0 ? String(employeeIds[0]) : undefined;
 
       const userTeams = await this.teamModel
         .find({
+          companyId,
           $or: [
             { members: { $in: employeeIds } },
             { teamLead: { $in: employeeIds } },
@@ -220,6 +269,7 @@ export class ProjectsService {
   }
 
   async update(
+    companyId: Types.ObjectId,
     id: string,
     updateProjectDto: UpdateProjectDto,
     userId?: string,
@@ -227,10 +277,27 @@ export class ProjectsService {
     isSystemAdmin?: boolean,
     scope: ScopeType = 'own',
   ): Promise<Project | null> {
-    if (!isSystemAdmin && scope !== 'all') {
-      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Project not found');
     }
-    const updated = await this.projectModel.findByIdAndUpdate(id, updateProjectDto, { new: true }).populate('teamId').exec();
+    if (!isSystemAdmin && scope !== 'all') {
+      const existing = await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
+      if (!existing) {
+        throw new NotFoundException('Project not found');
+      }
+    }
+
+    if (updateProjectDto.teamId) {
+      await this.validateTeamBelongsToCompany(companyId, updateProjectDto.teamId);
+    }
+
+    const safeUpdateDto: any = { ...updateProjectDto };
+    delete safeUpdateDto.companyId;
+
+    const updated = await this.projectModel
+      .findOneAndUpdate({ _id: id, companyId }, safeUpdateDto, { new: true })
+      .populate('teamId')
+      .exec();
     if (!updated) {
       throw new NotFoundException('Project not found');
     }
@@ -238,16 +305,37 @@ export class ProjectsService {
   }
 
   async remove(
+    companyId: Types.ObjectId,
     id: string,
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
     scope: ScopeType = 'own',
   ): Promise<Project | null> {
-    if (!isSystemAdmin && scope !== 'all') {
-      await this.findOne(id, userId, email, isSystemAdmin, scope);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Project not found');
     }
-    const deleted = await this.projectModel.findByIdAndDelete(id).exec();
+    if (!isSystemAdmin && scope !== 'all') {
+      const existing = await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
+      if (!existing) {
+        throw new NotFoundException('Project not found');
+      }
+    }
+
+    // Check whether tasks in this company reference the project
+    // Note: Task gets companyId in MC-21; cast to any for query compatibility
+    const hasTasks = await this.taskModel.exists({
+      projectId: id,
+      companyId,
+    } as any);
+
+    if (hasTasks) {
+      throw new BadRequestException('Cannot delete project referenced by existing tasks in this company');
+    }
+
+    const deleted = await this.projectModel
+      .findOneAndDelete({ _id: id, companyId })
+      .exec();
     if (!deleted) {
       throw new NotFoundException('Project not found');
     }

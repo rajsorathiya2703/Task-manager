@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTimer } from '../../contexts/TimerContext';
 import { Square, Loader2 } from 'lucide-react';
 import { stopTaskTimer } from '../../lib/api';
-import Link from 'next/link';
+import { CompanyLink } from '../../lib/useCompanyPath';
 
 export function GlobalTimerDisplay() {
   const { activeTask, isActive, timerStartedAt, refreshTimer, clearTimer } = useTimer();
@@ -64,7 +64,7 @@ export function GlobalTimerDisplay() {
 
   return (
     <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-md text-red-600 dark:text-red-400 mr-2 shrink-0 animate-in fade-in zoom-in duration-300">
-      <Link href={`/tasks/${activeTask._id}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+      <CompanyLink href={`/tasks/${activeTask._id}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
         <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
         <span className="text-xs font-semibold tracking-wider font-mono min-w-[65px] text-center">
           {formatTime(elapsed)}
@@ -72,7 +72,7 @@ export function GlobalTimerDisplay() {
         <span className="text-xs font-medium max-w-[100px] truncate hidden sm:inline-block border-l border-red-500/20 pl-2">
           {activeTask.title}
         </span>
-      </Link>
+      </CompanyLink>
       
       <button 
         onClick={handleStop}

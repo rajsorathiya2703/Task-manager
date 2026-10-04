@@ -1,8 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
+import { applyTenantPlugin } from '../../common/tenant.plugin';
 
 @Schema({ timestamps: true })
 export class LeaveType extends Document {
+  @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
+  companyId: Types.ObjectId;
+
   @Prop({ required: true, trim: true })
   name: string;
 
@@ -35,3 +39,7 @@ export class LeaveType extends Document {
 }
 
 export const LeaveTypeSchema = SchemaFactory.createForClass(LeaveType);
+
+LeaveTypeSchema.index({ companyId: 1, code: 1 }, { unique: true });
+
+applyTenantPlugin(LeaveTypeSchema);

@@ -20,6 +20,7 @@ import { formatDisplayDate } from "../../lib/utils";
 import { useRouter } from "next/navigation";
 import { fetchTeams } from "../../lib/api";
 import { BoundField } from "../access";
+import { useCompanyPath } from "../../lib/useCompanyPath";
 
 export const PROJECT_COLORS = [
   { name: "Blue", value: "#3b82f6", bg: "bg-blue-500", light: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
@@ -48,6 +49,7 @@ export function ProjectDialog({
   onDelete,
 }: ProjectDialogProps) {
   const router = useRouter();
+  const cp = useCompanyPath();
   const isEditing = Boolean(project?.id || (project as any)?._id);
 
   const [name, setName] = useState("");
@@ -141,7 +143,7 @@ export function ProjectDialog({
     const targetId = project?.id || (project as any)?._id;
     if (targetId) {
       onClose();
-      router.push(`/projects/${targetId}`);
+      router.push(cp(`/projects/${targetId}`));
     }
   };
 

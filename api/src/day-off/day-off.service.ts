@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
-  OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -16,11 +16,12 @@ import { LeaveBalance } from './schemas/leave-balance.schema';
 import { Notification } from './schemas/notification.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { Team } from '../teams/schemas/team.schema';
+import { Company } from '../companies/schemas/company.schema';
 import { DayOffMailService } from './day-off-mail.service';
 import { ScopeType } from '../access/policy.engine';
 
 @Injectable()
-export class DayOffService implements OnModuleInit {
+export class DayOffService {
   private readonly logger = new Logger(DayOffService.name);
 
   constructor(
@@ -31,28 +32,78 @@ export class DayOffService implements OnModuleInit {
     @InjectModel(Notification.name) private notificationModel: Model<Notification>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Team.name) private teamModel: Model<Team>,
-    private mailService: DayOffMailService,
+    @Optional() @InjectModel(Company.name) private companyModel?: Model<Company>,
+    private mailService?: DayOffMailService,
   ) {}
 
-  async onModuleInit() {
-    await this.seedDefaultData();
-  }
-
-  private async seedDefaultData() {
+  /**
+   * Seed company defaults (settings and default leave types) on company creation.
+   * Called by MC-30 on tenant setup.
+   */
+  async seedCompanyDefaults(
+    companyId: Types.ObjectId | string,
+    adminEmail?: string,
+    session?: any,
+  ): Promise<void> {
+    const companyObjId = new Types.ObjectId(companyId);
     try {
-      // Seed default settings if empty
-      const settingsCount = await this.settingsModel.countDocuments();
-      if (settingsCount === 0) {
-        const defaultAdminEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'admin@taskmanager.com';
-        await this.settingsModel.create({
-          defaultAdminEmail,
-          isEnabled: true,
-        });
-        this.logger.log(`Initialized DayOffSettings with default admin email: ${defaultAdminEmail}`);
+      // Seed default settings for company if missing
+      let existingSettings: any;
+      const settingsResult = this.settingsModel.findOne({ companyId: companyObjId });
+      if (session && typeof (settingsResult as any)?.session === 'function') {
+        (settingsResult as any).session(session);
+      }
+      if (settingsResult && typeof (settingsResult as any).exec === 'function') {
+        existingSettings = await (settingsResult as any).exec();
+      } else {
+        existingSettings = await settingsResult;
       }
 
-      // Seed default leave types if empty
-      const count = await this.leaveTypeModel.countDocuments();
+      if (!existingSettings) {
+        let resolvedEmail = adminEmail;
+        if (!resolvedEmail && this.companyModel) {
+          const compResult = this.companyModel.findById(companyObjId);
+          if (session && typeof (compResult as any)?.session === 'function') {
+            (compResult as any).session(session);
+          }
+          const company = compResult && typeof (compResult as any).exec === 'function'
+            ? await (compResult as any).exec()
+            : await compResult;
+          resolvedEmail = company?.contactEmail;
+        }
+        resolvedEmail = resolvedEmail || process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'admin@taskmanager.com';
+        if (session) {
+          await this.settingsModel.create(
+            [
+              {
+                companyId: companyObjId,
+                defaultAdminEmail: resolvedEmail,
+                isEnabled: true,
+              },
+            ],
+            { session },
+          );
+        } else {
+          await this.settingsModel.create({
+            companyId: companyObjId,
+            defaultAdminEmail: resolvedEmail,
+            isEnabled: true,
+          });
+        }
+        this.logger.log(`Initialized DayOffSettings for company ${companyId} with default admin email: ${resolvedEmail}`);
+      }
+
+      // Seed default leave types for company if empty
+      let count: number;
+      const countResult = this.leaveTypeModel.countDocuments({ companyId: companyObjId });
+      if (session && typeof (countResult as any)?.session === 'function') {
+        (countResult as any).session(session);
+      }
+      if (countResult && typeof (countResult as any).exec === 'function') {
+        count = await (countResult as any).exec();
+      } else {
+        count = await countResult;
+      }
       if (count === 0) {
         const defaultTypes = [
           {
@@ -66,6 +117,7 @@ export class DayOffService implements OnModuleInit {
             defaultAllocation: 14,
             rules: 'Standard annual paid time off. Can carry forward up to 5 days.',
             isActive: true,
+            companyId: companyObjId,
           },
           {
             name: 'Unpaid Leave',
@@ -78,6 +130,7 @@ export class DayOffService implements OnModuleInit {
             defaultAllocation: 0,
             rules: 'Leave taken without pay. 100% salary deduction applies for the duration.',
             isActive: true,
+            companyId: companyObjId,
           },
           {
             name: 'Half Day Leave',
@@ -90,6 +143,7 @@ export class DayOffService implements OnModuleInit {
             defaultAllocation: 2,
             rules: 'Half day absence (4 hours). 50% salary deduction for the day.',
             isActive: true,
+            companyId: companyObjId,
           },
           {
             name: 'Medical Leave',
@@ -102,23 +156,51 @@ export class DayOffService implements OnModuleInit {
             defaultAllocation: 10,
             rules: 'Time off for health and medical appointments. No salary deduction.',
             isActive: true,
+            companyId: companyObjId,
           },
         ];
 
-        await this.leaveTypeModel.insertMany(defaultTypes);
-        this.logger.log('Default Leave Types seeded successfully.');
+        if (session) {
+          await this.leaveTypeModel.insertMany(defaultTypes, { session });
+        } else {
+          await this.leaveTypeModel.insertMany(defaultTypes);
+        }
+        this.logger.log(`Default Leave Types seeded successfully for company: ${companyId}`);
       }
     } catch (err: any) {
-      this.logger.warn(`Failed seeding Day Off default data: ${err.message}`);
+      this.logger.warn(`Failed seeding Day Off default data for company ${companyId}: ${err.message}`);
+    }
+  }
+
+  private async getCompanySlug(companyId?: Types.ObjectId | string): Promise<string | undefined> {
+    if (!companyId || !this.companyModel) return undefined;
+    try {
+      const company = await this.companyModel.findById(companyId).select('slug').lean().exec();
+      return company?.slug;
+    } catch {
+      return undefined;
     }
   }
 
   // --- Settings ---
-  async getSettings(): Promise<DayOffSettings> {
-    let settings = await this.settingsModel.findOne().exec();
+  async getSettings(companyId?: Types.ObjectId | string): Promise<DayOffSettings> {
+    const filter: any = {};
+    let companyObjId: Types.ObjectId | undefined;
+    if (companyId) {
+      companyObjId = new Types.ObjectId(companyId);
+      filter.companyId = companyObjId;
+    }
+
+    let settings = await this.settingsModel.findOne(filter).exec();
     if (!settings) {
-      const defaultAdminEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'admin@taskmanager.com';
+      let contactEmail: string | undefined;
+      if (companyObjId && this.companyModel) {
+        const company = await this.companyModel.findById(companyObjId).exec();
+        contactEmail = company?.contactEmail;
+      }
+      const defaultAdminEmail = contactEmail || process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'admin@taskmanager.com';
       settings = await this.settingsModel.create({
+        ...(companyObjId ? { companyId: companyObjId } : {}),
         defaultAdminEmail,
         isEnabled: true,
       });
@@ -126,32 +208,81 @@ export class DayOffService implements OnModuleInit {
     return settings;
   }
 
-  async updateSettings(data: Partial<DayOffSettings>): Promise<DayOffSettings> {
-    let settings = await this.settingsModel.findOne().exec();
+  async updateSettings(
+    companyIdOrData: Types.ObjectId | string | Partial<DayOffSettings>,
+    maybeData?: Partial<DayOffSettings>,
+  ): Promise<DayOffSettings> {
+    let companyId: Types.ObjectId | undefined;
+    let data: Partial<DayOffSettings>;
+    if (maybeData !== undefined || typeof companyIdOrData === 'string' || companyIdOrData instanceof Types.ObjectId) {
+      companyId = new Types.ObjectId(companyIdOrData as any);
+      data = maybeData || {};
+    } else {
+      data = companyIdOrData as Partial<DayOffSettings>;
+    }
+
+    const filter: any = companyId ? { companyId } : {};
+    let settings = await this.settingsModel.findOne(filter).exec();
     if (!settings) {
-      settings = new this.settingsModel(data);
+      settings = new this.settingsModel({ ...data, ...(companyId ? { companyId } : {}) });
       return settings.save();
     }
     Object.assign(settings, data);
+    if (companyId) {
+      settings.companyId = companyId;
+    }
     return settings.save();
   }
 
   // --- Leave Types CRUD ---
-  async getLeaveTypes(query?: { activeOnly?: boolean }): Promise<LeaveType[]> {
+  async getLeaveTypes(
+    companyIdOrQuery?: Types.ObjectId | string | { activeOnly?: boolean },
+    maybeQuery?: { activeOnly?: boolean },
+  ): Promise<LeaveType[]> {
+    let companyId: Types.ObjectId | undefined;
+    let query: { activeOnly?: boolean } | undefined;
+    if (typeof companyIdOrQuery === 'string' || companyIdOrQuery instanceof Types.ObjectId) {
+      companyId = new Types.ObjectId(companyIdOrQuery);
+      query = maybeQuery;
+    } else {
+      query = companyIdOrQuery;
+    }
     const filter: any = {};
+    if (companyId) filter.companyId = companyId;
     if (query?.activeOnly) {
       filter.isActive = true;
     }
     return this.leaveTypeModel.find(filter).sort({ createdAt: 1 }).exec();
   }
 
-  async getLeaveTypeById(id: string): Promise<LeaveType> {
-    const item = await this.leaveTypeModel.findById(id).exec();
+  async getLeaveTypeById(companyIdOrId: Types.ObjectId | string, maybeId?: string): Promise<LeaveType> {
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    if (maybeId !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = maybeId;
+    } else {
+      id = companyIdOrId.toString();
+    }
+    const filter: any = { _id: id };
+    if (companyId) filter.companyId = companyId;
+    const item = await this.leaveTypeModel.findOne(filter).exec();
     if (!item) throw new NotFoundException(`Leave Type #${id} not found`);
     return item;
   }
 
-  async createLeaveType(dto: any): Promise<LeaveType> {
+  async createLeaveType(companyIdOrDto: Types.ObjectId | string | any, maybeDto?: any): Promise<LeaveType> {
+    let companyId: Types.ObjectId | undefined;
+    let dto: any;
+    if (maybeDto !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrDto);
+      dto = { ...maybeDto };
+    } else {
+      dto = { ...companyIdOrDto };
+    }
+    if (companyId) {
+      dto.companyId = companyId;
+    }
     if (!dto.code && dto.name) {
       dto.code = dto.name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
     }
@@ -159,22 +290,76 @@ export class DayOffService implements OnModuleInit {
     return created.save();
   }
 
-  async updateLeaveType(id: string, dto: any): Promise<LeaveType> {
-    const updated = await this.leaveTypeModel.findByIdAndUpdate(id, { $set: dto }, { new: true }).exec();
+  async updateLeaveType(
+    companyIdOrId: Types.ObjectId | string,
+    idOrDto: string | any,
+    maybeDto?: any,
+  ): Promise<LeaveType> {
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    let dto: any;
+    if (maybeDto !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = idOrDto;
+      dto = maybeDto;
+    } else {
+      id = companyIdOrId.toString();
+      dto = idOrDto;
+    }
+    const filter: any = { _id: id };
+    if (companyId) filter.companyId = companyId;
+    const updated = await this.leaveTypeModel.findOneAndUpdate(filter, { $set: dto }, { new: true }).exec();
     if (!updated) throw new NotFoundException(`Leave Type #${id} not found`);
     return updated;
   }
 
-  async deleteLeaveType(id: string): Promise<any> {
-    const deleted = await this.leaveTypeModel.findByIdAndDelete(id).exec();
+  async deleteLeaveType(companyIdOrId: Types.ObjectId | string, maybeId?: string): Promise<any> {
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    if (maybeId !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = maybeId;
+    } else {
+      id = companyIdOrId.toString();
+    }
+    const filter: any = { _id: id };
+    if (companyId) filter.companyId = companyId;
+    const deleted = await this.leaveTypeModel.findOneAndDelete(filter).exec();
     if (!deleted) throw new NotFoundException(`Leave Type #${id} not found`);
     return { success: true, message: 'Leave type deleted successfully' };
   }
 
   // --- Leave Balances ---
-  async getEmployeeBalances(employeeId: string, year: number = new Date().getFullYear()): Promise<any[]> {
-    const activeTypes = await this.leaveTypeModel.find({ isActive: true }).exec();
-    const balances = await this.balanceModel.find({ employeeId: new Types.ObjectId(employeeId), year }).exec();
+  async getEmployeeBalances(
+    companyIdOrEmployeeId: Types.ObjectId | string,
+    employeeIdOrYear?: Types.ObjectId | string | number,
+    maybeYear?: number,
+  ): Promise<any[]> {
+    let companyId: Types.ObjectId | undefined;
+    let employeeId: Types.ObjectId;
+    let year: number;
+
+    if (
+      maybeYear !== undefined ||
+      (typeof employeeIdOrYear === 'string' && Types.ObjectId.isValid(employeeIdOrYear)) ||
+      employeeIdOrYear instanceof Types.ObjectId
+    ) {
+      companyId = new Types.ObjectId(companyIdOrEmployeeId);
+      employeeId = new Types.ObjectId(employeeIdOrYear as any);
+      year = maybeYear !== undefined ? maybeYear : new Date().getFullYear();
+    } else {
+      // Fallback for (employeeId, year)
+      employeeId = new Types.ObjectId(companyIdOrEmployeeId);
+      year = typeof employeeIdOrYear === 'number' ? employeeIdOrYear : new Date().getFullYear();
+    }
+
+    const filterLt: any = { isActive: true };
+    if (companyId) filterLt.companyId = companyId;
+    const activeTypes = await this.leaveTypeModel.find(filterLt).exec();
+
+    const filterBal: any = { employeeId, year };
+    if (companyId) filterBal.companyId = companyId;
+    const balances = await this.balanceModel.find(filterBal).exec();
 
     // Map each active type to balance record or default allocation
     const result = await Promise.all(
@@ -182,7 +367,8 @@ export class DayOffService implements OnModuleInit {
         let bal = balances.find((b) => b.leaveTypeId.toString() === lt._id.toString());
         if (!bal) {
           bal = await this.balanceModel.create({
-            employeeId: new Types.ObjectId(employeeId),
+            ...(companyId ? { companyId } : {}),
+            employeeId,
             leaveTypeId: lt._id,
             year,
             allocated: lt.defaultAllocation,
@@ -205,29 +391,69 @@ export class DayOffService implements OnModuleInit {
   }
 
   // --- Leave Applications ---
-  async applyLeave(user: any, dto: {
-    leaveTypeId: string;
-    fromDate: string;
-    toDate: string;
-    reason: string;
-    description?: string;
-    isHalfDay?: boolean;
-  }): Promise<LeaveApplication> {
+  async applyLeave(
+    companyIdOrUser: Types.ObjectId | string | any,
+    employeeIdOrDto: Types.ObjectId | string | any,
+    userOrUndefined?: any,
+    maybeDto?: {
+      leaveTypeId: string;
+      fromDate: string;
+      toDate: string;
+      reason: string;
+      description?: string;
+      isHalfDay?: boolean;
+    },
+  ): Promise<LeaveApplication> {
+    let companyId: Types.ObjectId | undefined;
+    let employeeId: Types.ObjectId | undefined;
+    let user: any;
+    let dto: {
+      leaveTypeId: string;
+      fromDate: string;
+      toDate: string;
+      reason: string;
+      description?: string;
+      isHalfDay?: boolean;
+    };
+
+    if (maybeDto !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrUser);
+      employeeId = new Types.ObjectId(employeeIdOrDto);
+      user = userOrUndefined;
+      dto = maybeDto;
+    } else {
+      user = companyIdOrUser;
+      dto = employeeIdOrDto;
+    }
+
     const userId = user.id || user._id;
 
-    // Find linked employee
-    let employee = await this.employeeModel.findOne({ userId }).exec();
-    if (!employee && user.email) {
-      employee = await this.employeeModel.findOne({
-        email: { $regex: new RegExp(`^${user.email.trim()}$`, 'i') },
-      }).exec();
+    // Resolve employee: if employeeId & companyId are provided, look up by employeeId + companyId
+    let employee: any;
+    if (employeeId && companyId) {
+      employee = await this.employeeModel.findOne({ _id: employeeId, companyId }).exec();
+    } else {
+      employee = await this.employeeModel.findOne({ userId }).exec();
+      if (!employee && user.email) {
+        employee = await this.employeeModel.findOne({
+          email: { $regex: new RegExp(`^${user.email.trim()}$`, 'i') },
+        }).exec();
+      }
+      if (employee && !companyId && employee.companyId) {
+        companyId = employee.companyId;
+      }
     }
 
     if (!employee) {
       throw new BadRequestException('Your user account is not linked to an active Employee profile.');
     }
 
-    const leaveType = await this.leaveTypeModel.findById(dto.leaveTypeId).exec();
+    // Leave type must belong to the company
+    const leaveTypeFilter: any = { _id: new Types.ObjectId(dto.leaveTypeId) };
+    if (companyId) {
+      leaveTypeFilter.companyId = companyId;
+    }
+    const leaveType = await this.leaveTypeModel.findOne(leaveTypeFilter).exec();
     if (!leaveType || !leaveType.isActive) {
       throw new BadRequestException('Selected Leave Type is invalid or currently inactive.');
     }
@@ -257,6 +483,7 @@ export class DayOffService implements OnModuleInit {
     const approvalToken = randomBytes(32).toString('hex');
 
     const application = new this.applicationModel({
+      ...(companyId ? { companyId } : {}),
       employeeId: employee._id,
       userId: new Types.ObjectId(userId),
       leaveTypeId: leaveType._id,
@@ -273,7 +500,7 @@ export class DayOffService implements OnModuleInit {
     await application.save();
 
     // Send email to configured admin
-    const settings = await this.getSettings();
+    const settings = await this.getSettings(companyId);
     const adminEmail = settings.defaultAdminEmail;
 
     const employeeName = employee.fullName
@@ -284,24 +511,28 @@ export class DayOffService implements OnModuleInit {
     const toDateStr = toDate.toISOString().split('T')[0];
 
     // Fire email asynchronously
-    this.mailService.sendLeaveRequestToAdmin({
-      adminEmail,
-      applicationId: application._id.toString(),
-      approvalToken,
-      employeeName,
-      employeeEmail: employee.email || user.email,
-      leaveTypeName: leaveType.name,
-      fromDateStr,
-      toDateStr,
-      daysCount,
-      reason: dto.reason,
-      description: dto.description,
-    }).catch((err) => {
-      this.logger.error(`Error sending leave request email to admin: ${err.message}`);
-    });
+    if (this.mailService) {
+      const companySlug = await this.getCompanySlug(companyId);
+      this.mailService.sendLeaveRequestToAdmin({
+        adminEmail,
+        applicationId: application._id.toString(),
+        approvalToken,
+        employeeName,
+        employeeEmail: employee.email || user.email,
+        leaveTypeName: leaveType.name,
+        fromDateStr,
+        toDateStr,
+        daysCount,
+        reason: dto.reason,
+        description: dto.description,
+        companySlug,
+      }).catch((err) => {
+        this.logger.error(`Error sending leave request email to admin: ${err.message}`);
+      });
+    }
 
     // Create In-App Notification for employee
-    await this.createNotification({
+    await this.createNotification(companyId, {
       userId: new Types.ObjectId(userId),
       title: 'Leave Request Submitted',
       message: `Your request for ${leaveType.name} (${fromDateStr} to ${toDateStr}) has been submitted and is pending approval.`,
@@ -312,9 +543,27 @@ export class DayOffService implements OnModuleInit {
     return application;
   }
 
-  async getMyApplications(user: any, year?: number): Promise<LeaveApplication[]> {
+  async getMyApplications(
+    companyIdOrUser: Types.ObjectId | string | any,
+    userOrYear?: any,
+    maybeYear?: number,
+  ): Promise<LeaveApplication[]> {
+    let companyId: Types.ObjectId | undefined;
+    let user: any;
+    let year: number | undefined;
+
+    if (typeof companyIdOrUser === 'string' || companyIdOrUser instanceof Types.ObjectId) {
+      companyId = new Types.ObjectId(companyIdOrUser);
+      user = userOrYear;
+      year = maybeYear;
+    } else {
+      user = companyIdOrUser;
+      year = userOrYear;
+    }
+
     const userId = user.id || user._id;
     const filter: any = { userId: new Types.ObjectId(userId) };
+    if (companyId) filter.companyId = companyId;
 
     if (year) {
       const start = new Date(`${year}-01-01T00:00:00.000Z`);
@@ -333,7 +582,7 @@ export class DayOffService implements OnModuleInit {
   /**
    * Resolves all Employee IDs associated with the caller user.
    */
-  private async getCallerEmployeeIds(user: any): Promise<Types.ObjectId[]> {
+  private async getCallerEmployeeIds(companyId: Types.ObjectId | undefined, user: any): Promise<Types.ObjectId[]> {
     const userId = user?.id || user?._id;
     const email = user?.email;
     const queryConditions: any[] = [];
@@ -348,8 +597,10 @@ export class DayOffService implements OnModuleInit {
       queryConditions.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
     }
     if (queryConditions.length === 0) return [];
+    const filter: any = { $or: queryConditions };
+    if (companyId) filter.companyId = companyId;
     const employees = await this.employeeModel
-      .find({ $or: queryConditions })
+      .find(filter)
       .select('_id')
       .lean()
       .exec();
@@ -360,8 +611,8 @@ export class DayOffService implements OnModuleInit {
    * Resolves all Employee IDs belonging to teams where the caller is
    * a team member or team lead. Includes the caller's own employee ID(s).
    */
-  private async getTeamMemberEmployeeIds(user: any): Promise<Types.ObjectId[]> {
-    const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+  private async getTeamMemberEmployeeIds(companyId: Types.ObjectId | undefined, user: any): Promise<Types.ObjectId[]> {
+    const callerEmployeeIds = await this.getCallerEmployeeIds(companyId, user);
     const userId = user?.id || user?._id;
 
     const teamSearchConditions: any[] = [];
@@ -379,8 +630,10 @@ export class DayOffService implements OnModuleInit {
       return callerEmployeeIds;
     }
 
+    const filter: any = { $or: teamSearchConditions };
+    if (companyId) filter.companyId = companyId;
     const teams = await this.teamModel
-      .find({ $or: teamSearchConditions })
+      .find(filter)
       .select('members teamLead')
       .lean()
       .exec();
@@ -405,16 +658,37 @@ export class DayOffService implements OnModuleInit {
   }
 
   async getAllApplications(
-    query?: { status?: string; year?: number },
-    user?: any,
-    scope: ScopeType = 'all',
-    isSystemAdmin?: boolean,
+    companyIdOrQuery?: Types.ObjectId | string | { status?: string; year?: number },
+    queryOrUser?: any,
+    userOrScope?: any,
+    scopeOrIsSystemAdmin?: any,
+    maybeIsSystemAdmin?: boolean,
   ): Promise<LeaveApplication[]> {
+    let companyId: Types.ObjectId | undefined;
+    let query: { status?: string; year?: number } | undefined;
+    let user: any;
+    let scope: ScopeType = 'all';
+    let isSystemAdmin = false;
+
+    if (typeof companyIdOrQuery === 'string' || companyIdOrQuery instanceof Types.ObjectId) {
+      companyId = new Types.ObjectId(companyIdOrQuery);
+      query = queryOrUser;
+      user = userOrScope;
+      scope = scopeOrIsSystemAdmin || 'all';
+      isSystemAdmin = !!maybeIsSystemAdmin;
+    } else {
+      query = companyIdOrQuery;
+      user = queryOrUser;
+      scope = userOrScope || 'all';
+      isSystemAdmin = !!scopeOrIsSystemAdmin;
+    }
+
     if (scope === 'none' && !isSystemAdmin) {
       return [];
     }
 
     const filter: any = {};
+    if (companyId) filter.companyId = companyId;
     if (query?.status) {
       filter.status = query.status;
     }
@@ -427,7 +701,7 @@ export class DayOffService implements OnModuleInit {
     // PBAC Scope Filtering
     if (!isSystemAdmin && scope !== 'all') {
       if (scope === 'own') {
-        const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+        const callerEmployeeIds = await this.getCallerEmployeeIds(companyId, user);
         const userId = user?.id || user?._id;
         const ownOr: any[] = [];
         if (callerEmployeeIds.length > 0) {
@@ -444,8 +718,8 @@ export class DayOffService implements OnModuleInit {
         }
         filter.$or = ownOr;
       } else if (scope === 'team') {
-        const teamMemberIds = await this.getTeamMemberEmployeeIds(user);
-        const callerEmployeeIds = await this.getCallerEmployeeIds(user);
+        const teamMemberIds = await this.getTeamMemberEmployeeIds(companyId, user);
+        const callerEmployeeIds = await this.getCallerEmployeeIds(companyId, user);
         const userId = user?.id || user?._id;
 
         const teamOr: any[] = [];
@@ -478,14 +752,42 @@ export class DayOffService implements OnModuleInit {
       .exec();
   }
 
-  async approveByToken(applicationId: string, token: string): Promise<{ success: boolean; message: string; application?: any }> {
-    const application = await this.applicationModel
-      .findById(applicationId)
+  async approveByToken(
+    applicationId: string,
+    token: string,
+    companySlugOrId?: Types.ObjectId | string,
+  ): Promise<{ success: boolean; message: string; application?: any }> {
+    let targetCompanyId: Types.ObjectId | null = null;
+    if (companySlugOrId) {
+      if (Types.ObjectId.isValid(companySlugOrId) && String(new Types.ObjectId(companySlugOrId)) === String(companySlugOrId)) {
+        targetCompanyId = new Types.ObjectId(companySlugOrId);
+      } else if (this.companyModel) {
+        const slugStr = typeof companySlugOrId === 'string' ? companySlugOrId : companySlugOrId.toString();
+        const company = await this.companyModel.findOne({ slug: slugStr }).exec();
+        if (!company) {
+          throw new NotFoundException('Leave application not found.');
+        }
+        targetCompanyId = company._id;
+      }
+    }
+
+    const filter: any = { _id: applicationId };
+    if (targetCompanyId) {
+      filter.companyId = targetCompanyId;
+    }
+
+    const application = await (this.applicationModel.findOne
+      ? this.applicationModel.findOne(filter)
+      : this.applicationModel.findById(applicationId))
       .populate('leaveTypeId')
       .populate('employeeId')
       .exec();
 
     if (!application) {
+      throw new NotFoundException('Leave application not found.');
+    }
+
+    if (targetCompanyId && application.companyId && application.companyId.toString() !== targetCompanyId.toString()) {
       throw new NotFoundException('Leave application not found.');
     }
 
@@ -514,6 +816,7 @@ export class DayOffService implements OnModuleInit {
 
     // Deduct from leave balance
     await this.deductLeaveBalance(
+      application.companyId || targetCompanyId,
       application.employeeId._id?.toString() || application.employeeId.toString(),
       (application.leaveTypeId as any)._id?.toString() || application.leaveTypeId.toString(),
       new Date(application.fromDate).getFullYear(),
@@ -532,7 +835,8 @@ export class DayOffService implements OnModuleInit {
     const toDateStr = new Date(application.toDate).toISOString().split('T')[0];
     const approvedAtStr = application.approvedAt.toLocaleString();
 
-    if (employeeEmail) {
+    if (employeeEmail && this.mailService) {
+      const companySlug = await this.getCompanySlug(application.companyId || targetCompanyId);
       this.mailService.sendLeaveApprovedToEmployee({
         employeeEmail,
         employeeName,
@@ -541,13 +845,14 @@ export class DayOffService implements OnModuleInit {
         toDateStr,
         daysCount: application.daysCount,
         approvedAtStr,
+        companySlug,
       }).catch((err) => {
         this.logger.error(`Failed to send approval email to employee: ${err.message}`);
       });
     }
 
     // In-app notification
-    await this.createNotification({
+    await this.createNotification(application.companyId || targetCompanyId, {
       userId: application.userId,
       title: 'Leave Approved!',
       message: `Your leave request for ${leaveType?.name || 'Leave'} (${fromDateStr} to ${toDateStr}) has been approved.`,
@@ -563,15 +868,45 @@ export class DayOffService implements OnModuleInit {
   }
 
   async updateApplicationStatus(
-    id: string,
-    status: 'approved' | 'rejected',
-    adminUser: any,
-    reason?: string,
-    scope: ScopeType = 'all',
-    isSystemAdmin?: boolean,
+    companyIdOrId: Types.ObjectId | string,
+    idOrStatus: string,
+    statusOrAdminUser: any,
+    adminUserOrReason?: any,
+    reasonOrScope?: any,
+    scopeOrIsSystemAdmin?: any,
+    maybeIsSystemAdmin?: boolean,
   ): Promise<LeaveApplication> {
-    const application = await this.applicationModel
-      .findById(id)
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    let status: 'approved' | 'rejected';
+    let adminUser: any;
+    let reason: string | undefined;
+    let scope: ScopeType = 'all';
+    let isSystemAdmin = false;
+
+    if (idOrStatus === 'approved' || idOrStatus === 'rejected') {
+      id = companyIdOrId.toString();
+      status = idOrStatus;
+      adminUser = statusOrAdminUser;
+      reason = adminUserOrReason;
+      scope = reasonOrScope || 'all';
+      isSystemAdmin = !!scopeOrIsSystemAdmin;
+    } else {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = idOrStatus;
+      status = statusOrAdminUser;
+      adminUser = adminUserOrReason;
+      reason = reasonOrScope;
+      scope = scopeOrIsSystemAdmin || 'all';
+      isSystemAdmin = !!maybeIsSystemAdmin;
+    }
+
+    const filter: any = { _id: id };
+    if (companyId) filter.companyId = companyId;
+
+    const application = await (this.applicationModel.findOne
+      ? this.applicationModel.findOne(filter)
+      : this.applicationModel.findById(id))
       .populate('leaveTypeId')
       .populate('employeeId')
       .exec();
@@ -586,7 +921,7 @@ export class DayOffService implements OnModuleInit {
         throw new ForbiddenException('Access denied: scope is none for this action');
       }
       if (scope === 'team') {
-        const teamMemberIds = await this.getTeamMemberEmployeeIds(adminUser);
+        const teamMemberIds = await this.getTeamMemberEmployeeIds(companyId || application.companyId, adminUser);
         const applicantEmployeeId = (application.employeeId as any)?._id || application.employeeId;
         const isMember = teamMemberIds.some(
           (mId) => mId.toString() === applicantEmployeeId?.toString(),
@@ -613,6 +948,7 @@ export class DayOffService implements OnModuleInit {
       // Deduct balance if transitioning to approved
       if (previousStatus !== 'approved') {
         await this.deductLeaveBalance(
+          application.companyId || companyId,
           (application.employeeId as any)._id?.toString() || application.employeeId.toString(),
           (application.leaveTypeId as any)._id?.toString() || application.leaveTypeId.toString(),
           new Date(application.fromDate).getFullYear(),
@@ -631,7 +967,8 @@ export class DayOffService implements OnModuleInit {
       const toDateStr = new Date(application.toDate).toISOString().split('T')[0];
       const approvedAtStr = application.approvedAt.toLocaleString();
 
-      if (employeeEmail) {
+      if (employeeEmail && this.mailService) {
+        const companySlug = await this.getCompanySlug(application.companyId || companyId);
         this.mailService.sendLeaveApprovedToEmployee({
           employeeEmail,
           employeeName,
@@ -640,12 +977,13 @@ export class DayOffService implements OnModuleInit {
           toDateStr,
           daysCount: application.daysCount,
           approvedAtStr,
+          companySlug,
         }).catch((err) => {
           this.logger.error(`Failed to send approval email: ${err.message}`);
         });
       }
 
-      await this.createNotification({
+      await this.createNotification(application.companyId || companyId, {
         userId: application.userId,
         title: 'Leave Approved!',
         message: `Your leave request for ${leaveType?.name || 'Leave'} (${fromDateStr} to ${toDateStr}) has been approved.`,
@@ -659,7 +997,7 @@ export class DayOffService implements OnModuleInit {
       const fromDateStr = new Date(application.fromDate).toISOString().split('T')[0];
       const toDateStr = new Date(application.toDate).toISOString().split('T')[0];
 
-      await this.createNotification({
+      await this.createNotification(application.companyId || companyId, {
         userId: application.userId,
         title: 'Leave Request Declined',
         message: `Your leave request for ${leaveType?.name || 'Leave'} (${fromDateStr} to ${toDateStr}) was declined.${reason ? ` Reason: ${reason}` : ''}`,
@@ -672,12 +1010,32 @@ export class DayOffService implements OnModuleInit {
     return application;
   }
 
-  async cancelApplication(id: string, user: any): Promise<LeaveApplication> {
+  async cancelApplication(
+    companyIdOrId: Types.ObjectId | string,
+    idOrUser: string | any,
+    maybeUser?: any,
+  ): Promise<LeaveApplication> {
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    let user: any;
+
+    if (maybeUser !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = idOrUser;
+      user = maybeUser;
+    } else {
+      id = companyIdOrId.toString();
+      user = idOrUser;
+    }
+
     const userId = user.id || user._id;
-    const application = await this.applicationModel.findOne({
+    const filter: any = {
       _id: new Types.ObjectId(id),
       userId: new Types.ObjectId(userId),
-    }).exec();
+    };
+    if (companyId) filter.companyId = companyId;
+
+    const application = await this.applicationModel.findOne(filter).exec();
 
     if (!application) {
       throw new NotFoundException('Leave application not found.');
@@ -692,18 +1050,36 @@ export class DayOffService implements OnModuleInit {
     return application;
   }
 
-  private async deductLeaveBalance(employeeId: string, leaveTypeId: string, year: number, daysCount: number) {
-    let balance = await this.balanceModel.findOne({
-      employeeId: new Types.ObjectId(employeeId),
-      leaveTypeId: new Types.ObjectId(leaveTypeId),
+  private async deductLeaveBalance(
+    companyId: Types.ObjectId | string | undefined,
+    employeeId: string | Types.ObjectId,
+    leaveTypeId: string | Types.ObjectId,
+    year: number,
+    daysCount: number,
+  ) {
+    const compObjId = companyId ? new Types.ObjectId(companyId) : undefined;
+    const empObjId = new Types.ObjectId(employeeId);
+    const ltObjId = new Types.ObjectId(leaveTypeId);
+
+    const filterBal: any = {
+      employeeId: empObjId,
+      leaveTypeId: ltObjId,
       year,
-    }).exec();
+    };
+    if (compObjId) {
+      filterBal.companyId = compObjId;
+    }
+
+    let balance = await this.balanceModel.findOne(filterBal).exec();
 
     if (!balance) {
-      const leaveType = await this.leaveTypeModel.findById(leaveTypeId).exec();
+      const filterLt: any = { _id: ltObjId };
+      if (compObjId) filterLt.companyId = compObjId;
+      const leaveType = await this.leaveTypeModel.findOne(filterLt).exec();
       balance = new this.balanceModel({
-        employeeId: new Types.ObjectId(employeeId),
-        leaveTypeId: new Types.ObjectId(leaveTypeId),
+        ...(compObjId ? { companyId: compObjId } : {}),
+        employeeId: empObjId,
+        leaveTypeId: ltObjId,
         year,
         allocated: leaveType?.defaultAllocation || 0,
         used: 0,
@@ -716,37 +1092,99 @@ export class DayOffService implements OnModuleInit {
   }
 
   // --- Notifications ---
-  async createNotification(data: {
-    userId: Types.ObjectId;
-    title: string;
-    message: string;
-    type?: string;
-    link?: string;
-  }): Promise<Notification> {
+  async createNotification(
+    companyIdOrData?: Types.ObjectId | string | {
+      companyId?: Types.ObjectId;
+      userId: Types.ObjectId;
+      title: string;
+      message: string;
+      type?: string;
+      link?: string;
+    },
+    maybeData?: {
+      userId: Types.ObjectId;
+      title: string;
+      message: string;
+      type?: string;
+      link?: string;
+    },
+  ): Promise<Notification> {
+    let companyId: Types.ObjectId | undefined;
+    let data: any;
+
+    if (maybeData !== undefined) {
+      if (companyIdOrData) {
+        companyId = new Types.ObjectId(companyIdOrData as any);
+      }
+      data = maybeData;
+    } else {
+      data = companyIdOrData;
+      if (data?.companyId) {
+        companyId = new Types.ObjectId(data.companyId);
+      }
+    }
+
     const notification = new this.notificationModel({
       ...data,
+      ...(companyId ? { companyId } : {}),
       isRead: false,
     });
     return notification.save();
   }
 
-  async getUserNotifications(userId: string): Promise<{ list: Notification[]; unreadCount: number }> {
+  async getUserNotifications(
+    companyIdOrUserId: Types.ObjectId | string,
+    maybeUserId?: string,
+  ): Promise<{ list: Notification[]; unreadCount: number }> {
+    let companyId: Types.ObjectId | undefined;
+    let userId: string;
+
+    if (maybeUserId !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrUserId);
+      userId = maybeUserId;
+    } else {
+      userId = companyIdOrUserId.toString();
+    }
+
     const userObjId = new Types.ObjectId(userId);
+    const filter: any = { userId: userObjId };
+    if (companyId) filter.companyId = companyId;
+
     const [list, unreadCount] = await Promise.all([
       this.notificationModel
-        .find({ userId: userObjId })
+        .find(filter)
         .sort({ createdAt: -1 })
         .limit(20)
         .exec(),
-      this.notificationModel.countDocuments({ userId: userObjId, isRead: false }),
+      this.notificationModel.countDocuments({ ...filter, isRead: false }),
     ]);
 
     return { list, unreadCount };
   }
 
-  async markNotificationAsRead(id: string, userId: string): Promise<Notification> {
+  async markNotificationAsRead(
+    companyIdOrId: Types.ObjectId | string,
+    idOrUserId: string,
+    maybeUserId?: string,
+  ): Promise<Notification> {
+    let companyId: Types.ObjectId | undefined;
+    let id: string;
+    let userId: string;
+
+    if (maybeUserId !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrId);
+      id = idOrUserId;
+      userId = maybeUserId;
+    } else {
+      id = companyIdOrId.toString();
+      userId = idOrUserId;
+    }
+
+    const filter: any = { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) };
+    if (companyId) filter.companyId = companyId;
+
     const notification = await this.notificationModel.findOneAndUpdate(
-      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
+      filter,
       { $set: { isRead: true } },
       { new: true },
     ).exec();
@@ -755,9 +1193,25 @@ export class DayOffService implements OnModuleInit {
     return notification;
   }
 
-  async markAllNotificationsAsRead(userId: string): Promise<any> {
+  async markAllNotificationsAsRead(
+    companyIdOrUserId: Types.ObjectId | string,
+    maybeUserId?: string,
+  ): Promise<any> {
+    let companyId: Types.ObjectId | undefined;
+    let userId: string;
+
+    if (maybeUserId !== undefined) {
+      companyId = new Types.ObjectId(companyIdOrUserId);
+      userId = maybeUserId;
+    } else {
+      userId = companyIdOrUserId.toString();
+    }
+
+    const filter: any = { userId: new Types.ObjectId(userId), isRead: false };
+    if (companyId) filter.companyId = companyId;
+
     await this.notificationModel.updateMany(
-      { userId: new Types.ObjectId(userId), isRead: false },
+      filter,
       { $set: { isRead: true } },
     ).exec();
     return { success: true };

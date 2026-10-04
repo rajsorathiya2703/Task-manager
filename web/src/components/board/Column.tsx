@@ -5,7 +5,7 @@ import { GripVertical, Plus, MoreHorizontal } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { TaskCard } from "./TaskCard";
 import { Task } from "../../lib/data";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ColumnProps {
@@ -59,9 +59,9 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
         </div>
         <div className="flex items-center gap-1">
           {canCreateTask && (
-            <Link href={addTaskHref} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors" title="Add Task">
+            <CompanyLink href={addTaskHref} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors" title="Add Task">
               <Plus className="w-4 h-4" />
-            </Link>
+            </CompanyLink>
           )}
           <button className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors">
             <MoreHorizontal className="w-4 h-4" />
@@ -86,10 +86,10 @@ export function Column({ title, tasks: initialTasks, projectId, showProjectCapsu
       {/* Column Footer */}
       {canCreateTask && (
         <div className="p-3 pt-1">
-          <Link href={addTaskHref} className="w-full flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground py-1.5 px-3 rounded-lg hover:bg-muted/50 transition-colors">
+          <CompanyLink href={addTaskHref} className="w-full flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground py-1.5 px-3 rounded-lg hover:bg-muted/50 transition-colors">
             <Plus className="w-4 h-4" />
             Add Task
-          </Link>
+          </CompanyLink>
         </div>
       )}
     </div>

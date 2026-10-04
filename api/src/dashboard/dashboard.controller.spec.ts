@@ -1,31 +1,29 @@
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Types } from 'mongoose';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { ACCESS_REQUIREMENT_KEY } from '../access/decorators/require-access.decorator';
 import { AccessGuard } from '../access/access.guard';
 import { PolicyCompilerService } from '../access/policy-compiler.service';
 import { PolicyEngineService } from '../access/policy-engine.service';
+import { TenantGuard } from '../common/tenant.guard';
+import { makeTwoTenants } from '../../test/helpers/tenant-fixtures';
 
-describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
+describe('DashboardController (P1-19 & MC-25 — Company-Scoped Dashboard Controller)', () => {
   let controller: DashboardController;
   let dashboardService: jest.Mocked<DashboardService>;
   const reflector = new Reflector();
+
+  const mockCompanyId = new Types.ObjectId();
 
   beforeEach(async () => {
     dashboardService = {
       getEmployeeActivity: jest.fn(),
     } as any;
 
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [DashboardController],
-      providers: [
-        { provide: DashboardService, useValue: dashboardService },
-      ],
-    }).compile();
-
-    controller = module.get<DashboardController>(DashboardController);
+    controller = new DashboardController(dashboardService);
   });
 
   describe('Route @RequireAccess metadata', () => {
@@ -35,13 +33,15 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
     });
   });
 
-  describe('Parameter and Scope Forwarding', () => {
-    it('forwards query, userId, email, isSystemAdmin, and scope from req.access.dashboard', async () => {
+  describe('Parameter and Company Scope Forwarding (MC-25)', () => {
+    it('forwards companyId, membership employeeId, query, userId, email, isSystemAdmin, and scope from req', async () => {
       const mockResult = { selectedEmployee: { name: 'Alice' } } as any;
       dashboardService.getEmployeeActivity.mockResolvedValue(mockResult);
 
+      const callerEmployeeId = new Types.ObjectId();
       const req = {
         user: { id: 'user-alice-123', email: 'alice@example.com', is_system_admin: false },
+        membership: { employeeId: callerEmployeeId },
         access: {
           dashboard: {
             granted: true,
@@ -51,13 +51,15 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
       };
       const query = { range: 'weekly' } as any;
 
-      const result = await controller.getEmployeeActivity(req, query);
+      const result = await controller.getEmployeeActivity(mockCompanyId, req, query);
 
       expect(result).toBe(mockResult);
       expect(dashboardService.getEmployeeActivity).toHaveBeenCalledWith(
         query,
         'user-alice-123',
         'alice@example.com',
+        mockCompanyId,
+        callerEmployeeId,
         false,
         'own',
       );
@@ -68,6 +70,7 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
 
       const req = {
         user: { id: 'lead-1', email: 'lead@example.com', is_system_admin: false },
+        membership: {},
         access: {
           dashboard: {
             granted: true,
@@ -77,12 +80,14 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
       };
       const query = { range: 'monthly', employeeId: 'emp-bob' } as any;
 
-      await controller.getEmployeeActivity(req, query);
+      await controller.getEmployeeActivity(mockCompanyId, req, query);
 
       expect(dashboardService.getEmployeeActivity).toHaveBeenCalledWith(
         query,
         'lead-1',
         'lead@example.com',
+        mockCompanyId,
+        undefined,
         false,
         'team',
       );
@@ -93,6 +98,7 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
 
       const req = {
         user: { id: 'admin-1', email: 'admin@example.com', is_system_admin: true },
+        membership: {},
         access: {
           dashboard: {
             granted: true,
@@ -102,13 +108,93 @@ describe('DashboardController (P1-19 — Dashboard Module Gate)', () => {
       };
       const query = { range: 'weekly' } as any;
 
-      await controller.getEmployeeActivity(req, query);
+      await controller.getEmployeeActivity(mockCompanyId, req, query);
 
       expect(dashboardService.getEmployeeActivity).toHaveBeenCalledWith(
         query,
         'admin-1',
         'admin@example.com',
+        mockCompanyId,
+        undefined,
         true,
+        'all',
+      );
+    });
+  });
+
+  describe('Cross-Tenant Isolation (MC-25)', () => {
+    const { A: companyA, B: companyB } = makeTwoTenants();
+
+    it('request as member of B against /companies/A/dashboard/employee-activity -> 403 Forbidden', async () => {
+      const companyModel = {
+        findOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ _id: companyA.companyId, slug: companyA.slug, status: 'active' }),
+        }),
+      };
+      const membershipModel = {
+        findOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null), // Not a member of company A!
+        }),
+      };
+      const tenantGuard = new TenantGuard(reflector, companyModel as any, membershipModel as any);
+
+      const context = {
+        switchToHttp: () => ({
+          getRequest: () => ({
+            params: { companySlug: companyA.slug },
+            user: { id: companyB.memberUserId.toString(), _id: companyB.memberUserId.toString() },
+          }),
+          getResponse: () => ({}),
+        }),
+        getHandler: () => controller.getEmployeeActivity,
+        getClass: () => DashboardController,
+      } as any;
+
+      await expect(tenantGuard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('numbers for A include none of B data (test with two tenants)', async () => {
+      const mockResultA = {
+        kpis: { tasksCompleted: { count: 10 }, openTasks: { total: 5, overdue: 1 } },
+        allEmployees: [{ _id: 'emp-A', name: 'Alice from Company A' }],
+      };
+      const mockResultB = {
+        kpis: { tasksCompleted: { count: 2 }, openTasks: { total: 1, overdue: 0 } },
+        allEmployees: [{ _id: 'emp-B', name: 'Bob from Company B' }],
+      };
+
+      dashboardService.getEmployeeActivity.mockImplementation(async (query, userId, email, companyId) => {
+        if (companyId?.toString() === companyA.companyId.toString()) {
+          return mockResultA as any;
+        }
+        if (companyId?.toString() === companyB.companyId.toString()) {
+          return mockResultB as any;
+        }
+        return {} as any;
+      });
+
+      const reqA = {
+        user: { id: companyA.ownerUserId.toString(), email: 'owner@alpha.com' },
+        membership: { employeeId: new Types.ObjectId() },
+        access: { dashboard: { scope: 'all' } },
+      };
+
+      const resultA = await controller.getEmployeeActivity(companyA.companyId, reqA as any, { range: 'weekly' } as any);
+
+      expect(resultA).toBe(mockResultA);
+      expect(resultA.kpis.tasksCompleted.count).toBe(10);
+      expect(resultA.allEmployees[0].name).toBe('Alice from Company A');
+      // Verify isolation: result A contains none of Company B's data
+      expect(JSON.stringify(resultA)).not.toContain('Company B');
+      expect(JSON.stringify(resultA)).not.toContain('Bob from Company B');
+
+      expect(dashboardService.getEmployeeActivity).toHaveBeenCalledWith(
+        expect.anything(),
+        companyA.ownerUserId.toString(),
+        'owner@alpha.com',
+        companyA.companyId,
+        reqA.membership.employeeId,
+        false,
         'all',
       );
     });

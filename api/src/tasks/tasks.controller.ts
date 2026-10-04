@@ -1,4 +1,20 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, UseInterceptors, UploadedFiles, BadRequestException, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+  Query,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+  NotFoundException,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { TasksService } from './tasks.service';
@@ -7,6 +23,8 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { RequireAccess } from '../access/decorators/require-access.decorator';
+import { CurrentCompany, TenantScoped } from '../common/tenant.decorators';
+import { Types } from 'mongoose';
 
 function validateAttachmentFile(file: Express.Multer.File) {
   if (!file) {
@@ -49,45 +67,68 @@ function validateAttachmentFile(file: Express.Multer.File) {
   }
 }
 
-@Controller('tasks')
+@Controller('companies/:companySlug/tasks')
 @UseGuards(JwtAuthGuard)
+@TenantScoped()
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
-    private readonly cloudinaryService: CloudinaryService
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   @Post()
   @RequireAccess({ module: 'tasks', action: 'create' })
-  create(@Request() req, @Body() createTaskDto: CreateTaskDto) {
+  create(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Body() createTaskDto: CreateTaskDto,
+  ) {
+    if (createTaskDto && typeof createTaskDto === 'object') {
+      delete (createTaskDto as any).companyId;
+    }
     const isSystemAdmin = req.user?.is_system_admin === true;
-    return this.tasksService.create(req.user.id, createTaskDto, req.user.email, isSystemAdmin);
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.create(companyId, userId?.toString(), createTaskDto, req.user?.email, isSystemAdmin);
   }
 
   @Get()
   @RequireAccess({ module: 'tasks', action: 'read' })
-  findAll(@Request() req, @Query('projectId') projectId?: string) {
+  findAll(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Query('projectId') projectId?: string,
+  ) {
     const isSystemAdmin = req.user?.is_system_admin === true;
     const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
-    return this.tasksService.findAll(req.user.id, req.user.email, projectId, isSystemAdmin, scope);
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.findAll(companyId, userId?.toString(), req.user?.email, projectId, isSystemAdmin, scope);
   }
 
   @Get('timeline')
   @RequireAccess({ module: 'timeline', action: 'read' })
-  getTimeline(@Request() req, @Query() query: any) {
-    return this.tasksService.getTimeline(req.user.id, req.user.email, query);
+  getTimeline(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Query() query: any,
+  ) {
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.getTimeline(companyId, userId?.toString(), req.user?.email, query);
   }
 
   @Get('timer/active')
   @RequireAccess({ module: 'tasks', action: 'read' })
-  async getActiveTimer(@Request() req) {
-    const activeTask = await this.tasksService.getActiveTimer(req.user.email);
+  async getActiveTimer(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+  ) {
+    const activeTask = await this.tasksService.getActiveTimer(companyId, req.user?.email);
     return activeTask || null;
   }
 
   @Get('file/view')
   @RequireAccess({ module: 'tasks', action: 'read' })
   async viewFile(
+    @CurrentCompany() companyId: Types.ObjectId,
     @Query('url') fileUrl: string,
     @Query('name') fileName: string,
     @Query('download') download: string,
@@ -111,6 +152,11 @@ export class TasksController {
 
     if (!isAllowedHost) {
       throw new BadRequestException('Invalid or untrusted file URL host for redirect');
+    }
+
+    const fileExistsInCompany = await this.tasksService.verifyFileBelongsToCompany(companyId, fileUrl);
+    if (!fileExistsInCompany) {
+      throw new NotFoundException('File not found in this company');
     }
 
     const isPdf =
@@ -138,41 +184,6 @@ export class TasksController {
     return res.redirect(fileUrl);
   }
 
-  @Get(':id')
-  @RequireAccess({ module: 'tasks', action: 'read' })
-  findOne(@Request() req, @Param('id') id: string) {
-    const isSystemAdmin = req.user?.is_system_admin === true;
-    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
-    return this.tasksService.findOne(id, req.user.id, req.user.email, isSystemAdmin, scope);
-  }
-
-  @Patch(':id')
-  @RequireAccess({ module: 'tasks', action: 'update' })
-  update(@Request() req, @Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto) {
-    const user = {
-      name: req.user?.name || req.user?.email || 'User',
-      avatarUrl: req.user?.avatarUrl,
-      email: req.user?.email,
-    };
-    const isSystemAdmin = req.user?.is_system_admin === true;
-    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
-    return this.tasksService.update(id, updateTaskDto, req.user.id, req.user.email, user, isSystemAdmin, scope);
-  }
-
-  @Delete(':id')
-  @RequireAccess({ module: 'tasks', action: 'delete' })
-  remove(@Request() req, @Param('id') id: string) {
-    const isSystemAdmin = req.user?.is_system_admin === true;
-    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
-    return this.tasksService.remove(id, req.user.id, req.user.email, isSystemAdmin, scope);
-  }
-
-  @Post(':id/duplicate')
-  @RequireAccess({ module: 'tasks', action: 'create' })
-  duplicate(@Request() req, @Param('id') id: string) {
-    return this.tasksService.duplicate(id, req.user.id, req.user.email);
-  }
-
   @Post('upload')
   @RequireAccess({ module: 'tasks', action: 'create' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
@@ -195,11 +206,99 @@ export class TasksController {
     );
   }
 
+  @Get(':id')
+  @RequireAccess({ module: 'tasks', action: 'read' })
+  async findOne(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    const userId = req.user?.id || req.user?._id;
+    const task = await this.tasksService.findOne(companyId, id, userId?.toString(), req.user?.email, isSystemAdmin, scope);
+    if (!task) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return task;
+  }
+
+  @Patch(':id')
+  @RequireAccess({ module: 'tasks', action: 'update' })
+  async update(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() updateTaskDto: UpdateTaskDto,
+  ) {
+    if (updateTaskDto && typeof updateTaskDto === 'object') {
+      delete (updateTaskDto as any).companyId;
+    }
+    const user = {
+      name: req.user?.name || req.user?.email || 'User',
+      avatarUrl: req.user?.avatarUrl,
+      email: req.user?.email,
+    };
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    const userId = req.user?.id || req.user?._id;
+    const updated = await this.tasksService.update(
+      companyId,
+      id,
+      updateTaskDto,
+      userId?.toString(),
+      req.user?.email,
+      user,
+      isSystemAdmin,
+      scope,
+    );
+    if (!updated) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return updated;
+  }
+
+  @Delete(':id')
+  @RequireAccess({ module: 'tasks', action: 'delete' })
+  async remove(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const scope = req.access?.tasks?.scope || req.accessDecision?.scope || 'own';
+    const userId = req.user?.id || req.user?._id;
+    const removed = await this.tasksService.remove(
+      companyId,
+      id,
+      userId?.toString(),
+      req.user?.email,
+      isSystemAdmin,
+      scope,
+    );
+    if (!removed) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return removed;
+  }
+
+  @Post(':id/duplicate')
+  @RequireAccess({ module: 'tasks', action: 'create' })
+  duplicate(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.duplicate(companyId, id, userId?.toString(), req.user?.email);
+  }
+
   @Post(':id/upload')
   @RequireAccess({ module: 'tasks', action: 'update' })
   @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadFiles(
-    @Request() req,
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
     @Param('id') id: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
@@ -221,93 +320,157 @@ export class TasksController {
       })
     );
 
-    // Find the task and append the new resources
-    const task = await this.tasksService.findOne(id, req.user.id, req.user.email);
+    const userId = req.user?.id || req.user?._id;
+    const task = await this.tasksService.findOne(companyId, id, userId?.toString(), req.user?.email);
     if (!task) {
-      throw new BadRequestException('Task not found');
+      throw new NotFoundException(`Task #${id} not found`);
     }
 
     const updatedResources = [...(task.resources || []), ...newResources];
     
-    // We update using tasksService.update
-    const updatedTask = await this.tasksService.update(id, { resources: updatedResources }, req.user.id, req.user.email);
+    const updatedTask = await this.tasksService.update(
+      companyId,
+      id,
+      { resources: updatedResources },
+      userId?.toString(),
+      req.user?.email,
+    );
     return updatedTask;
   }
 
   @Post(':id/comments')
   @RequireAccess({ module: 'tasks', action: 'read' })
   async addComment(
-    @Request() req,
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
     @Param('id') id: string,
     @Body() commentData: any,
   ) {
-    const user = {
-      name: req.user.name || req.user.email || 'User',
-      avatarUrl: req.user.avatarUrl,
-      userId: (req.user.id || req.user._id)?.toString(),
-      email: req.user.email,
+    if (commentData && typeof commentData === 'object') {
+      delete commentData.companyId;
+    }
+    const userId = req.user?.id || req.user?._id;
+    const employeeId = req.membership?.employeeId?.toString() || req.membership?.employeeId;
+    const user: any = {
+      name: req.user?.name || req.user?.email || 'User',
+      avatarUrl: req.user?.avatarUrl,
+      userId: userId?.toString(),
+      email: req.user?.email,
     };
+    if (employeeId) {
+      user.employeeId = employeeId;
+    }
     const newComment = { ...commentData, user };
-    return this.tasksService.addComment(id, newComment, req.user.id, req.user.email);
+    const task = await this.tasksService.addComment(companyId, id, newComment, userId?.toString(), req.user?.email);
+    if (!task) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return task;
   }
 
   @Patch(':id/comments/:commentId')
   @RequireAccess({ module: 'tasks', action: 'read' })
   async updateComment(
-    @Request() req,
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
     @Param('id') id: string,
     @Param('commentId') commentId: string,
     @Body() updateData: any,
   ) {
-    return this.tasksService.updateComment(id, commentId, updateData, req.user.id, req.user.email, req.user);
+    if (updateData && typeof updateData === 'object') {
+      delete updateData.companyId;
+    }
+    const userId = req.user?.id || req.user?._id;
+    const task = await this.tasksService.updateComment(
+      companyId,
+      id,
+      commentId,
+      updateData,
+      userId?.toString(),
+      req.user?.email,
+      req.user,
+    );
+    if (!task) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return task;
   }
 
   @Delete(':id/comments/:commentId')
   @RequireAccess({ module: 'tasks', action: 'read' })
   async deleteComment(
-    @Request() req,
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
     @Param('id') id: string,
     @Param('commentId') commentId: string,
   ) {
-    return this.tasksService.deleteComment(id, commentId, req.user.id, req.user.email, req.user);
+    const userId = req.user?.id || req.user?._id;
+    const task = await this.tasksService.deleteComment(
+      companyId,
+      id,
+      commentId,
+      userId?.toString(),
+      req.user?.email,
+      req.user,
+    );
+    if (!task) {
+      throw new NotFoundException(`Task #${id} not found`);
+    }
+    return task;
   }
 
   @Post(':id/invite')
   @RequireAccess({ module: 'tasks', action: 'update' })
   async inviteMember(
-    @Request() req,
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
     @Param('id') id: string,
     @Body() body: { email: string; name: string },
   ) {
-    try {
-      const isSystemAdmin = req.user?.is_system_admin === true;
-      const inviterName = req.user?.name || 'A team member';
-      return await this.tasksService.inviteMember(id, body.email, body.name, inviterName, req.user.id, req.user.email, isSystemAdmin);
-    } catch (e) {
-      require('fs').writeFileSync('invite-error.log', e.stack || e.message);
-      throw e;
-    }
+    const isSystemAdmin = req.user?.is_system_admin === true;
+    const inviterName = req.user?.name || 'A team member';
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.inviteMember(
+      companyId,
+      id,
+      body.email,
+      body.name,
+      inviterName,
+      userId?.toString(),
+      req.user?.email,
+      isSystemAdmin,
+    );
   }
 
   @Post(':id/timer/start')
   @RequireAccess({ module: 'tasks', action: 'read' })
-  async startTimer(@Request() req, @Param('id') id: string) {
+  async startTimer(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
       email: req.user?.email,
       avatarUrl: req.user?.avatarUrl,
     };
-    return this.tasksService.startTimer(id, user, req.user.id, req.user.email);
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.startTimer(companyId, id, user, userId?.toString(), req.user?.email);
   }
 
   @Post(':id/timer/stop')
   @RequireAccess({ module: 'tasks', action: 'read' })
-  async stopTimer(@Request() req, @Param('id') id: string) {
+  async stopTimer(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Request() req: any,
+    @Param('id') id: string,
+  ) {
     const user = {
       name: req.user?.name || req.user?.email || 'User',
       email: req.user?.email,
       avatarUrl: req.user?.avatarUrl,
     };
-    return this.tasksService.stopTimer(id, user, req.user.id, req.user.email);
+    const userId = req.user?.id || req.user?._id;
+    return this.tasksService.stopTimer(companyId, id, user, userId?.toString(), req.user?.email);
   }
 }

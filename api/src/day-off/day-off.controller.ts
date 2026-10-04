@@ -10,100 +10,176 @@ import {
   Req,
   Res,
   Header,
+  ForbiddenException,
+  BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Types } from 'mongoose';
 import { DayOffService } from './day-off.service';
+import { CompaniesService } from '../companies/companies.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { RequireAccess } from '../access/decorators/require-access.decorator';
+import { CurrentCompany, TenantScoped, NoTenant } from '../common/tenant.decorators';
 
-@Controller('day-off')
+function escapeHtml(str: string): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+@Controller('companies/:companySlug/day-off')
+@TenantScoped()
 export class DayOffController {
   constructor(
     private readonly dayOffService: DayOffService,
+    @Optional() private readonly companiesService?: CompaniesService,
   ) {}
 
   // --- Settings ---
   @Get('settings')
   @RequireAccess({ module: 'dayoff.policies', action: 'read' })
-  getSettings() {
-    return this.dayOffService.getSettings();
+  getSettings(@CurrentCompany() companyId: Types.ObjectId) {
+    return this.dayOffService.getSettings(companyId);
   }
 
   @Patch('settings')
   @RequireAccess({ module: 'dayoff.policies', action: 'update' })
-  updateSettings(@Body() body: any) {
-    return this.dayOffService.updateSettings(body);
+  async updateSettings(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    // TODO(PBAC): Replace with granular PBAC permissions once PBAC plan is implemented
+    if (!req.membership?.isCompanyOwner && !req.user?.is_system_admin) {
+      throw new ForbiddenException('Only the company owner or admin can modify settings');
+    }
+    return this.dayOffService.updateSettings(companyId, body);
   }
 
   // --- Leave Types ---
   @Get('leave-types')
   @RequireAccess({ module: 'dayoff.policies', action: 'read' })
-  getLeaveTypes(@Query('activeOnly') activeOnly?: string) {
-    return this.dayOffService.getLeaveTypes({ activeOnly: activeOnly === 'true' });
+  getLeaveTypes(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Query('activeOnly') activeOnly?: string,
+  ) {
+    return this.dayOffService.getLeaveTypes(companyId, { activeOnly: activeOnly === 'true' });
   }
 
   @Get('leave-types/:id')
   @RequireAccess({ module: 'dayoff.policies', action: 'read' })
-  getLeaveTypeById(@Param('id') id: string) {
-    return this.dayOffService.getLeaveTypeById(id);
+  getLeaveTypeById(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('id') id: string,
+  ) {
+    return this.dayOffService.getLeaveTypeById(companyId, id);
   }
 
   @Post('leave-types')
   @RequireAccess({ module: 'dayoff.policies', action: 'create' })
-  createLeaveType(@Body() body: any) {
-    return this.dayOffService.createLeaveType(body);
+  async createLeaveType(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    // TODO(PBAC): Replace with granular PBAC permissions once PBAC plan is implemented
+    if (!req.membership?.isCompanyOwner && !req.user?.is_system_admin) {
+      throw new ForbiddenException('Only the company owner or admin can create leave types');
+    }
+    return this.dayOffService.createLeaveType(companyId, body);
   }
 
   @Patch('leave-types/:id')
   @RequireAccess({ module: 'dayoff.policies', action: 'update' })
-  updateLeaveType(@Param('id') id: string, @Body() body: any) {
-    return this.dayOffService.updateLeaveType(id, body);
+  async updateLeaveType(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    // TODO(PBAC): Replace with granular PBAC permissions once PBAC plan is implemented
+    if (!req.membership?.isCompanyOwner && !req.user?.is_system_admin) {
+      throw new ForbiddenException('Only the company owner or admin can update leave types');
+    }
+    return this.dayOffService.updateLeaveType(companyId, id, body);
   }
 
   @Delete('leave-types/:id')
   @RequireAccess({ module: 'dayoff.policies', action: 'delete' })
-  deleteLeaveType(@Param('id') id: string) {
-    return this.dayOffService.deleteLeaveType(id);
+  async deleteLeaveType(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    // TODO(PBAC): Replace with granular PBAC permissions once PBAC plan is implemented
+    if (!req.membership?.isCompanyOwner && !req.user?.is_system_admin) {
+      throw new ForbiddenException('Only the company owner or admin can delete leave types');
+    }
+    return this.dayOffService.deleteLeaveType(companyId, id);
   }
 
   // --- Balances ---
   @Get('balances')
   @RequireAccess({ module: 'dayoff', action: 'read' })
-  async getMyBalances(@Req() req: any, @Query('year') year?: string) {
-    const userId = req.user?.id || req.user?._id;
-    const y = year ? parseInt(year, 10) : new Date().getFullYear();
-    const myLeaves = await this.dayOffService.getMyApplications(req.user, y);
-    const employeeId = myLeaves[0]?.employeeId?._id || (myLeaves[0]?.employeeId as any);
+  async getMyBalances(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Req() req: any,
+    @Query('year') year?: string,
+  ) {
+    const employeeId = req.membership?.employeeId;
     if (!employeeId) {
-      return this.dayOffService.getEmployeeBalances(userId, y);
+      throw new BadRequestException('Your membership is not linked to an employee profile.');
     }
-    return this.dayOffService.getEmployeeBalances(employeeId.toString(), y);
+    const y = year ? parseInt(year, 10) : new Date().getFullYear();
+    return this.dayOffService.getEmployeeBalances(companyId, employeeId, y);
   }
 
   @Get('balances/:employeeId')
   @RequireAccess({ module: 'dayoff', action: 'read' })
-  getEmployeeBalances(@Param('employeeId') employeeId: string, @Query('year') year?: string) {
+  getEmployeeBalances(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('employeeId') employeeId: string,
+    @Query('year') year?: string,
+  ) {
     const y = year ? parseInt(year, 10) : new Date().getFullYear();
-    return this.dayOffService.getEmployeeBalances(employeeId, y);
+    return this.dayOffService.getEmployeeBalances(companyId, employeeId, y);
   }
 
   // --- Applications ---
   @Post('applications')
   @RequireAccess({ module: 'dayoff', action: 'create' })
-  applyLeave(@Req() req: any, @Body() body: any) {
-    return this.dayOffService.applyLeave(req.user, body);
+  applyLeave(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    const employeeId = req.membership?.employeeId;
+    if (!employeeId) {
+      throw new BadRequestException('Your membership is not linked to an employee profile.');
+    }
+    return this.dayOffService.applyLeave(companyId, employeeId, req.user, body);
   }
 
   @Get('applications/my')
   @RequireAccess({ module: 'dayoff', action: 'read' })
-  getMyApplications(@Req() req: any, @Query('year') year?: string) {
+  getMyApplications(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Req() req: any,
+    @Query('year') year?: string,
+  ) {
     const y = year ? parseInt(year, 10) : undefined;
-    return this.dayOffService.getMyApplications(req.user, y);
+    return this.dayOffService.getMyApplications(companyId, req.user, y);
   }
 
   @Get('applications')
   @RequireAccess({ module: 'dayoff.approvals', action: 'read' })
   async getAllApplications(
+    @CurrentCompany() companyId: Types.ObjectId,
     @Req() req: any,
     @Query('status') status?: string,
     @Query('year') year?: string,
@@ -111,22 +187,27 @@ export class DayOffController {
   ) {
     const y = year ? parseInt(year, 10) : undefined;
     if (scope === 'my') {
-      return this.dayOffService.getMyApplications(req.user, y);
+      return this.dayOffService.getMyApplications(companyId, req.user, y);
     }
     const isSystemAdmin = req.user?.is_system_admin === true;
     const effectiveScope = req.access?.['dayoff.approvals']?.scope || req.accessDecision?.scope || 'team';
-    return this.dayOffService.getAllApplications({ status, year: y }, req.user, effectiveScope, isSystemAdmin);
+    return this.dayOffService.getAllApplications(companyId, { status, year: y }, req.user, effectiveScope, isSystemAdmin);
   }
 
   @Patch('applications/:id/cancel')
   @RequireAccess({ module: 'dayoff', action: 'cancel' })
-  cancelApplication(@Param('id') id: string, @Req() req: any) {
-    return this.dayOffService.cancelApplication(id, req.user);
+  cancelApplication(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.dayOffService.cancelApplication(companyId, id, req.user);
   }
 
   @Patch('applications/:id/status')
   @RequireAccess({ module: 'dayoff.approvals', action: 'approve' })
   updateApplicationStatus(
+    @CurrentCompany() companyId: Types.ObjectId,
     @Param('id') id: string,
     @Body() body: { status: 'approved' | 'rejected'; reason?: string },
     @Req() req: any,
@@ -134,6 +215,7 @@ export class DayOffController {
     const isSystemAdmin = req.user?.is_system_admin === true;
     const effectiveScope = req.access?.['dayoff.approvals']?.scope || req.accessDecision?.scope || 'team';
     return this.dayOffService.updateApplicationStatus(
+      companyId,
       id,
       body.status,
       req.user,
@@ -147,9 +229,11 @@ export class DayOffController {
    * Public 1-click Approval endpoint triggered from Email action button
    */
   @Public()
+  @NoTenant()
   @Get('applications/:id/approve')
   @Header('Content-Type', 'text/html')
   async approveByToken(
+    @Param('companySlug') companySlug: string,
     @Param('id') id: string,
     @Query('token') token: string,
     @Res() res: Response,
@@ -166,7 +250,21 @@ export class DayOffController {
         }));
       }
 
-      const result = await this.dayOffService.approveByToken(id, token);
+      let companyId: Types.ObjectId | undefined;
+      if (companySlug && this.companiesService) {
+        const company = await this.companiesService.findBySlug(companySlug);
+        if (!company) {
+          return res.status(200).send(this.renderResultHtml({
+            success: false,
+            title: 'Company Not Found',
+            message: 'The requested company was not found or is inactive.',
+            appUrl,
+          }));
+        }
+        companyId = company._id;
+      }
+
+      const result = await this.dayOffService.approveByToken(id, token, companyId || companySlug);
 
       return res.status(200).send(this.renderResultHtml({
         success: true,
@@ -192,13 +290,16 @@ export class DayOffController {
       ? `<svg width="48" height="48" fill="none" stroke="${iconColor}" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`
       : `<svg width="48" height="48" fill="none" stroke="${iconColor}" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`;
 
+    const safeTitle = escapeHtml(params.title);
+    const safeMessage = escapeHtml(params.message);
+
     return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${params.title} - Task Manager</title>
+        <title>${safeTitle} - Task Manager</title>
         <style>
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -264,8 +365,8 @@ export class DayOffController {
           <div class="icon-wrapper">
             ${icon}
           </div>
-          <h1>${params.title}</h1>
-          <p>${params.message}</p>
+          <h1>${safeTitle}</h1>
+          <p>${safeMessage}</p>
           <a href="${params.appUrl}/dayoff" class="btn">Open Task Manager</a>
         </div>
       </body>

@@ -4,10 +4,15 @@ import { requestContext } from '../client/requestContext';
 export { requestContext };
 
 /**
- * Builds an AuthContext carrying the user's JWT so the apiClient forwards it.
+ * Builds an AuthContext carrying the user's JWT and company slug so the apiClient forwards it.
  */
-export function buildAuthContextFromToken(userId: string, accessToken: string): AuthContext {
-  return { userId, email: '', accessToken };
+export function buildAuthContextFromToken(
+  userId: string,
+  accessToken: string,
+  companySlug: string,
+  companyName?: string,
+): AuthContext {
+  return { userId, email: '', accessToken, companySlug, companyName };
 }
 
 /**

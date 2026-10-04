@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import * as dns from 'dns';
 
+export function escapeHtml(str?: string): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class EmailService {
   private transporter: nodemailer.Transporter;
@@ -201,24 +211,33 @@ export class EmailService {
     return 'https://web-zeta-olive-95.vercel.app';
   }
 
-  async sendInviteEmail(to: string, taskTitle: string, inviterName: string) {
+  async sendInviteEmail(
+    to: string,
+    taskTitle: string,
+    inviterName: string,
+    companySlug?: string,
+  ) {
     const baseUrl = this.getBaseUrl();
-    const text = `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it: ${baseUrl}/tasks`;
+    const tasksUrl = companySlug ? `${baseUrl}/${companySlug}/tasks` : `${baseUrl}/tasks`;
+    const safeTaskTitle = escapeHtml(taskTitle);
+    const safeInviterName = escapeHtml(inviterName);
+
+    const text = `Hello, ${inviterName} has invited you to collaborate on the task: "${taskTitle}". Login to your dashboard to view it: ${tasksUrl}`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px;">
         <h2 style="color: #333;">Task Invitation</h2>
         <p style="color: #555; font-size: 16px;">Hello,</p>
         <p style="color: #555; font-size: 16px;">
-          <strong>${inviterName}</strong> has invited you to collaborate on the task:
+          <strong>${safeInviterName}</strong> has invited you to collaborate on the task:
         </p>
         <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="margin: 0; color: #222;">${taskTitle}</h3>
+          <h3 style="margin: 0; color: #222;">${safeTaskTitle}</h3>
         </div>
         <p style="color: #555; font-size: 16px;">
           Please log in to your dashboard to view and collaborate on this task.
         </p>
         <div style="margin-top: 30px; text-align: center;">
-          <a href="${baseUrl}/tasks" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
+          <a href="${tasksUrl}" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
         </div>
         <p style="color: #999; font-size: 12px; margin-top: 40px; text-align: center;">
           This is an automated message. Please do not reply.
@@ -241,23 +260,31 @@ export class EmailService {
     employeeName: string,
     taskId?: string,
     projectName?: string,
+    companySlug?: string,
   ) {
     const baseUrl = this.getBaseUrl();
-    const taskUrl = taskId ? `${baseUrl}/tasks/${taskId}` : `${baseUrl}/tasks`;
-    const projectSnippet = projectName ? ` in project <strong>${projectName}</strong>` : '';
+    const taskUrl = companySlug
+      ? (taskId ? `${baseUrl}/${companySlug}/tasks/${taskId}` : `${baseUrl}/${companySlug}/tasks`)
+      : (taskId ? `${baseUrl}/tasks/${taskId}` : `${baseUrl}/tasks`);
+
+    const safeEmployeeName = escapeHtml(employeeName);
+    const safeAssignerName = escapeHtml(assignerName);
+    const safeTaskTitle = escapeHtml(taskTitle);
+    const safeProjectName = escapeHtml(projectName);
+    const projectSnippet = safeProjectName ? ` in project <strong>${safeProjectName}</strong>` : '';
 
     const text = `Hello ${employeeName},\n\n${assignerName} has assigned a new task to you: "${taskTitle}"${projectName ? ` in project "${projectName}"` : ''}.\n\nView it here: ${taskUrl}`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 10px;">
         <h2 style="color: #333; margin-top: 0;">New Task Assigned</h2>
         <p style="color: #555; font-size: 16px;">
-          Hello <strong>${employeeName}</strong>,
+          Hello <strong>${safeEmployeeName}</strong>,
         </p>
         <p style="color: #555; font-size: 16px;">
-          <strong>${assignerName}</strong> has assigned a new task to you${projectSnippet}:
+          <strong>${safeAssignerName}</strong> has assigned a new task to you${projectSnippet}:
         </p>
         <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #0070f3;">
-          <h3 style="margin: 0; color: #222;">${taskTitle}</h3>
+          <h3 style="margin: 0; color: #222;">${safeTaskTitle}</h3>
         </div>
         <p style="color: #555; font-size: 16px;">
           Please log in to your dashboard to review task specifications, log time, and start working.

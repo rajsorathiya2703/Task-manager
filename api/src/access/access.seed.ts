@@ -49,6 +49,10 @@ export class AccessSeedService {
         // Idempotent migration: ensure existing admins are in System Admin members
         await this.syncSystemAdminMembers(adminUserIds);
         await this.syncEmployeeMembers();
+        const latestDoc = await this.policyCompilerService.getLatestPolicyDocument();
+        if (!latestDoc) {
+          await this.policyCompilerService.compileAndPersist();
+        }
       }
     } catch (err: any) {
       this.logger.error(`Failed to seed default access roles: ${err?.message || err}`, err?.stack);

@@ -107,8 +107,13 @@ export class AccessGuard implements CanActivate {
       .lean()
       .exec();
 
+    const isCompanyAdmin =
+      user.is_system_admin === true ||
+      request.membership?.isCompanyOwner === true ||
+      request.membership?.isSystemAdmin === true;
+
     // Default Role Fallback: If user has no roles and is not System Admin, assign 'employee' role
-    if (userRoles.length === 0 && !user.is_system_admin && typeof this.roleModel.findOne === 'function') {
+    if (userRoles.length === 0 && !isCompanyAdmin && typeof this.roleModel.findOne === 'function') {
       const defaultRole = await this.roleModel
         .findOne({ slug: 'employee', isActive: true })
         .select('_id slug')
@@ -124,13 +129,12 @@ export class AccessGuard implements CanActivate {
       }
     }
 
-
     const subject: Subject = {
       userId,
       email: user.email,
       roleIds: userRoles.map((r) => r._id.toString()),
       roles: userRoles.map((r) => r.slug),
-      isSystemAdmin: user.is_system_admin === true,
+      isSystemAdmin: isCompanyAdmin,
       // teamIds and leadingTeamIds will be resolved in P1-05/06
       // for record-level scope checks
     };

@@ -7,12 +7,14 @@ import { LeaveBalance, LeaveBalanceSchema } from './schemas/leave-balance.schema
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import { Team, TeamSchema } from '../teams/schemas/team.schema';
+import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { DayOffService } from './day-off.service';
 import { DayOffMailService } from './day-off-mail.service';
 import { DayOffController } from './day-off.controller';
 import { NotificationController } from './notification.controller';
 import { EmployeesModule } from '../employees/employees.module';
 import { UsersModule } from '../users/users.module';
+import { CompaniesModule } from '../companies/companies.module';
 
 @Module({
   imports: [
@@ -24,9 +26,11 @@ import { UsersModule } from '../users/users.module';
       { name: Notification.name, schema: NotificationSchema },
       { name: Employee.name, schema: EmployeeSchema },
       { name: Team.name, schema: TeamSchema },
+      { name: Company.name, schema: CompanySchema },
     ]),
     forwardRef(() => EmployeesModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => CompaniesModule),
   ],
   controllers: [DayOffController, NotificationController],
   providers: [DayOffService, DayOffMailService],

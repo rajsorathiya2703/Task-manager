@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -17,8 +17,11 @@ import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
 import { AccessModule } from './access/access.module';
 import { RolesModule } from './roles/roles.module';
+import { CompaniesModule } from './companies/companies.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { TenantGuard } from './common/tenant.guard';
 import { AccessGuard } from './access/access.guard';
+import { TenantInterceptor } from './common/tenant.interceptor';
 import { FieldAccessInterceptor } from './access/field-access.interceptor';
 
 @Module({
@@ -47,17 +50,30 @@ import { FieldAccessInterceptor } from './access/field-access.interceptor';
     DayOffModule,
     AccessModule,
     RolesModule,
+    CompaniesModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     {
       provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
     {
       provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: AccessGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

@@ -1,14 +1,25 @@
-import { Controller, Post, Body, Res, Req, Get, UseGuards, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  Req,
+  Get,
+  Query,
+  UseGuards,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
-import { EmployeesService } from '../employees/employees.service';
 import { AccessService } from '../access/access.service';
+import { NoTenant } from '../common/tenant.decorators';
 
+@NoTenant()
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -16,8 +27,6 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
-    private readonly usersService: UsersService,
-    private readonly employeesService: EmployeesService,
     private readonly accessService: AccessService,
   ) {}
 
@@ -37,7 +46,13 @@ export class AuthController {
   async createGuest(@Res({ passthrough: true }) res: Response) {
     const { user, tokens } = await this.authService.createGuest();
     this.setCookies(res, tokens.accessToken, tokens.refreshToken);
-    return user;
+    return {
+      _id: user._id,
+      authType: 'guest',
+      lastLoginAt: user.lastLoginAt,
+      createdAt: (user as any).createdAt,
+      updatedAt: (user as any).updatedAt,
+    };
   }
 
   @Public()
@@ -57,7 +72,14 @@ export class AuthController {
     
     const { user, tokens } = await this.authService.loginWithGoogle(body.token, existingGuestId);
     this.setCookies(res, tokens.accessToken, tokens.refreshToken);
-    return user;
+    return {
+      _id: user._id,
+      authType: user.authType,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      lastLoginAt: user.lastLoginAt,
+    };
   }
 
   @Public()
@@ -86,48 +108,64 @@ export class AuthController {
     return { success: true };
   }
 
+  /**
+   * GET /auth/me
+   * Returns current user (safe fields) + memberships array [{ companySlug, companyName, isCompanyOwner, status }].
+   * If ?company=slug is provided and the caller is an active member, also includes
+   * membership: { roleIds, isCompanyOwner, employeeId }.
+   */
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getMe(@Req() req: Request) {
+  async getMe(
+    @Req() req: Request,
+    @Query('company') companySlug?: string,
+  ) {
     const user = (req as any).user;
     if (!user) return null;
 
-    const userId = user._id?.toString() || user.id;
-    const email = user.email;
+    const userId = (user._id?.toString() || user.id || '').toString();
 
-    let employee: any = null;
-    if (userId) {
-      employee = await this.employeesService.findByUserId(userId);
-    }
-    if (!employee && email) {
-      employee = await this.employeesService.findByEmail(email);
-      if (employee && !employee.userId && userId) {
-        await this.employeesService.linkUserByEmail(email, user._id);
+    // Safe user fields — never expose googleId, guestId, or internal secrets
+    const safeUser = {
+      _id: user._id || user.id,
+      authType: user.authType || 'google',
+      email: user.email || null,
+      name: user.name || null,
+      avatarUrl: user.avatarUrl || null,
+      lastLoginAt: user.lastLoginAt || null,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    const memberships = await this.authService.getUserMemberships(userId);
+
+    const response: any = {
+      ...safeUser,
+      memberships,
+    };
+
+    if (companySlug && companySlug.trim()) {
+      const activeMembership = await this.authService.getCompanyMembership(
+        userId,
+        companySlug.trim(),
+      );
+      if (activeMembership) {
+        response.membership = activeMembership;
       }
     }
 
-    const hasEmployee = Boolean(employee);
-    if (user.is_employee !== hasEmployee && userId) {
-      user.is_employee = hasEmployee;
-      await this.usersService.updateUser(userId, { is_employee: hasEmployee });
-    }
-
-    const userObj = user.toObject ? user.toObject() : { ...user };
-    userObj.is_employee = hasEmployee;
-    if (employee) {
-      userObj.employeeId = employee._id;
-    }
-
     if (userId) {
-      const effectiveAccess = await this.accessService.getEffectiveAccess(userId);
-      return {
-        ...userObj,
-        roles: effectiveAccess.roles,
-        policyVersion: effectiveAccess.policyVersion,
-        access: effectiveAccess.access,
-      };
+      try {
+        const effectiveAccess = await this.accessService.getEffectiveAccess(userId);
+        response.roles = effectiveAccess.roles;
+        response.policyVersion = effectiveAccess.policyVersion;
+        response.access = effectiveAccess.access;
+      } catch (e) {
+        // Fallback if access service snapshot is unavailable
+      }
     }
 
-    return userObj;
+    return response;
   }
 }
+

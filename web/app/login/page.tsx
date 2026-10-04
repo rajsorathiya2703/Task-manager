@@ -1,9 +1,5 @@
-import { LoginCard } from "../../src/components/auth/LoginCard";
+import { redirect } from "next/navigation";
 
-export default function LoginPage() {
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background py-12">
-      <LoginCard />
-    </div>
-  );
+export default function RootLoginRedirect() {
+  redirect("/");
 }

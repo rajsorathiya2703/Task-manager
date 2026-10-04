@@ -5,7 +5,7 @@ import { Project } from "../../lib/data";
 import { PriorityBadge } from "../board/PriorityBadge";
 import { Calendar, MoreHorizontal, Folder, ArrowRight } from "lucide-react";
 import { formatDisplayDate } from "../../lib/utils";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ProjectCardProps {
@@ -95,14 +95,14 @@ export function ProjectCard({ project, onClick, canDrag }: ProjectCardProps) {
           <Folder className="w-3.5 h-3.5" />
           Project Tasks
         </span>
-        <Link
+        <CompanyLink
           href={`/projects/${projectId}`}
           onClick={(e) => e.stopPropagation()}
           className="flex items-center gap-1 font-semibold text-primary hover:underline"
         >
           Open Board
           <ArrowRight className="w-3 h-3" />
-        </Link>
+        </CompanyLink>
       </div>
     </div>
   );

@@ -1,11 +1,33 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import { getActiveTimer } from '../lib/api';
+import { getActiveTimer, getCompanySlug } from '../lib/api';
 
-// Public routes that don't require authentication — skip timer fetch on these pages
-const PUBLIC_ROUTES = ['/login', '/register', '/'];
+/**
+ * Public routes that don't require authentication or tenant timer tracking.
+ * Treats '/{slug}/login', '/{slug}/join', '/register-company', '/select-company',
+ * '/', '/login', '/register' as public.
+ */
+const checkIsPublicRoute = (pathname: string | null): boolean => {
+  if (!pathname) return true;
+  if (
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname === '/register-company' ||
+    pathname === '/select-company'
+  ) {
+    return true;
+  }
+
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length >= 2 && (segments[1] === 'login' || segments[1] === 'join')) {
+    return true;
+  }
+
+  return false;
+};
 
 interface TimerContextProps {
   activeTask: any | null;
@@ -25,13 +47,49 @@ const TimerContext = createContext<TimerContextProps>({
 
 export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
   const [activeTask, setActiveTask] = useState<any | null>(null);
+  const [currentSlug, setCurrentSlug] = useState<string>(() => (typeof window !== 'undefined' ? getCompanySlug() : ''));
   const pathname = usePathname();
 
-  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname === route || pathname?.startsWith(route + '/'));
+  // Listen for company slug updates from CompanyProvider / setCompanySlug
+  useEffect(() => {
+    const handleSlugChange = (e: any) => {
+      const nextSlug = e?.detail || getCompanySlug();
+      setCurrentSlug(nextSlug);
+    };
 
-  const refreshTimer = async () => {
-    // Don't fetch timer on public/unauthenticated pages
-    if (isPublicRoute) return;
+    window.addEventListener('companySlugChanged', handleSlugChange);
+
+    // Initial check
+    const slug = getCompanySlug();
+    if (slug && slug !== currentSlug) {
+      setCurrentSlug(slug);
+    }
+
+    return () => window.removeEventListener('companySlugChanged', handleSlugChange);
+  }, []);
+
+  // Update slug state on pathname navigation (e.g., if setCompanySlug ran during layout render)
+  useEffect(() => {
+    const slug = getCompanySlug();
+    if (slug !== currentSlug) {
+      setCurrentSlug(slug);
+    }
+  }, [pathname]);
+
+  const refreshTimer = useCallback(async () => {
+    // 1. Skip on public routes
+    if (checkIsPublicRoute(pathname)) {
+      setActiveTask(null);
+      return;
+    }
+
+    // 2. Skip when no company slug is set
+    const slug = getCompanySlug() || currentSlug;
+    if (!slug) {
+      setActiveTask(null);
+      return;
+    }
+
     try {
       const task = await getActiveTimer();
       setActiveTask(task || null);
@@ -42,15 +100,16 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
       }
       setActiveTask(null);
     }
-  };
+  }, [pathname, currentSlug]);
 
   const clearTimer = () => {
     setActiveTask(null);
   };
 
+  // Re-run timer fetch when pathname or company slug changes
   useEffect(() => {
     refreshTimer();
-  }, [pathname]); // Re-run when route changes so timer loads after login
+  }, [refreshTimer]);
 
   const isActive = !!activeTask?.isTimerRunning;
   const timerStartedAt = activeTask?.timerStartedAt || null;

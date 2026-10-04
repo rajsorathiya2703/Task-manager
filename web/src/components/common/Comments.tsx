@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
-import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
+import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles, getCompanySlug } from "../../lib/api";
 
 export interface CommentUser {
   name: string;
@@ -218,13 +218,15 @@ export function Comments({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Storage key for thread read state
-  const storageKey = `comments_read_${threadId || title.replace(/\s+/g, '_')}`;
+  // Storage key for thread read state (company-namespaced)
+  const rawThreadKey = `comments_read_${threadId || title.replace(/\s+/g, '_')}`;
+  const companySlug = getCompanySlug();
+  const storageKey = companySlug ? `${companySlug}:${rawThreadKey}` : rawThreadKey;
 
   const [lastReadAt, setLastReadAt] = useState<number>(() => {
     try {
       if (typeof window !== 'undefined') {
-        const stored = localStorage.getItem(storageKey);
+        const stored = (companySlug && localStorage.getItem(storageKey)) ?? localStorage.getItem(rawThreadKey);
         return stored ? parseInt(stored, 10) : 0;
       }
     } catch (e) {
@@ -358,8 +360,13 @@ export function Comments({
 
     comments.forEach(c => {
       if (isCommentAuthor(c)) return;
-      const notifKey = `notif_pushed_${c._id}`;
-      if (localStorage.getItem(notifKey)) return;
+      const slug = getCompanySlug();
+      const rawNotifKey = `notif_pushed_${c._id}`;
+      const notifKey = slug ? `${slug}:${rawNotifKey}` : rawNotifKey;
+
+      // Fallback check to avoid re-notifying existing users who have the un-prefixed key
+      const alreadyPushed = (slug && localStorage.getItem(notifKey)) ?? localStorage.getItem(rawNotifKey);
+      if (alreadyPushed) return;
 
       const isMentioned = c.mentions?.some((m: string) => {
         const ml = m.toLowerCase();

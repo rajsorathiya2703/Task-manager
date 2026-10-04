@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { Comment, CommentSchema } from '../../comments/schemas/comment.schema';
+import { applyTenantPlugin } from '../../common/tenant.plugin';
 
 // Re-export so existing imports of Comment from this file continue to work.
 export { Comment, CommentSchema };
@@ -55,6 +56,9 @@ export const TimeEntrySchema = SchemaFactory.createForClass(TimeEntry);
 
 @Schema({ timestamps: true })
 export class Task extends Document {
+  @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
+  companyId: Types.ObjectId;
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
@@ -124,4 +128,10 @@ export class Task extends Document {
 }
 
 export const TaskSchema = SchemaFactory.createForClass(Task);
+
+TaskSchema.index({ companyId: 1, status: 1 });
+TaskSchema.index({ companyId: 1, assignee: 1 });
+TaskSchema.index({ companyId: 1, projectId: 1 });
+
+applyTenantPlugin(TaskSchema);
 

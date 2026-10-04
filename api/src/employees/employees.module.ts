@@ -5,6 +5,7 @@ import { EmployeesController } from './employees.controller';
 import { Employee, EmployeeSchema } from './schemas/employee.schema';
 import { Team, TeamSchema } from '../teams/schemas/team.schema';
 import { UsersModule } from '../users/users.module';
+import { CompaniesModule } from '../companies/companies.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { UsersModule } from '../users/users.module';
       { name: Team.name, schema: TeamSchema },
     ]),
     forwardRef(() => UsersModule),
+    forwardRef(() => CompaniesModule),
   ],
   controllers: [EmployeesController],
   providers: [EmployeesService],

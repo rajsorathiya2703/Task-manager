@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Bell, Check, CheckCheck, ExternalLink } from "lucide-react";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from "../../lib/api";
 
 export function NotificationBell() {
@@ -143,13 +143,13 @@ export function NotificationBell() {
                       {item.message}
                     </p>
                     {item.link && (
-                      <Link
+                      <CompanyLink
                         href={item.link}
                         onClick={() => setIsOpen(false)}
                         className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline mt-2 font-medium"
                       >
                         View details <ExternalLink className="w-2.5 h-2.5" />
-                      </Link>
+                      </CompanyLink>
                     )}
                   </div>
                   {!item.isRead && (

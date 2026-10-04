@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Employee } from './schemas/employee.schema';
@@ -13,19 +20,40 @@ import {
   ScopeType,
 } from '../access/resolvers/employees.resolver';
 
+function escapeRegex(text: string): string {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
 @Injectable()
-export class EmployeesService {
+export class EmployeesService implements OnModuleInit {
+  private readonly logger = new Logger(EmployeesService.name);
+
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Team.name) private teamModel: Model<Team>,
     private usersService: UsersService,
   ) {}
 
+  async onModuleInit() {
+    try {
+      if (this.employeeModel?.collection) {
+        await this.employeeModel.collection.dropIndex('email_1');
+        this.logger.log('Legacy email_1 index dropped successfully from employees collection');
+      }
+    } catch {
+      // Index already dropped or not present; ignore
+    }
+  }
+
   /**
-   * Pure read-only helper: resolves all Employee IDs that correspond to a
-   * given userId and/or email. Used to build access-check query conditions.
+   * Resolves all Employee IDs that correspond to a given userId and/or email
+   * within the specified company.
    */
-  private async getCallerEmployeeIds(userId?: string, email?: string): Promise<Types.ObjectId[]> {
+  private async getCallerEmployeeIds(
+    companyId: Types.ObjectId,
+    userId?: string,
+    email?: string,
+  ): Promise<Types.ObjectId[]> {
     const employeeQuery: any[] = [];
     if (userId) {
       if (Types.ObjectId.isValid(userId)) {
@@ -34,7 +62,7 @@ export class EmployeesService {
       employeeQuery.push({ userId: userId.toString() });
     }
     if (email && typeof email === 'string' && email.trim()) {
-      const cleanEmail = email.trim();
+      const cleanEmail = escapeRegex(email.trim());
       employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
     }
 
@@ -43,7 +71,7 @@ export class EmployeesService {
     }
 
     const employees = await this.employeeModel
-      .find({ $or: employeeQuery })
+      .find({ companyId, $or: employeeQuery })
       .select('_id')
       .lean()
       .exec();
@@ -52,26 +80,24 @@ export class EmployeesService {
   }
 
   /**
-   * Builds Mongo query criteria for employees according to the user's effective scope:
-   *   - 'all' / isSystemAdmin: {} (no extra criteria)
-   *   - 'none': null (empty set -> short-circuit to [])
-   *   - 'own': matches only the caller's own employee record (isSelf)
-   *   - 'team': matches caller's own employee record + colleagues who share at least one team
+   * Builds Mongo query criteria for employees according to effective scope,
+   * scoped strictly by companyId.
    */
   private async buildEmployeeScopeFilter(
+    companyId: Types.ObjectId,
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
     scope: ScopeType = 'all',
   ): Promise<any> {
-    if (isSystemAdmin || scope === 'all') {
-      return {};
-    }
     if (scope === 'none') {
-      return null;
+      return isSystemAdmin ? { companyId } : null;
+    }
+    if (isSystemAdmin || scope === 'all') {
+      return { companyId };
     }
 
-    const callerEmployeeIds = await this.getCallerEmployeeIds(userId, email);
+    const callerEmployeeIds = await this.getCallerEmployeeIds(companyId, userId, email);
 
     // Build conditions for caller's own employee record
     const ownConditions: any[] = [];
@@ -85,7 +111,7 @@ export class EmployeesService {
       ownConditions.push({ userId: userId.toString() });
     }
     if (email && typeof email === 'string' && email.trim()) {
-      const cleanEmail = email.trim();
+      const cleanEmail = escapeRegex(email.trim());
       ownConditions.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
     }
 
@@ -93,11 +119,11 @@ export class EmployeesService {
       if (ownConditions.length === 0) {
         return null;
       }
-      return { $or: ownConditions };
+      return { companyId, $or: ownConditions };
     }
 
     if (scope === 'team') {
-      // Find teams where caller is member or teamLead
+      // Find teams where caller is member or teamLead within this company
       const teamSearchConditions: any[] = [];
       if (callerEmployeeIds.length > 0) {
         teamSearchConditions.push({ members: { $in: callerEmployeeIds } });
@@ -112,7 +138,7 @@ export class EmployeesService {
       let colleagueEmployeeIds: any[] = [];
       if (teamSearchConditions.length > 0) {
         const teams = await this.teamModel
-          .find({ $or: teamSearchConditions })
+          .find({ companyId, $or: teamSearchConditions })
           .select('members teamLead')
           .lean()
           .exec();
@@ -132,27 +158,48 @@ export class EmployeesService {
         return null;
       }
 
-      return { $or: teamConditions };
+      return { companyId, $or: teamConditions };
     }
 
     return null;
   }
 
-  async create(createEmployeeDto: any): Promise<Employee> {
+  async create(companyId: Types.ObjectId, createEmployeeDto: any): Promise<Employee> {
     if (createEmployeeDto.email && typeof createEmployeeDto.email === 'string') {
+      const cleanEmail = escapeRegex(createEmployeeDto.email.trim().toLowerCase());
+
+      const existingEmployee = await this.employeeModel
+        .findOne({
+          companyId,
+          email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+        })
+        .select('_id')
+        .lean()
+        .exec();
+
+      if (existingEmployee) {
+        throw new ConflictException(
+          `An employee with email "${createEmployeeDto.email}" already exists in this company`,
+        );
+      }
+
       createEmployeeDto.email = createEmployeeDto.email.trim().toLowerCase();
-      // If user exists with this email, link userId and set is_employee
+
+      // If user exists with this email, link userId
       const existingUser = await this.usersService.findByEmail(createEmployeeDto.email);
       if (existingUser) {
         createEmployeeDto.userId = existingUser._id;
-        await this.usersService.updateUser(existingUser._id.toString(), { is_employee: true });
+        // TODO(MC-34): is_employee flag is moving to Membership; stop mutating User.is_employee
       }
     }
+
+    createEmployeeDto.companyId = companyId;
     const newEmployee = new this.employeeModel(createEmployeeDto);
     return newEmployee.save();
   }
 
   async findAll(
+    companyId: Types.ObjectId,
     userId?: string,
     email?: string,
     isSystemAdmin?: boolean,
@@ -162,7 +209,13 @@ export class EmployeesService {
       return [];
     }
 
-    const scopeFilter = await this.buildEmployeeScopeFilter(userId, email, isSystemAdmin, scope);
+    const scopeFilter = await this.buildEmployeeScopeFilter(
+      companyId,
+      userId,
+      email,
+      isSystemAdmin,
+      scope,
+    );
     if (scopeFilter === null) {
       return [];
     }
@@ -171,6 +224,7 @@ export class EmployeesService {
   }
 
   async findOne(
+    companyId: Types.ObjectId,
     id: string,
     userId?: string,
     email?: string,
@@ -181,12 +235,16 @@ export class EmployeesService {
       throw new NotFoundException(`Employee #${id} not found`);
     }
 
-    const employee = await this.employeeModel.findById(id).populate('userId').exec();
+    const employee = await this.employeeModel
+      .findOne({ _id: new Types.ObjectId(id), companyId })
+      .populate('userId')
+      .exec();
+
     if (!employee) {
       throw new NotFoundException(`Employee #${id} not found`);
     }
 
-    // ─── PBAC Record-Level Scope Check (§6.2, §6.3) ─────────────────────────
+    // ─── PBAC Record-Level Scope Check ──────────────────────────────────────
     if (!isSystemAdmin && scope !== 'all') {
       if (scope === 'none') {
         throw new ForbiddenException({
@@ -196,10 +254,9 @@ export class EmployeesService {
         });
       }
 
-      const callerEmployeeIds = await this.getCallerEmployeeIds(userId, email);
+      const callerEmployeeIds = await this.getCallerEmployeeIds(companyId, userId, email);
       const primaryEmpId = callerEmployeeIds.length > 0 ? String(callerEmployeeIds[0]) : undefined;
 
-      // Find teams where caller is member or teamLead
       const teamSearchConditions: any[] = [];
       if (callerEmployeeIds.length > 0) {
         teamSearchConditions.push({ members: { $in: callerEmployeeIds } });
@@ -214,7 +271,7 @@ export class EmployeesService {
       const callerTeams =
         teamSearchConditions.length > 0
           ? await this.teamModel
-              .find({ $or: teamSearchConditions })
+              .find({ companyId, $or: teamSearchConditions })
               .select('_id members teamLead')
               .lean()
               .exec()
@@ -230,7 +287,6 @@ export class EmployeesService {
         )
         .map((t: any) => String(t._id));
 
-      // Find teams where target employee is a member or lead
       const targetEmpId = employee._id;
       const targetTeamConditions: any[] = [
         { members: targetEmpId },
@@ -244,7 +300,7 @@ export class EmployeesService {
       }
 
       const targetTeams = await this.teamModel
-        .find({ $or: targetTeamConditions })
+        .find({ companyId, $or: targetTeamConditions })
         .select('_id')
         .lean()
         .exec();
@@ -277,35 +333,57 @@ export class EmployeesService {
     return employee;
   }
 
-  async findByEmail(email: string): Promise<Employee | null> {
+  async findByEmail(companyId: Types.ObjectId, email: string): Promise<Employee | null> {
     if (!email || !email.trim()) return null;
-    const cleanEmail = email.trim();
-    return this.employeeModel.findOne({
-      email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
-    }).populate('userId').exec();
+    const cleanEmail = escapeRegex(email.trim());
+    return this.employeeModel
+      .findOne({
+        companyId,
+        email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+      })
+      .populate('userId')
+      .exec();
   }
 
-  async findByUserId(userId: string): Promise<Employee | null> {
+  async findByUserId(companyId: Types.ObjectId, userId: string): Promise<Employee | null> {
     if (!userId) return null;
-    return this.employeeModel.findOne({ userId }).exec();
+    const userQuery = Types.ObjectId.isValid(userId)
+      ? { $in: [new Types.ObjectId(userId), userId.toString()] }
+      : userId;
+    return this.employeeModel.findOne({ companyId, userId: userQuery }).exec();
   }
 
-  async linkUserByEmail(email: string, userId: any): Promise<Employee | null> {
+  async linkUserByEmail(
+    companyId: Types.ObjectId,
+    email: string,
+    userId: any,
+  ): Promise<Employee | null> {
     if (!email || !email.trim()) return null;
-    const cleanEmail = email.trim();
-    const updated = await this.employeeModel.findOneAndUpdate(
-      { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
-      { $set: { userId } },
-      { new: true },
-    ).exec();
+    const cleanEmail = escapeRegex(email.trim());
+    const userObjId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+    const updated = await this.employeeModel
+      .findOneAndUpdate(
+        {
+          companyId,
+          email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+          $or: [
+            { userId: null },
+            { userId: { $exists: false } },
+            { userId: userObjId },
+            { userId: userId.toString() },
+          ],
+        },
+        { $set: { userId: userObjId } },
+        { new: true },
+      )
+      .exec();
 
-    if (updated && userId) {
-      await this.usersService.updateUser(userId.toString(), { is_employee: true });
-    }
+    // TODO(MC-34): is_employee flag is moving to Membership; stop mutating User.is_employee
     return updated;
   }
 
   async update(
+    companyId: Types.ObjectId,
     id: string,
     updateEmployeeDto: any,
     userId?: string,
@@ -318,27 +396,46 @@ export class EmployeesService {
     }
 
     if (!isSystemAdmin && scope !== 'all') {
-      await this.findOne(id, userId, email, isSystemAdmin, scope);
+      await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
     }
 
     if (updateEmployeeDto.email !== undefined) {
       if (updateEmployeeDto.email && typeof updateEmployeeDto.email === 'string') {
+        const cleanEmail = escapeRegex(updateEmployeeDto.email.trim().toLowerCase());
+
+        const existingWithEmail = await this.employeeModel
+          .findOne({
+            companyId,
+            _id: { $ne: new Types.ObjectId(id) },
+            email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+          })
+          .select('_id')
+          .lean()
+          .exec();
+
+        if (existingWithEmail) {
+          throw new ConflictException(
+            `An employee with email "${updateEmployeeDto.email}" already exists in this company`,
+          );
+        }
+
         updateEmployeeDto.email = updateEmployeeDto.email.trim().toLowerCase();
         const matchingUser = await this.usersService.findByEmail(updateEmployeeDto.email);
         updateEmployeeDto.userId = matchingUser ? matchingUser._id : null;
-        if (matchingUser) {
-          await this.usersService.updateUser(matchingUser._id.toString(), { is_employee: true });
-        }
+        // TODO(MC-34): is_employee flag is moving to Membership; stop mutating User.is_employee
       } else {
         updateEmployeeDto.userId = null;
       }
     }
 
-    const existingEmployee = await this.employeeModel.findByIdAndUpdate(
-      id,
-      { $set: updateEmployeeDto },
-      { new: true },
-    ).populate('userId').exec();
+    const existingEmployee = await this.employeeModel
+      .findOneAndUpdate(
+        { _id: new Types.ObjectId(id), companyId },
+        { $set: updateEmployeeDto },
+        { new: true },
+      )
+      .populate('userId')
+      .exec();
 
     if (!existingEmployee) {
       throw new NotFoundException(`Employee #${id} not found`);
@@ -347,6 +444,7 @@ export class EmployeesService {
   }
 
   async remove(
+    companyId: Types.ObjectId,
     id: string,
     userId?: string,
     email?: string,
@@ -358,52 +456,82 @@ export class EmployeesService {
     }
 
     if (!isSystemAdmin && scope !== 'all') {
-      await this.findOne(id, userId, email, isSystemAdmin, scope);
+      await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
     }
 
-    const deletedEmployee = await this.employeeModel.findByIdAndDelete(id).exec();
+    const deletedEmployee = await this.employeeModel
+      .findOneAndDelete({ _id: new Types.ObjectId(id), companyId })
+      .exec();
+
     if (!deletedEmployee) {
       throw new NotFoundException(`Employee #${id} not found`);
     }
-    if (deletedEmployee.userId) {
-      const remaining = await this.employeeModel.findOne({ userId: deletedEmployee.userId }).exec();
-      if (!remaining) {
-        await this.usersService.updateUser(deletedEmployee.userId.toString(), { is_employee: false });
-      }
-    }
+
+    // TODO(MC-34): is_employee flag is moving to Membership; stop mutating User.is_employee
     return deletedEmployee;
   }
 
   /**
-   * Idempotently create (or link) an Employee record for a given User.
+   * Idempotently create (or link) an Employee record for a given User within a company.
    */
-  async createFromUser(user: UserDocument): Promise<Employee> {
-    // 1. Idempotency guard — already linked?
-    const existing = await this.employeeModel.findOne({ userId: user._id }).exec();
-    if (existing) return existing;
+  async createFromUser(
+    companyId: Types.ObjectId,
+    user: UserDocument | any,
+    roleOrOptions?: string | { role?: string; status?: string },
+    statusParam?: string,
+  ): Promise<Employee> {
+    let role = 'Employee';
+    let status = 'Active';
 
-    // 2. Unlinked Employee with matching email → link instead of creating a duplicate
-    if (user.email) {
-      const linked = await this.linkUserByEmail(user.email, user._id);
-      if (linked) return linked;
+    if (typeof roleOrOptions === 'string') {
+      role = roleOrOptions;
+      if (statusParam) status = statusParam;
+    } else if (roleOrOptions && typeof roleOrOptions === 'object') {
+      if (roleOrOptions.role) role = roleOrOptions.role;
+      if (roleOrOptions.status) status = roleOrOptions.status;
     }
 
-    // 3. Create a new Employee record
+    const userObjId = Types.ObjectId.isValid(user._id) ? new Types.ObjectId(user._id) : user._id;
+
+    // 1. Idempotency guard — already linked in this company?
+    const userQuery = Types.ObjectId.isValid(user._id)
+      ? { $in: [new Types.ObjectId(user._id), user._id.toString()] }
+      : user._id;
+    const existing = await this.employeeModel
+      .findOne({ companyId, userId: userQuery })
+      .exec();
+    if (existing) return existing;
+
+    // 2. Unlinked Employee with matching email in this company -> link instead of creating duplicate
+    if (user.email) {
+      const linked = await this.linkUserByEmail(companyId, user.email, userObjId);
+      if (linked) {
+        if (role && role !== 'Employee' && linked.role !== role) {
+          linked.role = role;
+          if (typeof linked.save === 'function') {
+            await linked.save();
+          }
+        }
+        return linked;
+      }
+    }
+
+    // 3. Create a new Employee record in this company
     const nameParts = (user.name ?? '').trim().split(/\s+/).filter(Boolean);
     const firstName = nameParts[0] || user.email || 'Unknown';
     const lastName = nameParts.slice(1).join(' ') || '';
 
     const payload: Record<string, any> = {
-      userId: user._id,
+      companyId,
+      userId: userObjId,
       fullName: { firstName, lastName },
-      role: 'Employee',
+      role,
       joiningDate: new Date(),
-      status: 'Active',
+      status,
     };
 
-    // Only set email if present — omitting the key entirely satisfies the sparse unique index
     if (user.email) {
-      payload.email = user.email;
+      payload.email = user.email.trim().toLowerCase();
     }
 
     const newEmployee = new this.employeeModel(payload);
@@ -411,32 +539,31 @@ export class EmployeesService {
   }
 
   /**
-   * Verified, explicit link repair.
+   * Verified, explicit link repair within a company.
    */
   async linkByUserId(
+    companyId: Types.ObjectId,
     userId: any,
     verifiedEmail: string,
   ): Promise<Employee | null> {
     if (!verifiedEmail || !verifiedEmail.trim()) return null;
-    const cleanEmail = verifiedEmail.trim().toLowerCase();
+    const cleanEmail = escapeRegex(verifiedEmail.trim().toLowerCase());
 
-    // Find an employee whose email matches the verified email
     const employee = await this.employeeModel
-      .findOne({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } })
+      .findOne({
+        companyId,
+        email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+      })
       .exec();
 
     if (!employee) return null;
 
-    // Already linked to this user — idempotent, return as-is
     if (employee.userId?.toString() === userId?.toString()) return employee;
-
-    // Already linked to a DIFFERENT user — do not overwrite
     if (employee.userId) return null;
 
-    // Safe to link
     return this.employeeModel
-      .findByIdAndUpdate(
-        employee._id,
+      .findOneAndUpdate(
+        { _id: employee._id, companyId },
         { $set: { userId } },
         { new: true },
       )
@@ -444,9 +571,10 @@ export class EmployeesService {
   }
 
   /**
-   * Returns the link status for a given Employee
+   * Returns the link status for a given Employee in a company.
    */
   async getLinkStatus(
+    companyId: Types.ObjectId,
     id: string,
     userId?: string,
     email?: string,
@@ -462,10 +590,13 @@ export class EmployeesService {
     }
 
     if (!isSystemAdmin && scope !== 'all') {
-      await this.findOne(id, userId, email, isSystemAdmin, scope);
+      await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
     }
 
-    const employee = await this.employeeModel.findById(id).exec();
+    const employee = await this.employeeModel
+      .findOne({ _id: new Types.ObjectId(id), companyId })
+      .exec();
+
     if (!employee) return { linked: false, userId: null, employeeEmail: null };
     return {
       linked: !!employee.userId,

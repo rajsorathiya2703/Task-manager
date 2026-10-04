@@ -4,7 +4,7 @@ import { Project } from "../../lib/data";
 import { PriorityBadge } from "../board/PriorityBadge";
 import { MoreHorizontal, Folder, ArrowRight } from "lucide-react";
 import { formatDisplayDate } from "../../lib/utils";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 
 interface ProjectListRowProps {
   project: Project;
@@ -54,7 +54,7 @@ export function ProjectListRow({ project, onClick }: ProjectListRowProps) {
 
       {/* Open tasks link */}
       <div className="w-32 flex items-center">
-        <Link
+        <CompanyLink
           href={`/projects/${projectId}`}
           onClick={(e) => e.stopPropagation()}
           className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
@@ -62,7 +62,7 @@ export function ProjectListRow({ project, onClick }: ProjectListRowProps) {
           <Folder className="w-3.5 h-3.5" />
           Tasks Board
           <ArrowRight className="w-3 h-3" />
-        </Link>
+        </CompanyLink>
       </div>
 
       {/* Actions */}

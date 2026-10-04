@@ -12,6 +12,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { MODULE_CATALOG } from './catalog';
+import { NoTenant } from '../common/tenant.decorators';
 
 /**
  * AccessController (Phase 3 — P3-10)
@@ -20,6 +21,7 @@ import { MODULE_CATALOG } from './catalog';
  * inspect the computed effective permissions for any user, as well
  * as the module & field catalog for role builders.
  */
+@NoTenant()
 @Controller('access')
 @UseGuards(JwtAuthGuard)
 export class AccessController {

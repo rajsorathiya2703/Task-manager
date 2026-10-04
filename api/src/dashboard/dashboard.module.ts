@@ -6,6 +6,7 @@ import { Task, TaskSchema } from '../tasks/schemas/task.schema';
 import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { Team, TeamSchema } from '../teams/schemas/team.schema';
+import { CompaniesModule } from '../companies/companies.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { Team, TeamSchema } from '../teams/schemas/team.schema';
       { name: Project.name, schema: ProjectSchema },
       { name: Team.name, schema: TeamSchema },
     ]),
+    CompaniesModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

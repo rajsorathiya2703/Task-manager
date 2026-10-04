@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Popover } from "@headlessui/react";
 import { Bell, MessageSquare, AtSign, Calendar } from "lucide-react";
-import Link from "next/link";
-import { fetchMe, fetchTasks, fetchTeams, fetchNotifications, markNotificationRead } from "../../lib/api";
+import { useCompanyPath, CompanyLink } from "../../lib/useCompanyPath";
+import { fetchMe, fetchTasks, fetchTeams, fetchNotifications, markNotificationRead, getCompanySlug } from "../../lib/api";
 import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
 import { getUserDisplayName } from "./Comments";
 
@@ -21,6 +21,7 @@ export interface NotificationItem {
 }
 
 export function NotificationDropdown() {
+  const cp = useCompanyPath();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -67,7 +68,7 @@ export function NotificationDropdown() {
         title: sn.title,
         message: sn.message,
         authorName: 'Leave System',
-        targetUrl: sn.link || '/dayoff',
+        targetUrl: sn.link ? cp(sn.link) : cp('/dayoff'),
         createdAt: sn.createdAt,
         isRead: sn.isRead,
       }));
@@ -76,6 +77,7 @@ export function NotificationDropdown() {
     );
   }, [systemNotifications, notifications]);
 
+  // TODO: The 10s polling of ALL tasks and teams is heavy. Replace with a dedicated notification/unread endpoint in the backend.
   // Poll tasks & teams every 10s to detect unread comments & mentions globally (grouped by thread)
   useEffect(() => {
     if (!currentUser) return;
@@ -108,8 +110,10 @@ export function NotificationDropdown() {
         if (Array.isArray(tasks)) {
           tasks.forEach((task: any) => {
             if (Array.isArray(task.comments) && task.comments.length > 0) {
-              const threadKey = `comments_read_${task._id}`;
-              const lastReadRaw = localStorage.getItem(threadKey);
+              const slug = getCompanySlug();
+              const rawThreadKey = `comments_read_${task._id}`;
+              const threadKey = slug ? `${slug}:${rawThreadKey}` : rawThreadKey;
+              const lastReadRaw = (slug && localStorage.getItem(threadKey)) ?? localStorage.getItem(rawThreadKey);
               const lastReadAt = lastReadRaw ? parseInt(lastReadRaw, 10) : 0;
 
               const unreadTaskComments = task.comments.filter((c: any) => {
@@ -140,7 +144,7 @@ export function NotificationDropdown() {
                   message: latestComment.content || 'Attached file',
                   authorName: getUserDisplayName(latestComment.user),
                   authorAvatar: latestComment.user?.avatarUrl,
-                  targetUrl: `/tasks/${task._id}`,
+                  targetUrl: cp(`/tasks/${task._id}`),
                   createdAt: latestComment.createdAt,
                   isRead: false,
                 });
@@ -153,8 +157,10 @@ export function NotificationDropdown() {
         if (Array.isArray(teams)) {
           teams.forEach((team: any) => {
             if (Array.isArray(team.comments) && team.comments.length > 0) {
-              const threadKey = `comments_read_${team._id}`;
-              const lastReadRaw = localStorage.getItem(threadKey);
+              const slug = getCompanySlug();
+              const rawThreadKey = `comments_read_${team._id}`;
+              const threadKey = slug ? `${slug}:${rawThreadKey}` : rawThreadKey;
+              const lastReadRaw = (slug && localStorage.getItem(threadKey)) ?? localStorage.getItem(rawThreadKey);
               const lastReadAt = lastReadRaw ? parseInt(lastReadRaw, 10) : 0;
 
               const unreadTeamComments = team.comments.filter((c: any) => {
@@ -185,7 +191,7 @@ export function NotificationDropdown() {
                   message: latestComment.content || 'Attached file',
                   authorName: getUserDisplayName(latestComment.user),
                   authorAvatar: latestComment.user?.avatarUrl,
-                  targetUrl: `/configuration/team/${team._id}`,
+                  targetUrl: cp(`/configuration/team/${team._id}`),
                   createdAt: latestComment.createdAt,
                   isRead: false,
                 });
@@ -222,9 +228,12 @@ export function NotificationDropdown() {
     }
 
     // Save read timestamp for thread so notification auto-clears
-    const threadId = n.targetUrl.split('/').pop();
+    const cleanUrl = (n.targetUrl || '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+    const threadId = cleanUrl.split('/').pop();
     if (threadId) {
-      localStorage.setItem(`comments_read_${threadId}`, Date.now().toString());
+      const slug = getCompanySlug();
+      const storageKey = slug ? `${slug}:comments_read_${threadId}` : `comments_read_${threadId}`;
+      localStorage.setItem(storageKey, Date.now().toString());
     }
     setNotifications((prev) => prev.filter((item) => item.id !== n.id));
   };
@@ -282,7 +291,7 @@ export function NotificationDropdown() {
                 </div>
               ) : (
                 allNotifications.map((n) => (
-                  <Link
+                  <CompanyLink
                     key={n.id}
                     href={n.targetUrl}
                     onClick={() => handleNotificationClick(n)}
@@ -331,7 +340,7 @@ export function NotificationDropdown() {
                     </div>
 
                     <span className="w-2 h-2 rounded-full bg-primary shrink-0 self-center" />
-                  </Link>
+                  </CompanyLink>
                 ))
               )}
             </div>

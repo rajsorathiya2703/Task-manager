@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders, History, Shield } from "lucide-react";
 import { UserProfile } from "./UserProfile";
@@ -8,6 +7,7 @@ import { useSidebar } from "./SidebarContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
 import { useAccess } from "../../contexts/AccessContext";
 import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
+import { CompanyLink, useCompanyPath } from "../../lib/useCompanyPath";
 
 interface SidebarProps {
   user: any;
@@ -17,6 +17,7 @@ export function Sidebar({ user }: SidebarProps) {
   const { isOpen, setIsOpen, toggleSidebar } = useSidebar();
   const { isOpen: isChatbotOpen, toggleChatbot } = useChatbot();
   const pathname = usePathname();
+  const cp = useCompanyPath();
   const { can } = useAccess();
 
   // Day Off / Time Off Module Toggle
@@ -114,10 +115,10 @@ export function Sidebar({ user }: SidebarProps) {
               
               <nav className="space-y-1">
                 {canDashboard && (
-                  <Link
+                  <CompanyLink
                     href="/dashboard"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/dashboard")
+                      pathname.startsWith(cp("/dashboard"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -126,13 +127,13 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                     </svg>
                     Dashboard
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canTasks && (
-                  <Link
+                  <CompanyLink
                     href="/tasks"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/tasks")
+                      pathname.startsWith(cp("/tasks"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -141,13 +142,13 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                     </svg>
                     Tasks
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canProjects && (
-                  <Link
+                  <CompanyLink
                     href="/projects"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/projects")
+                      pathname.startsWith(cp("/projects"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -156,13 +157,13 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002 2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
                     Projects
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canTimeline && (
-                  <Link
+                  <CompanyLink
                     href="/timeline"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/timeline")
+                      pathname.startsWith(cp("/timeline"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -171,7 +172,7 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Timeline
-                  </Link>
+                  </CompanyLink>
                 )}
               </nav>
             </div>
@@ -188,41 +189,41 @@ export function Sidebar({ user }: SidebarProps) {
               </div>
 
               <nav className="space-y-1">
-                <Link
+                <CompanyLink
                   href="/dayoff/calendar"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    pathname.startsWith("/dayoff/calendar") || pathname === "/dayoff"
+                    pathname.startsWith(cp("/dayoff/calendar")) || pathname === cp("/dayoff")
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   }`}
                 >
                   <Calendar className="w-4 h-4 shrink-0" />
                   Calendar
-                </Link>
+                </CompanyLink>
 
-                <Link
+                <CompanyLink
                   href="/dayoff/requests"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    pathname.startsWith("/dayoff/requests")
+                    pathname.startsWith(cp("/dayoff/requests"))
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   }`}
                 >
                   <CalendarCheck className="w-4 h-4 shrink-0" />
                   My Leaves
-                </Link>
+                </CompanyLink>
 
-                <Link
+                <CompanyLink
                   href="/dayoff/history"
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    pathname.startsWith("/dayoff/history") || pathname.startsWith("/dayoff/applications")
+                    pathname.startsWith(cp("/dayoff/history")) || pathname.startsWith(cp("/dayoff/applications"))
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   }`}
                 >
                   <History className="w-4 h-4 shrink-0" />
                   Application History
-                </Link>
+                </CompanyLink>
               </nav>
             </div>
           )}
@@ -239,10 +240,10 @@ export function Sidebar({ user }: SidebarProps) {
               
               <nav className="space-y-1">
                 {canTeams && (
-                  <Link
+                  <CompanyLink
                     href="/configuration/team"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/configuration/team")
+                      pathname.startsWith(cp("/configuration/team"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -251,13 +252,13 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                     </svg>
                     Team
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canEmployees && (
-                  <Link
+                  <CompanyLink
                     href="/configuration/employees"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/configuration/employees")
+                      pathname.startsWith(cp("/configuration/employees"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -266,13 +267,13 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                     Employees
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canUsers && (
-                  <Link
+                  <CompanyLink
                     href="/configuration/users"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/configuration/users")
+                      pathname.startsWith(cp("/configuration/users"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
@@ -281,46 +282,46 @@ export function Sidebar({ user }: SidebarProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     Users
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canRoles && (
-                  <Link
+                  <CompanyLink
                     href="/configuration/roles"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/configuration/roles")
+                      pathname.startsWith(cp("/configuration/roles"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
                   >
                     <Shield className="w-4 h-4 shrink-0" />
                     Roles
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canApprovals && (
-                  <Link
+                  <CompanyLink
                     href="/dayoff/approvals"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/dayoff/approvals")
+                      pathname.startsWith(cp("/dayoff/approvals"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
                   >
                     <ClipboardCheck className="w-4 h-4 shrink-0" />
                     Approvals
-                  </Link>
+                  </CompanyLink>
                 )}
                 {canPolicies && (
-                  <Link
+                  <CompanyLink
                     href="/dayoff/policies"
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      pathname.startsWith("/dayoff/policies") || pathname.startsWith("/configuration/day-off")
+                      pathname.startsWith(cp("/dayoff/policies")) || pathname.startsWith(cp("/configuration/day-off"))
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     }`}
                   >
                     <Sliders className="w-4 h-4 shrink-0" />
                     Leave Policies
-                  </Link>
+                  </CompanyLink>
                 )}
               </nav>
             </div>

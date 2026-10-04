@@ -1,17 +1,25 @@
 import { Reflector } from '@nestjs/core';
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
+import { Types } from 'mongoose';
 import { DayOffController } from './day-off.controller';
 import { DayOffService } from './day-off.service';
+import { CompaniesService } from '../companies/companies.service';
+import { Company } from '../companies/schemas/company.schema';
+import { Membership } from '../companies/schemas/membership.schema';
 import { ACCESS_REQUIREMENT_KEY } from '../access/decorators/require-access.decorator';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { AccessGuard } from '../access/access.guard';
 import { PolicyCompilerService } from '../access/policy-compiler.service';
 import { PolicyEngineService } from '../access/policy-engine.service';
+import { NO_TENANT_KEY, TenantGuard } from '../common/tenant.guard';
+import { makeTwoTenants } from '../../test/helpers/tenant-fixtures';
 
-describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
+describe('DayOffController (P1-17 & MC-28 — Day-Off Controller Module Gates & Tenant Scoping)', () => {
   let controller: DayOffController;
   let dayOffService: jest.Mocked<DayOffService>;
+  let companiesService: jest.Mocked<CompaniesService>;
   const reflector = new Reflector();
 
   beforeEach(async () => {
@@ -32,10 +40,17 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
       approveByToken: jest.fn(),
     } as any;
 
+    companiesService = {
+      findBySlug: jest.fn(),
+    } as any;
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DayOffController],
       providers: [
         { provide: DayOffService, useValue: dayOffService },
+        { provide: CompaniesService, useValue: companiesService },
+        { provide: getModelToken(Company.name), useValue: {} },
+        { provide: getModelToken(Membership.name), useValue: {} },
       ],
     }).compile();
 
@@ -113,11 +128,13 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
       expect(meta).toEqual({ module: 'dayoff.approvals', action: 'approve' });
     });
 
-    it('keeps approveByToken marked with @Public() and without @RequireAccess', () => {
+    it('keeps approveByToken marked with @Public(), @NoTenant(), and without @RequireAccess', () => {
       const isPublic = reflector.get(IS_PUBLIC_KEY, controller.approveByToken);
       const requirement = reflector.get(ACCESS_REQUIREMENT_KEY, controller.approveByToken);
+      const isNoTenant = reflector.get(NO_TENANT_KEY, controller.approveByToken);
       expect(isPublic).toBe(true);
       expect(requirement).toBeUndefined();
+      expect(isNoTenant).toBe(true);
     });
   });
 
@@ -317,100 +334,108 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
   });
 
   describe('Controller delegation to DayOffService', () => {
+    const mockCompanyId = new Types.ObjectId();
+    const mockEmployeeId = new Types.ObjectId();
     const mockUser = { id: 'user-1', email: 'user@example.com' };
-    const mockReq = { user: mockUser };
+    const mockReq = {
+      user: mockUser,
+      membership: {
+        isCompanyOwner: true,
+        employeeId: mockEmployeeId,
+      },
+    };
 
-    it('delegates getSettings to dayOffService.getSettings', async () => {
+    it('delegates getSettings to dayOffService.getSettings with companyId', async () => {
       dayOffService.getSettings.mockResolvedValue({ defaultAllocation: 20 } as any);
-      const result = await controller.getSettings();
-      expect(dayOffService.getSettings).toHaveBeenCalled();
+      const result = await controller.getSettings(mockCompanyId);
+      expect(dayOffService.getSettings).toHaveBeenCalledWith(mockCompanyId);
       expect(result).toEqual({ defaultAllocation: 20 });
     });
 
-    it('delegates updateSettings to dayOffService.updateSettings', async () => {
+    it('delegates updateSettings to dayOffService.updateSettings with companyId', async () => {
       const dto = { defaultAllocation: 25 };
       dayOffService.updateSettings.mockResolvedValue(dto as any);
-      const result = await controller.updateSettings(dto);
-      expect(dayOffService.updateSettings).toHaveBeenCalledWith(dto);
+      const result = await controller.updateSettings(mockCompanyId, mockReq as any, dto);
+      expect(dayOffService.updateSettings).toHaveBeenCalledWith(mockCompanyId, dto);
       expect(result).toEqual(dto);
     });
 
-    it('delegates getLeaveTypes to dayOffService.getLeaveTypes', async () => {
+    it('delegates getLeaveTypes to dayOffService.getLeaveTypes with companyId', async () => {
       dayOffService.getLeaveTypes.mockResolvedValue(['vacation'] as any);
-      const result = await controller.getLeaveTypes('true');
-      expect(dayOffService.getLeaveTypes).toHaveBeenCalledWith({ activeOnly: true });
+      const result = await controller.getLeaveTypes(mockCompanyId, 'true');
+      expect(dayOffService.getLeaveTypes).toHaveBeenCalledWith(mockCompanyId, { activeOnly: true });
       expect(result).toEqual(['vacation']);
     });
 
-    it('delegates getLeaveTypeById to dayOffService.getLeaveTypeById', async () => {
+    it('delegates getLeaveTypeById to dayOffService.getLeaveTypeById with companyId', async () => {
       dayOffService.getLeaveTypeById.mockResolvedValue({ id: 'lt-1' } as any);
-      const result = await controller.getLeaveTypeById('lt-1');
-      expect(dayOffService.getLeaveTypeById).toHaveBeenCalledWith('lt-1');
+      const result = await controller.getLeaveTypeById(mockCompanyId, 'lt-1');
+      expect(dayOffService.getLeaveTypeById).toHaveBeenCalledWith(mockCompanyId, 'lt-1');
       expect(result).toEqual({ id: 'lt-1' });
     });
 
-    it('delegates createLeaveType to dayOffService.createLeaveType', async () => {
+    it('delegates createLeaveType to dayOffService.createLeaveType with companyId', async () => {
       const dto = { name: 'Sick' };
       dayOffService.createLeaveType.mockResolvedValue(dto as any);
-      const result = await controller.createLeaveType(dto);
-      expect(dayOffService.createLeaveType).toHaveBeenCalledWith(dto);
+      const result = await controller.createLeaveType(mockCompanyId, mockReq as any, dto);
+      expect(dayOffService.createLeaveType).toHaveBeenCalledWith(mockCompanyId, dto);
       expect(result).toEqual(dto);
     });
 
-    it('delegates updateLeaveType to dayOffService.updateLeaveType', async () => {
+    it('delegates updateLeaveType to dayOffService.updateLeaveType with companyId', async () => {
       const dto = { name: 'Sick Paid' };
       dayOffService.updateLeaveType.mockResolvedValue(dto as any);
-      const result = await controller.updateLeaveType('lt-1', dto);
-      expect(dayOffService.updateLeaveType).toHaveBeenCalledWith('lt-1', dto);
+      const result = await controller.updateLeaveType(mockCompanyId, 'lt-1', mockReq as any, dto);
+      expect(dayOffService.updateLeaveType).toHaveBeenCalledWith(mockCompanyId, 'lt-1', dto);
       expect(result).toEqual(dto);
     });
 
-    it('delegates deleteLeaveType to dayOffService.deleteLeaveType', async () => {
+    it('delegates deleteLeaveType to dayOffService.deleteLeaveType with companyId', async () => {
       dayOffService.deleteLeaveType.mockResolvedValue({ deleted: true } as any);
-      const result = await controller.deleteLeaveType('lt-1');
-      expect(dayOffService.deleteLeaveType).toHaveBeenCalledWith('lt-1');
+      const result = await controller.deleteLeaveType(mockCompanyId, 'lt-1', mockReq as any);
+      expect(dayOffService.deleteLeaveType).toHaveBeenCalledWith(mockCompanyId, 'lt-1');
       expect(result).toEqual({ deleted: true });
     });
 
-    it('delegates getMyBalances to dayOffService.getMyBalances / getEmployeeBalances', async () => {
-      dayOffService.getMyApplications.mockResolvedValue([]);
+    it('delegates getMyBalances to dayOffService.getEmployeeBalances using req.membership.employeeId', async () => {
       dayOffService.getEmployeeBalances.mockResolvedValue({ balance: 10 } as any);
-      const result = await controller.getMyBalances(mockReq as any, '2026');
-      expect(dayOffService.getEmployeeBalances).toHaveBeenCalledWith('user-1', 2026);
+      const result = await controller.getMyBalances(mockCompanyId, mockReq as any, '2026');
+      expect(dayOffService.getEmployeeBalances).toHaveBeenCalledWith(mockCompanyId, mockEmployeeId, 2026);
       expect(result).toEqual({ balance: 10 });
     });
 
-    it('delegates getEmployeeBalances to dayOffService.getEmployeeBalances', async () => {
+    it('delegates getEmployeeBalances to dayOffService.getEmployeeBalances with companyId', async () => {
       dayOffService.getEmployeeBalances.mockResolvedValue({ balance: 12 } as any);
-      const result = await controller.getEmployeeBalances('emp-2', '2026');
-      expect(dayOffService.getEmployeeBalances).toHaveBeenCalledWith('emp-2', 2026);
+      const result = await controller.getEmployeeBalances(mockCompanyId, 'emp-2', '2026');
+      expect(dayOffService.getEmployeeBalances).toHaveBeenCalledWith(mockCompanyId, 'emp-2', 2026);
       expect(result).toEqual({ balance: 12 });
     });
 
-    it('delegates applyLeave to dayOffService.applyLeave', async () => {
+    it('delegates applyLeave to dayOffService.applyLeave with companyId and membership.employeeId', async () => {
       const body = { leaveTypeId: 'lt-1', daysCount: 2 };
       dayOffService.applyLeave.mockResolvedValue({ id: 'app-1' } as any);
-      const result = await controller.applyLeave(mockReq as any, body);
-      expect(dayOffService.applyLeave).toHaveBeenCalledWith(mockUser, body);
+      const result = await controller.applyLeave(mockCompanyId, mockReq as any, body);
+      expect(dayOffService.applyLeave).toHaveBeenCalledWith(mockCompanyId, mockEmployeeId, mockUser, body);
       expect(result).toEqual({ id: 'app-1' });
     });
 
-    it('delegates getMyApplications to dayOffService.getMyApplications', async () => {
+    it('delegates getMyApplications to dayOffService.getMyApplications with companyId', async () => {
       dayOffService.getMyApplications.mockResolvedValue(['my-app'] as any);
-      const result = await controller.getMyApplications(mockReq as any, '2026');
-      expect(dayOffService.getMyApplications).toHaveBeenCalledWith(mockUser, 2026);
+      const result = await controller.getMyApplications(mockCompanyId, mockReq as any, '2026');
+      expect(dayOffService.getMyApplications).toHaveBeenCalledWith(mockCompanyId, mockUser, 2026);
       expect(result).toEqual(['my-app']);
     });
 
-    it('delegates getAllApplications to dayOffService.getAllApplications with scope and admin flag', async () => {
+    it('delegates getAllApplications to dayOffService.getAllApplications with companyId', async () => {
       dayOffService.getAllApplications.mockResolvedValue(['app1', 'app2'] as any);
       const reqWithAccess = {
         ...mockReq,
         user: { ...mockUser, is_system_admin: false },
         access: { 'dayoff.approvals': { scope: 'team' } },
       };
-      const result = await controller.getAllApplications(reqWithAccess as any, 'pending', '2026');
+      const result = await controller.getAllApplications(mockCompanyId, reqWithAccess as any, 'pending', '2026');
       expect(dayOffService.getAllApplications).toHaveBeenCalledWith(
+        mockCompanyId,
         { status: 'pending', year: 2026 },
         reqWithAccess.user,
         'team',
@@ -419,14 +444,14 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
       expect(result).toEqual(['app1', 'app2']);
     });
 
-    it('delegates cancelApplication to dayOffService.cancelApplication', async () => {
+    it('delegates cancelApplication to dayOffService.cancelApplication with companyId', async () => {
       dayOffService.cancelApplication.mockResolvedValue({ status: 'cancelled' } as any);
-      const result = await controller.cancelApplication('app-1', mockReq as any);
-      expect(dayOffService.cancelApplication).toHaveBeenCalledWith('app-1', mockUser);
+      const result = await controller.cancelApplication(mockCompanyId, 'app-1', mockReq as any);
+      expect(dayOffService.cancelApplication).toHaveBeenCalledWith(mockCompanyId, 'app-1', mockUser);
       expect(result).toEqual({ status: 'cancelled' });
     });
 
-    it('delegates updateApplicationStatus to dayOffService.updateApplicationStatus with scope and admin flag', async () => {
+    it('delegates updateApplicationStatus to dayOffService.updateApplicationStatus with companyId', async () => {
       dayOffService.updateApplicationStatus.mockResolvedValue({ status: 'approved' } as any);
       const reqWithAccess = {
         ...mockReq,
@@ -434,11 +459,13 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
         access: { 'dayoff.approvals': { scope: 'team' } },
       };
       const result = await controller.updateApplicationStatus(
+        mockCompanyId,
         'app-1',
         { status: 'approved', reason: 'Approved' },
         reqWithAccess as any,
       );
       expect(dayOffService.updateApplicationStatus).toHaveBeenCalledWith(
+        mockCompanyId,
         'app-1',
         'approved',
         reqWithAccess.user,
@@ -447,6 +474,127 @@ describe('DayOffController (P1-17 — Day-Off Controller Module Gates)', () => {
         false,
       );
       expect(result).toEqual({ status: 'approved' });
+    });
+  });
+
+  describe('Settings and Leave Type WRITE endpoints permissions (MC-28)', () => {
+    const mockCompanyId = new Types.ObjectId();
+    const nonOwnerReq = {
+      user: { id: 'user-regular', is_system_admin: false },
+      membership: { isCompanyOwner: false },
+    };
+
+    it('blocks non-owner from updating settings with ForbiddenException', async () => {
+      await expect(
+        controller.updateSettings(mockCompanyId, nonOwnerReq as any, { defaultAllocation: 30 }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('blocks non-owner from creating leave types with ForbiddenException', async () => {
+      await expect(
+        controller.createLeaveType(mockCompanyId, nonOwnerReq as any, { name: 'Special Leave' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('blocks non-owner from updating leave types with ForbiddenException', async () => {
+      await expect(
+        controller.updateLeaveType(mockCompanyId, 'lt-1', nonOwnerReq as any, { name: 'Updated' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('blocks non-owner from deleting leave types with ForbiddenException', async () => {
+      await expect(
+        controller.deleteLeaveType(mockCompanyId, 'lt-1', nonOwnerReq as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('Public Approval Endpoint & Cross-Tenant Verification (MC-28)', () => {
+    const tenants = makeTwoTenants('Alpha Inc', 'Beta Corp');
+    const appId = new Types.ObjectId().toString();
+    const token = 'secret-token-xyz';
+
+    it('fails when token from Company A is approved under slug of Company B', async () => {
+      companiesService.findBySlug.mockResolvedValue({
+        _id: tenants.B.companyId,
+        slug: tenants.B.slug,
+      } as any);
+
+      dayOffService.approveByToken.mockRejectedValue(
+        new NotFoundException('Leave application not found.'),
+      );
+
+      const mockRes: any = {
+        status: jest.fn().mockReturnThis(),
+        send: jest.fn(),
+      };
+
+      await controller.approveByToken(tenants.B.slug, appId, token, mockRes);
+
+      expect(companiesService.findBySlug).toHaveBeenCalledWith(tenants.B.slug);
+      expect(dayOffService.approveByToken).toHaveBeenCalledWith(appId, token, tenants.B.companyId);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+
+      const htmlSent = mockRes.send.mock.calls[0][0];
+      expect(htmlSent).toContain('Approval Could Not Be Completed');
+      expect(htmlSent).toContain('Leave application not found.');
+    });
+
+    it('succeeds when correct slug and token are used', async () => {
+      companiesService.findBySlug.mockResolvedValue({
+        _id: tenants.A.companyId,
+        slug: tenants.A.slug,
+      } as any);
+
+      dayOffService.approveByToken.mockResolvedValue({
+        success: true,
+        message: 'The leave application has been marked as Approved, and the employee has been notified.',
+      } as any);
+
+      const mockRes: any = {
+        status: jest.fn().mockReturnThis(),
+        send: jest.fn(),
+      };
+
+      await controller.approveByToken(tenants.A.slug, appId, token, mockRes);
+
+      expect(companiesService.findBySlug).toHaveBeenCalledWith(tenants.A.slug);
+      expect(dayOffService.approveByToken).toHaveBeenCalledWith(appId, token, tenants.A.companyId);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+
+      const htmlSent = mockRes.send.mock.calls[0][0];
+      expect(htmlSent).toContain('Leave Approved Successfully');
+    });
+
+    it('escapes HTML special characters in error message to prevent XSS', async () => {
+      companiesService.findBySlug.mockResolvedValue({
+        _id: tenants.A.companyId,
+        slug: tenants.A.slug,
+      } as any);
+
+      dayOffService.approveByToken.mockRejectedValue(
+        new Error('<script>alert("xss")</script> & malicious "content"'),
+      );
+
+      const mockRes: any = {
+        status: jest.fn().mockReturnThis(),
+        send: jest.fn(),
+      };
+
+      await controller.approveByToken(tenants.A.slug, appId, token, mockRes);
+
+      const htmlSent = mockRes.send.mock.calls[0][0];
+      expect(htmlSent).not.toContain('<script>');
+      expect(htmlSent).toContain('&lt;script&gt;');
+      expect(htmlSent).toContain('&amp;');
+      expect(htmlSent).toContain('&quot;');
+    });
+  });
+
+  describe('Multi-Tenant Mounting (MC-28)', () => {
+    it('mounts controller under companies/:companySlug/day-off', () => {
+      const path = Reflect.getMetadata('path', DayOffController);
+      expect(path).toBe('companies/:companySlug/day-off');
     });
   });
 });

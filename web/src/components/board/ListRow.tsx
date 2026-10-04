@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal, Plus, Play, Square, Loader2, Trash2, Copy } from "lucide-react";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { Task } from "../../lib/data";
 import { PriorityBadge } from "./PriorityBadge";
 import { formatDisplayDate } from "../../lib/utils";
@@ -177,7 +177,7 @@ export function ListRow({ task: initialTask, showProjectCapsule = false, onDelet
 
   return (
     <>
-      <Link href={`/tasks/${taskId}`} className="group flex items-center px-4 py-3 border-b border-border hover:bg-muted/30 transition-colors bg-card cursor-pointer gap-2">
+      <CompanyLink href={`/tasks/${taskId}`} className="group flex items-center px-4 py-3 border-b border-border hover:bg-muted/30 transition-colors bg-card cursor-pointer gap-2">
         {/* Title */}
         <div className="flex-1 min-w-[180px] font-medium text-sm text-foreground truncate flex items-center gap-2">
           <span className="truncate">{task.title}</span>
@@ -271,7 +271,7 @@ export function ListRow({ task: initialTask, showProjectCapsule = false, onDelet
             )
           )}
         </div>
-      </Link>
+      </CompanyLink>
 
       {/* Portal dropdown — rendered at document.body to escape overflow:hidden */}
       {dropdownPortal}

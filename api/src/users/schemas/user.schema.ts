@@ -26,9 +26,15 @@ export class User {
   @Prop()
   lastLoginAt: Date;
 
+  /**
+   * @deprecated Retired in MC-34. Employment status is company-scoped via Membership / Employee records.
+   */
   @Prop({ default: false })
   is_employee: boolean;
 
+  /**
+   * @deprecated Retired in MC-34. Replaced by Membership.isSystemAdmin / Membership.isCompanyOwner (and future PBAC).
+   */
   @Prop({ default: false })
   is_system_admin: boolean;
 }

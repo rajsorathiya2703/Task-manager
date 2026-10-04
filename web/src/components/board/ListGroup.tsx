@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Task } from "../../lib/data";
 import { ListRow } from "./ListRow";
 
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { useAccessControl } from "../../contexts/AccessContext";
 
 interface ListGroupProps {
@@ -84,10 +84,10 @@ export function ListGroup({ title, tasks: initialTasks, addTaskHref, showAddTask
                 : `${baseHref}?status=${encodeURIComponent(title)}`;
 
               return (
-                <Link href={finalHref} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors bg-card text-left">
+                <CompanyLink href={finalHref} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors bg-card text-left">
                   <Plus className="w-3.5 h-3.5" />
                   Add Task
-                </Link>
+                </CompanyLink>
               );
             })()
           )}

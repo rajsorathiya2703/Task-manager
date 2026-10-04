@@ -1,8 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { applyTenantPlugin } from '../../common/tenant.plugin';
 
 @Schema({ timestamps: true })
 export class Project extends Document {
+  @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
+  companyId: Types.ObjectId;
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
@@ -32,3 +36,7 @@ export class Project extends Document {
 }
 
 export const ProjectSchema = SchemaFactory.createForClass(Project);
+
+ProjectSchema.index({ companyId: 1, status: 1 });
+
+applyTenantPlugin(ProjectSchema);

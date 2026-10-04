@@ -10,6 +10,7 @@ import { LeaveBalance } from './schemas/leave-balance.schema';
 import { Notification } from './schemas/notification.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { Team } from '../teams/schemas/team.schema';
+import { Company } from '../companies/schemas/company.schema';
 import { DayOffMailService } from './day-off-mail.service';
 
 describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
@@ -17,6 +18,7 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
   let applicationModel: any;
   let employeeModel: any;
   let teamModel: any;
+  let companyModel: any;
   let leaveTypeModel: any;
   let settingsModel: any;
   let balanceModel: any;
@@ -116,8 +118,15 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
       }),
     };
 
+    companyModel = {
+      findById: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+      findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+    };
+
     settingsModel = {
       countDocuments: jest.fn().mockResolvedValue(1),
+      findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+      create: jest.fn().mockImplementation((doc) => Promise.resolve({ ...doc, save: jest.fn().mockResolvedValue(doc) })),
     };
 
     const mockBalance = {
@@ -131,6 +140,9 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
       Object.assign(this, mockBalance, data);
       this.save = jest.fn().mockResolvedValue(this);
     }
+    (MockBalanceModel as any).find = jest.fn().mockReturnValue({
+      exec: jest.fn().mockResolvedValue([]),
+    });
     (MockBalanceModel as any).findOne = jest.fn().mockReturnValue({
       exec: jest.fn().mockResolvedValue(mockBalance),
     });
@@ -150,6 +162,7 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
 
     mailService = {
       sendLeaveAppliedToAdmin: jest.fn().mockResolvedValue(true),
+      sendLeaveRequestToAdmin: jest.fn().mockResolvedValue(true),
       sendLeaveApprovedToEmployee: jest.fn().mockResolvedValue(true),
       sendLeaveRejectedToEmployee: jest.fn().mockResolvedValue(true),
     };
@@ -164,6 +177,7 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
         { provide: getModelToken(Notification.name), useValue: notificationModel },
         { provide: getModelToken(Employee.name), useValue: employeeModel },
         { provide: getModelToken(Team.name), useValue: teamModel },
+        { provide: getModelToken(Company.name), useValue: companyModel },
         { provide: DayOffMailService, useValue: mailService },
       ],
     }).compile();
@@ -383,4 +397,226 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
       expect(result.approvedBy).toBe('Admin User');
     });
   });
+
+  describe('Company Scoping (MC-27)', () => {
+    const companyA = new Types.ObjectId();
+    const companyB = new Types.ObjectId();
+    const testEmpId = new Types.ObjectId();
+
+    describe('seedCompanyDefaults', () => {
+      it('seeds settings and default leave types stamped with companyId', async () => {
+        leaveTypeModel.countDocuments = jest.fn().mockResolvedValue(0);
+        leaveTypeModel.insertMany = jest.fn().mockResolvedValue([]);
+        settingsModel.findOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+        settingsModel.create = jest.fn().mockResolvedValue({ companyId: companyA });
+
+        await service.seedCompanyDefaults(companyA, 'admin@companya.com');
+
+        expect(settingsModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            companyId: companyA,
+            defaultAdminEmail: 'admin@companya.com',
+            isEnabled: true,
+          }),
+        );
+        expect(leaveTypeModel.insertMany).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              code: 'PAID',
+              companyId: companyA,
+            }),
+            expect.objectContaining({
+              code: 'UNPAID',
+              companyId: companyA,
+            }),
+            expect.objectContaining({
+              code: 'HALF_DAY',
+              companyId: companyA,
+            }),
+            expect.objectContaining({
+              code: 'MEDICAL',
+              companyId: companyA,
+            }),
+          ]),
+        );
+      });
+
+      it('does not re-seed leave types if already existing for company', async () => {
+        leaveTypeModel.countDocuments = jest.fn().mockResolvedValue(4);
+        leaveTypeModel.insertMany = jest.fn();
+        settingsModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ companyId: companyA }),
+        });
+
+        await service.seedCompanyDefaults(companyA, 'admin@companya.com');
+
+        expect(leaveTypeModel.insertMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('getSettings / updateSettings scoping', () => {
+      it('creates settings on demand using company contactEmail when missing', async () => {
+        settingsModel.findOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+        companyModel.findById = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            _id: companyA,
+            contactEmail: 'contact@companya.com',
+          }),
+        });
+        settingsModel.create = jest.fn().mockImplementation((data) => Promise.resolve(data));
+
+        const settings = await service.getSettings(companyA);
+
+        expect(settingsModel.findOne).toHaveBeenCalledWith({ companyId: companyA });
+        expect(companyModel.findById).toHaveBeenCalledWith(companyA);
+        expect(settingsModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            companyId: companyA,
+            defaultAdminEmail: 'contact@companya.com',
+            isEnabled: true,
+          }),
+        );
+      });
+    });
+
+    describe('Leave Types Scoping: Leave type from A not visible in B', () => {
+      it('scopes getLeaveTypes by companyId so Company A types are not returned for Company B', async () => {
+        const mockSort = jest.fn();
+        leaveTypeModel.find = jest.fn().mockImplementation((filter) => {
+          if (filter.companyId?.toString() === companyA.toString()) {
+            mockSort.mockReturnValue({
+              exec: jest.fn().mockResolvedValue([{ _id: new Types.ObjectId(), name: 'Company A Custom Leave', companyId: companyA }]),
+            });
+          } else {
+            mockSort.mockReturnValue({
+              exec: jest.fn().mockResolvedValue([]),
+            });
+          }
+          return { sort: mockSort };
+        });
+
+        const typesA = await service.getLeaveTypes(companyA);
+        expect(typesA.length).toBe(1);
+        expect(typesA[0].companyId).toEqual(companyA);
+
+        const typesB = await service.getLeaveTypes(companyB);
+        expect(typesB.length).toBe(0);
+        expect(leaveTypeModel.find).toHaveBeenCalledWith({ companyId: companyB });
+      });
+
+      it('stamps companyId on created leave type', async () => {
+        function MockLeaveType(this: any, data: any) {
+          Object.assign(this, data);
+          this.save = jest.fn().mockResolvedValue(this);
+        }
+        (service as any).leaveTypeModel = MockLeaveType;
+
+        const created = await service.createLeaveType(companyA, {
+          name: 'Floating Holiday',
+        });
+
+        expect(created.companyId).toEqual(companyA);
+        expect(created.code).toBe('FLOATING_HOLIDAY');
+
+        // Restore mock
+        (service as any).leaveTypeModel = leaveTypeModel;
+      });
+    });
+
+    describe('Leave Balances Scoping: balance created under the right company', () => {
+      it('creates missing leave balance stamped with the specified companyId', async () => {
+        const leaveTypeA = {
+          _id: new Types.ObjectId(),
+          name: 'Paid Leave',
+          defaultAllocation: 14,
+          companyId: companyA,
+        };
+
+        leaveTypeModel.find = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue([leaveTypeA]),
+        });
+        (balanceModel as any).find = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue([]),
+        });
+        (balanceModel as any).create = jest.fn().mockImplementation((data) => Promise.resolve(data));
+
+        const balances = await service.getEmployeeBalances(companyA, testEmpId, 2026);
+
+        expect(leaveTypeModel.find).toHaveBeenCalledWith({ companyId: companyA, isActive: true });
+        expect((balanceModel as any).find).toHaveBeenCalledWith({
+          companyId: companyA,
+          employeeId: testEmpId,
+          year: 2026,
+        });
+        expect((balanceModel as any).create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            companyId: companyA,
+            employeeId: testEmpId,
+            leaveTypeId: leaveTypeA._id,
+            year: 2026,
+            allocated: 14,
+            used: 0,
+          }),
+        );
+        expect(balances[0].allocated).toBe(14);
+      });
+    });
+
+    describe('applyLeave Scoping', () => {
+      it('rejects applyLeave when leave type does not belong to the company', async () => {
+        const otherCompanyLeaveTypeId = new Types.ObjectId();
+        employeeModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            _id: testEmpId,
+            companyId: companyA,
+            fullName: { firstName: 'Test', lastName: 'Employee' },
+          }),
+        });
+
+        // Leave type lookup with companyA filter returns null
+        leaveTypeModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        });
+
+        await expect(
+          service.applyLeave(companyA, testEmpId, aliceUser, {
+            leaveTypeId: otherCompanyLeaveTypeId.toString(),
+            fromDate: '2026-08-01',
+            toDate: '2026-08-03',
+            reason: 'Vacation',
+          }),
+        ).rejects.toThrow('Selected Leave Type is invalid or currently inactive.');
+
+        expect(leaveTypeModel.findOne).toHaveBeenCalledWith({
+          _id: otherCompanyLeaveTypeId,
+          companyId: companyA,
+        });
+      });
+    });
+
+    describe('approveByToken Scoping', () => {
+      it('rejects approval when application does not belong to the specified company', async () => {
+        const appId = new Types.ObjectId().toString();
+        const token = 'valid-token';
+
+        // Application belongs to companyA
+        applicationModel.findOne = jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue(null), // filtered by companyB -> null
+        });
+
+        await expect(
+          service.approveByToken(appId, token, companyB),
+        ).rejects.toThrow('Leave application not found.');
+
+        expect(applicationModel.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            _id: appId,
+            companyId: companyB,
+          }),
+        );
+      });
+    });
+  });
 });
+

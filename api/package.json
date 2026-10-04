@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "db:clean": "ts-node scripts/clean-db.ts",
-    "db:clean:other": "ts-node scripts/clean-other-data.ts"
+    "db:clean:other": "ts-node scripts/clean-other-data.ts",
+    "db:migrate:multicompany": "ts-node scripts/migrate-to-multicompany.ts",
+    "test:e2e": "jest --config ./test/jest-e2e.json --forceExit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

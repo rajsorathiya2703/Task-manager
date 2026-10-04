@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal, Calendar, Tag, Trash2, Copy, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { CompanyLink } from "../../lib/useCompanyPath";
 import { Task } from "../../lib/data";
 
 import { useDraggable } from "@dnd-kit/core";
@@ -132,7 +132,7 @@ export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, 
 
   return (
     <>
-      <Link
+      <CompanyLink
         href={`/tasks/${taskId}`}
         ref={setNodeRef}
         style={style}
@@ -215,7 +215,7 @@ export function TaskCard({ task, showProjectCapsule = false, canDrag, onDelete, 
             </div>
           ))}
         </div>
-      </Link>
+      </CompanyLink>
 
       {/* Portal dropdown — rendered at document.body to escape overflow:hidden */}
       {dropdownPortal}

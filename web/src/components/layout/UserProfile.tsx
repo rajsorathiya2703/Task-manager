@@ -1,9 +1,25 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
-import { api } from "../../lib/api";
+import { api, fetchMyCompanies } from "../../lib/api";
+import { useCompanyPath } from "../../lib/useCompanyPath";
+import { useCompany } from "../../contexts/CompanyContext";
+import {
+  Building2,
+  Check,
+  Plus,
+  KeyRound,
+  ArrowRight,
+  Settings,
+  Sun,
+  Moon,
+  LogOut,
+  ChevronDown,
+  Loader2,
+  X
+} from "lucide-react";
 
 interface UserProfileProps {
   user: {
@@ -13,33 +29,102 @@ interface UserProfileProps {
   };
 }
 
+interface CompanyItem {
+  slug: string;
+  name: string;
+  logoUrl?: string;
+  isCompanyOwner: boolean;
+}
+
 export function UserProfile({ user }: UserProfileProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [companies, setCompanies] = useState<CompanyItem[]>([]);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
+  const [isJoinInputOpen, setIsJoinInputOpen] = useState(false);
+  const [joinSlug, setJoinSlug] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const joinInputRef = useRef<HTMLInputElement>(null);
   const { setTheme, theme } = useTheme();
   const router = useRouter();
+  const cp = useCompanyPath();
+  const { slug: currentSlug } = useCompany();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setIsJoinInputOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (isOpen) {
+      setIsLoadingCompanies(true);
+      fetchMyCompanies()
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setCompanies(data);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load user companies:", err);
+        })
+        .finally(() => {
+          setIsLoadingCompanies(false);
+        });
+    } else {
+      setIsJoinInputOpen(false);
+      setJoinSlug("");
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isJoinInputOpen && joinInputRef.current) {
+      joinInputRef.current.focus();
+    }
+  }, [isJoinInputOpen]);
+
+  const handleSwitchCompany = (targetSlug: string) => {
+    const cleanTarget = targetSlug.trim().toLowerCase();
+    const cleanCurrent = (currentSlug || "").trim().toLowerCase();
+
+    if (cleanTarget === cleanCurrent) {
+      setIsOpen(false);
+      return;
+    }
+
+    try {
+      localStorage.setItem("lastCompany", cleanTarget);
+    } catch {}
+
+    setIsOpen(false);
+    // Reset company-specific client state on switch via full navigation
+    window.location.href = `/${cleanTarget}/dashboard`;
+  };
+
+  const handleJoinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = joinSlug.trim().toLowerCase();
+    if (!clean) return;
+    setIsOpen(false);
+    window.location.href = `/${clean}/join`;
+  };
+
   const handleLogout = async () => {
     try {
       await api.post("/auth/logout");
-      router.push("/login");
+      window.location.href = "/";
     } catch (e) {
       console.error("Logout failed", e);
+      window.location.href = "/";
     }
   };
 
-  const displayName = user.name || "User";
-  const displayEmail = user.email || "No email";
+  const displayName = user?.name || "User";
+  const displayEmail = user?.email || "No email";
   const firstLetter = displayName.charAt(0).toUpperCase();
 
   return (
@@ -49,7 +134,7 @@ export function UserProfile({ user }: UserProfileProps) {
         className="flex items-center w-full gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 transition-colors"
       >
         <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center overflow-hidden shrink-0">
-          {user.avatarUrl ? (
+          {user?.avatarUrl ? (
             <img src={user.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
           ) : (
             <span className="text-primary-foreground text-xs font-medium">{firstLetter}</span>
@@ -58,64 +143,185 @@ export function UserProfile({ user }: UserProfileProps) {
         <div className="flex-1 text-left truncate">
           <p className="text-xs font-medium leading-none truncate text-foreground">{displayName}</p>
         </div>
-        <svg className="w-3.5 h-3.5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-        </svg>
+        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
       </button>
 
       {isOpen && (
-        <div className="mt-2 w-full bg-card border border-border rounded-xl shadow-sm py-2">
-          <div className="flex flex-col items-center justify-center p-4 border-b border-border">
-            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center overflow-hidden mb-3 shadow-sm">
-              {user.avatarUrl ? (
+        <div className="mt-2 w-full bg-card border border-border rounded-xl shadow-lg py-2 z-50">
+          {/* User Profile Header */}
+          <div className="flex flex-col items-center justify-center p-3 border-b border-border text-center">
+            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center overflow-hidden mb-2 shadow-xs">
+              {user?.avatarUrl ? (
                 <img src={user.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-primary-foreground text-lg font-medium">{firstLetter}</span>
+                <span className="text-primary-foreground text-base font-semibold">{firstLetter}</span>
               )}
             </div>
-            <p className="text-sm font-medium text-foreground">{displayName}</p>
-            <p className="text-xs text-muted-foreground mt-1">{displayEmail}</p>
+            <p className="text-xs font-semibold text-foreground truncate max-w-full px-2">{displayName}</p>
+            <p className="text-[11px] text-muted-foreground truncate max-w-full px-2">{displayEmail}</p>
           </div>
 
-          <div className="py-2">
-            <button 
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="w-full flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  {theme === 'dark' ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  )}
-                </svg>
-                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          {/* Companies Section */}
+          <div className="py-2 border-b border-border">
+            <div className="px-3 pb-1 text-[10px] font-bold tracking-wider text-muted-foreground uppercase flex items-center justify-between">
+              <span>Companies</span>
+              {companies.length > 0 && (
+                <span className="text-[9px] font-mono bg-muted px-1.5 py-0.2 rounded text-muted-foreground">
+                  {companies.length}
+                </span>
+              )}
+            </div>
+
+            {isLoadingCompanies ? (
+              <div className="flex items-center justify-center py-3 text-xs text-muted-foreground gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span>Loading workspaces...</span>
               </div>
+            ) : (
+              <div className="max-h-48 overflow-y-auto px-1.5 space-y-0.5">
+                {companies.map((comp) => {
+                  const isCurrent =
+                    comp.slug.trim().toLowerCase() === (currentSlug || "").trim().toLowerCase();
+
+                  return (
+                    <button
+                      key={comp.slug}
+                      type="button"
+                      onClick={() => handleSwitchCompany(comp.slug)}
+                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs rounded-lg transition-colors text-left ${
+                        isCurrent
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-foreground hover:bg-muted/60"
+                      }`}
+                    >
+                      <div className="w-5 h-5 rounded-md bg-muted border border-border/60 flex items-center justify-center overflow-hidden shrink-0">
+                        {comp.logoUrl ? (
+                          <img src={comp.logoUrl} alt={comp.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Building2 className="w-3 h-3 text-muted-foreground" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{comp.name}</span>
+                          {comp.isCompanyOwner && (
+                            <span className="text-[9px] font-semibold px-1 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
+                              Owner
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {isCurrent && (
+                        <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-auto" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Quick Actions: Join / Register */}
+            <div className="px-1.5 pt-1.5 space-y-1">
+              {isJoinInputOpen ? (
+                <form onSubmit={handleJoinSubmit} className="flex items-center gap-1 px-1 py-1">
+                  <input
+                    ref={joinInputRef}
+                    type="text"
+                    value={joinSlug}
+                    onChange={(e) => setJoinSlug(e.target.value)}
+                    placeholder="company-slug"
+                    className="flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-input bg-background text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!joinSlug.trim()}
+                    className="p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                    title="Go to Join"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsJoinInputOpen(false);
+                      setJoinSlug("");
+                    }}
+                    className="p-1.5 rounded-md text-muted-foreground hover:bg-muted transition-colors"
+                    title="Cancel"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsJoinInputOpen(true)}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors text-left"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span>Join another company</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  window.location.href = "/register-company";
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors text-left"
+              >
+                <Plus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span>Register a company</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Theme & Settings Section */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground hover:bg-muted/50 transition-colors text-left"
+            >
+              {theme === "dark" ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span>Light mode</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span>Dark mode</span>
+                </>
+              )}
             </button>
-            <button 
-              onClick={() => router.push('/settings')}
-              className="w-full flex items-center justify-between px-4 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors"
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                router.push(cp("/settings"));
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground hover:bg-muted/50 transition-colors text-left"
             >
-              <div className="flex items-center gap-3">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Settings
-              </div>
+              <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span>Settings</span>
             </button>
           </div>
-          <div className="border-t border-border py-2">
-             <button 
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-             >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Log out
-             </button>
+
+          {/* Logout Section */}
+          <div className="border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-left"
+            >
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
+              <span>Log out</span>
+            </button>
           </div>
         </div>
       )}
