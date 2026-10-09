@@ -81,9 +81,14 @@ export class AccessGuard implements CanActivate {
       });
     }
 
-    // ─── Step 4: Load latest compiled policy ──────────────────────────
+    // ─── Step 4: Load latest compiled policy (company-scoped) ────────
+    const companyId =
+      request.company?._id ||
+      request.membership?.companyId ||
+      request.companyId;
+
     const policyDoc =
-      await this.policyCompilerService.getLatestPolicyDocument();
+      await this.policyCompilerService.getLatestPolicyDocument(companyId);
     if (!policyDoc) {
       this.logger.warn(
         'No compiled policy document found — denying access by default',
@@ -99,13 +104,34 @@ export class AccessGuard implements CanActivate {
 
     // ─── Step 5: Build Subject from req.user + role membership ────────
     const userId = (user._id?.toString?.() ?? user.id) as string;
+    const compObjectId = companyId && Types.ObjectId.isValid(companyId)
+      ? new Types.ObjectId(companyId)
+      : undefined;
 
-    // Look up all roles where this user is a member
+    // Look up roles for this user inside the current company
+    const roleQuery: any = { members: userId, isActive: true };
+    if (compObjectId) {
+      roleQuery.companyId = compObjectId;
+    }
+
     let userRoles = await this.roleModel
-      .find({ members: userId, isActive: true })
+      .find(roleQuery)
       .select('_id slug')
       .lean()
       .exec();
+
+    // If no roles matched directly by members array, check membership.roleIds
+    if (userRoles.length === 0 && request.membership?.roleIds?.length > 0) {
+      const membershipRoleObjectIds = request.membership.roleIds
+        .filter((r: any) => Types.ObjectId.isValid(r))
+        .map((r: any) => new Types.ObjectId(r));
+
+      userRoles = await this.roleModel
+        .find({ _id: { $in: membershipRoleObjectIds }, isActive: true })
+        .select('_id slug')
+        .lean()
+        .exec();
+    }
 
     const isCompanyAdmin =
       user.is_system_admin === true ||
@@ -114,8 +140,12 @@ export class AccessGuard implements CanActivate {
 
     // Default Role Fallback: If user has no roles and is not System Admin, assign 'employee' role
     if (userRoles.length === 0 && !isCompanyAdmin && typeof this.roleModel.findOne === 'function') {
+      const fallbackQuery: any = { slug: 'employee', isActive: true };
+      if (compObjectId) {
+        fallbackQuery.companyId = compObjectId;
+      }
       const defaultRole = await this.roleModel
-        .findOne({ slug: 'employee', isActive: true })
+        .findOne(fallbackQuery)
         .select('_id slug')
         .lean()
         .exec();

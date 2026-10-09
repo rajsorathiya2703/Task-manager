@@ -552,11 +552,15 @@ export const fetchAccessCatalog = async () => {
 };
 
 export const roleEndpoints = {
-  getAll: '/roles',
-  getOne: (id: any) => `/roles/${toId(id)}`,
-  create: '/roles',
-  update: (id: any) => `/roles/${toId(id)}`,
-  delete: (id: any) => `/roles/${toId(id)}`,
+  get getAll() {
+    return cp('/roles');
+  },
+  getOne: (id: any) => cp(`/roles/${toId(id)}`),
+  get create() {
+    return cp('/roles');
+  },
+  update: (id: any) => cp(`/roles/${toId(id)}`),
+  delete: (id: any) => cp(`/roles/${toId(id)}`),
 };
 
 export const fetchRoles = async () => {

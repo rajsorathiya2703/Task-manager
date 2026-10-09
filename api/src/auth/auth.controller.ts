@@ -144,6 +144,7 @@ export class AuthController {
       memberships,
     };
 
+    let activeCompanyId: string | undefined = undefined;
     if (companySlug && companySlug.trim()) {
       const activeMembership = await this.authService.getCompanyMembership(
         userId,
@@ -151,12 +152,16 @@ export class AuthController {
       );
       if (activeMembership) {
         response.membership = activeMembership;
+        activeCompanyId = activeMembership.companyId;
       }
     }
 
     if (userId) {
       try {
-        const effectiveAccess = await this.accessService.getEffectiveAccess(userId);
+        const effectiveAccess = await this.accessService.getEffectiveAccess(
+          userId,
+          activeCompanyId,
+        );
         response.roles = effectiveAccess.roles;
         response.policyVersion = effectiveAccess.policyVersion;
         response.access = effectiveAccess.access;

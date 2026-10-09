@@ -197,6 +197,7 @@ export class AuthService {
     if (!membership) return null;
 
     return {
+      companyId: company._id.toString(),
       roleIds: (membership.roleIds || []).map((r: any) => r.toString()),
       isCompanyOwner: !!membership.isCompanyOwner,
       employeeId: membership.employeeId ? membership.employeeId.toString() : null,

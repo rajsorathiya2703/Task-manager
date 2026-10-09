@@ -7,18 +7,22 @@ import { CompaniesController } from './companies.controller';
 import { TenantGuard } from '../common/tenant.guard';
 import { TenantInterceptor } from '../common/tenant.interceptor';
 import { EmployeesModule } from '../employees/employees.module';
-import { UsersModule } from '../users/users.module';
 import { DayOffModule } from '../day-off/day-off.module';
+import { UsersModule } from '../users/users.module';
+import { Role, RoleSchema } from '../access/schemas/role.schema';
+import { AccessModule } from '../access/access.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Company.name, schema: CompanySchema },
       { name: Membership.name, schema: MembershipSchema },
+      { name: Role.name, schema: RoleSchema },
     ]),
     forwardRef(() => EmployeesModule),
     forwardRef(() => DayOffModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => AccessModule),
   ],
   controllers: [CompaniesController],
   providers: [CompaniesService, TenantGuard, TenantInterceptor],

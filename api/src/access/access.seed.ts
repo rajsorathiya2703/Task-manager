@@ -6,12 +6,17 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { PolicyCompilerService } from './policy-compiler.service';
 import { MODULE_CATALOG, getSensitiveFields, ModuleDef } from './catalog';
 
+import { Optional } from '@nestjs/common';
+import { Company } from '../companies/schemas/company.schema';
+import { Membership } from '../companies/schemas/membership.schema';
+
 /**
  * AccessSeedService (Phase 0 — P0-07)
  *
  * Seeds the 5 default system roles on first boot according to §11 of
  * ACCESS_CONTROL_IMPLEMENTATION_PLAN.md and migrates all users with
  * `is_system_admin !== false` into the System Admin role's members list.
+ * Also seeds isolated default roles for each registered company.
  */
 @Injectable()
 export class AccessSeedService {
@@ -23,6 +28,12 @@ export class AccessSeedService {
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     private readonly policyCompilerService: PolicyCompilerService,
+    @Optional()
+    @InjectModel(Company.name)
+    private readonly companyModel?: Model<any>,
+    @Optional()
+    @InjectModel(Membership.name)
+    private readonly membershipModel?: Model<any>,
   ) {}
 
   /**
@@ -30,7 +41,9 @@ export class AccessSeedService {
    */
   async seedDefaultRoles(): Promise<void> {
     try {
-      const count = await this.roleModel.countDocuments();
+      const count = await this.roleModel.countDocuments({
+        $or: [{ companyId: { $exists: false } }, { companyId: null }],
+      });
 
       // Find all users with is_system_admin !== false
       const allUsers = await this.userModel.find().select('_id is_system_admin').exec();
@@ -39,11 +52,11 @@ export class AccessSeedService {
         .map((u) => u._id as Types.ObjectId);
 
       if (count === 0) {
-        this.logger.log('Roles collection is empty. Seeding 5 default roles from plan §11...');
+        this.logger.log('Global roles collection is empty. Seeding 5 default roles from plan §11...');
         await this.insertDefaultRoles(adminUserIds);
         await this.policyCompilerService.compileAndPersist();
         this.logger.log(
-          `Seeded 5 default roles successfully with ${adminUserIds.length} System Admin member(s).`,
+          `Seeded 5 default global roles successfully with ${adminUserIds.length} System Admin member(s).`,
         );
       } else {
         // Idempotent migration: ensure existing admins are in System Admin members
@@ -54,8 +67,81 @@ export class AccessSeedService {
           await this.policyCompilerService.compileAndPersist();
         }
       }
+
+      // Sync and seed roles for all companies
+      await this.syncCompanyRoles();
     } catch (err: any) {
       this.logger.error(`Failed to seed default access roles: ${err?.message || err}`, err?.stack);
+    }
+  }
+
+  /**
+   * Ensures every registered company has its own isolated 5 default roles and matching memberships.
+   */
+  private async syncCompanyRoles(): Promise<void> {
+    if (!this.companyModel || !this.membershipModel) return;
+
+    try {
+      const companies = await this.companyModel.find().lean().exec();
+      for (const comp of companies) {
+        const compId = comp._id;
+        const count = await this.roleModel.countDocuments({ companyId: compId });
+        if (count === 0) {
+          this.logger.log(`Seeding 5 default roles for company "${comp.name}" (${comp.slug})...`);
+          const ownerMembership = await this.membershipModel
+            .findOne({
+              companyId: compId,
+              isCompanyOwner: true,
+            })
+            .exec();
+
+          const adminUserIds = ownerMembership ? [ownerMembership.userId] : [];
+          const rolesToInsert = buildDefaultRoles(adminUserIds).map((r) => ({
+            ...r,
+            companyId: compId,
+          }));
+          const inserted = await this.roleModel.insertMany(rolesToInsert);
+          await this.policyCompilerService.compileAndPersist(compId);
+
+          // Link System Admin role to owner's membership.roleIds
+          if (ownerMembership) {
+            const sysAdminRole = inserted.find((r) => r.slug === 'system-admin');
+            if (sysAdminRole) {
+              await this.membershipModel.updateOne(
+                { _id: ownerMembership._id },
+                { $addToSet: { roleIds: sysAdminRole._id } },
+              );
+            }
+          }
+
+          // Link other existing memberships of this company to 'employee' role
+          const employeeRole = inserted.find((r) => r.slug === 'employee');
+          if (employeeRole) {
+            const regularMemberships = await this.membershipModel
+              .find({
+                companyId: compId,
+                isCompanyOwner: { $ne: true },
+                status: 'active',
+              })
+              .exec();
+
+            if (regularMemberships.length > 0) {
+              const memberIds = regularMemberships.map((m) => m._id);
+              const userIds = regularMemberships.map((m) => m.userId);
+              await this.membershipModel.updateMany(
+                { _id: { $in: memberIds } },
+                { $addToSet: { roleIds: employeeRole._id } },
+              );
+              await this.roleModel.updateOne(
+                { _id: employeeRole._id },
+                { $addToSet: { members: { $each: userIds } } },
+              );
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed during syncCompanyRoles: ${err?.message || err}`);
     }
   }
 

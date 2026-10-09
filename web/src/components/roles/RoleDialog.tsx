@@ -146,9 +146,10 @@ export default function RoleDialog({
       setPriority(role.priority ?? 20);
       setIsActive(role.isActive !== false);
 
-      const mIds = (role.members || []).map((m) =>
-        typeof m === "string" ? m : m._id
-      );
+      const validCompanyUserIds = new Set(allUsers.map((u) => u._id));
+      const mIds = (role.members || [])
+        .map((m) => (typeof m === "string" ? m : m._id))
+        .filter((id) => validCompanyUserIds.size === 0 || validCompanyUserIds.has(id));
       setSelectedMemberIds(mIds);
 
       // Build moduleGrants map

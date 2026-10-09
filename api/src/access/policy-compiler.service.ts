@@ -43,31 +43,69 @@ export class PolicyCompilerService {
   }
 
   /**
-   * Fetches the latest compiled policy document from MongoDB (descending version).
+   * Fetches the latest compiled policy document from MongoDB (descending version),
+   * optionally scoped to a specific company.
    */
-  async getLatestPolicyDocument(): Promise<PolicyDocumentDoc | null> {
-    return this.policyDocModel.findOne().sort({ version: -1 }).exec();
+  async getLatestPolicyDocument(
+    companyId?: string | Types.ObjectId,
+  ): Promise<PolicyDocumentDoc | null> {
+    if (companyId) {
+      const compObjectId = Types.ObjectId.isValid(companyId)
+        ? new Types.ObjectId(companyId)
+        : companyId;
+      const companyDoc = await this.policyDocModel
+        .findOne({ companyId: compObjectId })
+        .sort({ version: -1 })
+        .exec();
+      if (companyDoc) return companyDoc;
+    }
+
+    // Fallback to global / unassigned policy document
+    return this.policyDocModel
+      .findOne({
+        $or: [{ companyId: { $exists: false } }, { companyId: null }],
+      })
+      .sort({ version: -1 })
+      .exec();
   }
 
   /**
-   * Reads all active roles from the database, compiles a new snapshot,
-   * increments version, and persists to the policy_documents collection.
+   * Reads all active roles for the specified company (or globally if no companyId),
+   * compiles a new snapshot, increments version, and persists to policy_documents collection.
    */
   async compileAndPersist(
+    companyId?: string | Types.ObjectId,
     catalog: ModuleDef[] = MODULE_CATALOG,
   ): Promise<PolicyDocumentDoc> {
-    const latestDoc = await this.getLatestPolicyDocument();
+    const compObjectId =
+      companyId && Types.ObjectId.isValid(companyId)
+        ? new Types.ObjectId(companyId)
+        : undefined;
+
+    const latestDoc = await this.policyDocModel
+      .findOne(compObjectId ? { companyId: compObjectId } : { $or: [{ companyId: { $exists: false } }, { companyId: null }] })
+      .sort({ version: -1 })
+      .exec();
     const prevVersion = latestDoc?.version ?? 0;
 
-    const activeRoles = await this.roleModel.find({ isActive: true }).lean().exec();
+    const query: any = { isActive: true };
+    if (compObjectId) {
+      query.companyId = compObjectId;
+    } else {
+      query.$or = [{ companyId: { $exists: false } }, { companyId: null }];
+    }
+
+    const activeRoles = await this.roleModel.find(query).lean().exec();
 
     const compiled = compile(activeRoles as unknown as RoleLike[], catalog, prevVersion);
 
-    const created = (await this.policyDocModel.create(
-      compiled as any,
-    )) as PolicyDocumentDoc;
+    const created = (await this.policyDocModel.create({
+      ...(compiled as any),
+      ...(compObjectId ? { companyId: compObjectId } : {}),
+    })) as PolicyDocumentDoc;
+
     this.logger.log(
-      `Compiled policy document v${created.version} with ${compiled.roles.length} roles (hash: ${created.hash.slice(0, 8)}...)`,
+      `Compiled policy document v${created.version} with ${compiled.roles.length} roles for company ${compObjectId ? compObjectId.toString() : 'GLOBAL'} (hash: ${created.hash.slice(0, 8)}...)`,
     );
 
     return created;

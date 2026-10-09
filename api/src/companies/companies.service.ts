@@ -9,6 +9,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { DayOffService } from '../day-off/day-off.service';
+import { EmployeesService } from '../employees/employees.service';
+import { UsersService } from '../users/users.service';
 
 export const defaultRoleNames = [
   'System Admin',
@@ -29,8 +31,9 @@ import {
   hashSecretCode,
   verifySecretCode,
 } from './secret-code.util';
-import { EmployeesService } from '../employees/employees.service';
-import { UsersService } from '../users/users.service';
+import { Role, RoleDocument } from '../access/schemas/role.schema';
+import { PolicyCompilerService } from '../access/policy-compiler.service';
+import { buildDefaultRoles } from '../access/access.seed';
 
 @Injectable()
 export class CompaniesService {
@@ -45,6 +48,12 @@ export class CompaniesService {
     @Optional()
     @Inject(forwardRef(() => DayOffService))
     private readonly dayOffService?: DayOffService,
+    @Optional()
+    @InjectModel(Role.name)
+    private readonly roleModel?: Model<RoleDocument>,
+    @Optional()
+    @Inject(forwardRef(() => PolicyCompilerService))
+    private readonly policyCompilerService?: PolicyCompilerService,
   ) {}
 
   /**
@@ -174,10 +183,23 @@ export class CompaniesService {
           }
         }
 
-        // TODO(PBAC): Once the Role model and PBAC plan are delivered:
-        // 1. Seed the default roles (using defaultRoleNames: ['System Admin','Admin','Manager','Team Leader','Employee']) for this company.
-        // 2. Assign 'System Admin' role to the owner membership.
-        // 3. Assign 'Employee' role to subsequent joiners.
+        const roleIds = await this.seedCompanyRolesAndAssignOwner(
+          company._id,
+          userObjectId,
+          session,
+        );
+        if (roleIds.length > 0) {
+          membership.roleIds = roleIds;
+          if (typeof membership.save === 'function') {
+            await membership.save({ session });
+          } else if (typeof this.membershipModel.findByIdAndUpdate === 'function') {
+            await this.membershipModel.findByIdAndUpdate(
+              membership._id,
+              { $set: { roleIds } },
+              { session },
+            );
+          }
+        }
 
         if (this.dayOffService) {
           const adminEmail = dto.contactEmail || user.email;
@@ -243,10 +265,20 @@ export class CompaniesService {
           }
         }
 
-        // TODO(PBAC): Once the Role model and PBAC plan are delivered:
-        // 1. Seed the default roles (using defaultRoleNames: ['System Admin','Admin','Manager','Team Leader','Employee']) for this company.
-        // 2. Assign 'System Admin' role to the owner membership.
-        // 3. Assign 'Employee' role to subsequent joiners.
+        const roleIds = await this.seedCompanyRolesAndAssignOwner(
+          createdCompanyDoc._id,
+          userObjectId,
+        );
+        if (roleIds.length > 0) {
+          membership.roleIds = roleIds;
+          if (typeof membership.save === 'function') {
+            await membership.save();
+          } else if (typeof this.membershipModel.findByIdAndUpdate === 'function') {
+            await this.membershipModel.findByIdAndUpdate(membership._id, {
+              $set: { roleIds },
+            });
+          }
+        }
 
         if (this.dayOffService) {
           const adminEmail = dto.contactEmail || user.email;
@@ -438,10 +470,26 @@ export class CompaniesService {
       throw new NotFoundException('User not found');
     }
 
+    // Find default Employee role for this company
+    let defaultRoleIds: Types.ObjectId[] = [];
+    if (this.roleModel) {
+      const employeeRole = await this.roleModel.findOne({
+        companyId: company._id,
+        slug: 'employee',
+      });
+      if (employeeRole) {
+        defaultRoleIds = [employeeRole._id as Types.ObjectId];
+        await this.roleModel.updateOne(
+          { _id: employeeRole._id },
+          { $addToSet: { members: userObjectId } },
+        );
+      }
+    }
+
     const membership = await this.membershipModel.create({
       userId: userObjectId,
       companyId: company._id,
-      roleIds: [],
+      roleIds: defaultRoleIds,
       isCompanyOwner: false,
       isSystemAdmin: false,
       status: 'active',
@@ -609,5 +657,36 @@ export class CompaniesService {
       .exec();
 
     return updated!;
+  }
+
+  /**
+   * Seeds the 5 default system roles for a newly registered company and returns
+   * the System Admin role ObjectId to assign to the company owner's membership.
+   */
+  private async seedCompanyRolesAndAssignOwner(
+    companyId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    session?: any,
+  ): Promise<Types.ObjectId[]> {
+    if (!this.roleModel) return [];
+
+    const defaultRoles = buildDefaultRoles([ownerUserId]).map((r) => ({
+      ...r,
+      companyId,
+    }));
+
+    const options = session ? { session } : {};
+    const createdRoles = await this.roleModel.create(defaultRoles, options);
+
+    const sysAdminRole = createdRoles.find((r) => r.slug === 'system-admin');
+    const assignedRoleIds = sysAdminRole ? [sysAdminRole._id as Types.ObjectId] : [];
+
+    if (this.policyCompilerService) {
+      await this.policyCompilerService
+        .compileAndPersist(companyId)
+        .catch(() => {});
+    }
+
+    return assignedRoleIds;
   }
 }

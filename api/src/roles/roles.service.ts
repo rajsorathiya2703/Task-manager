@@ -8,9 +8,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import { Membership } from '../companies/schemas/membership.schema';
 import { PolicyCompilerService } from '../access/policy-compiler.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { buildDefaultRoles } from '../access/access.seed';
 
 @Injectable()
 export class RolesService {
@@ -19,15 +21,74 @@ export class RolesService {
     private readonly roleModel: Model<RoleDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Membership.name)
+    private readonly membershipModel: Model<any>,
     private readonly policyCompilerService: PolicyCompilerService,
   ) {}
 
   /**
-   * Return all roles sorted descending by priority rank.
+   * Seeds the 5 default system roles for a company if none exist yet.
    */
-  async findAll() {
+  async seedDefaultRolesForCompany(
+    companyId: Types.ObjectId | string,
+    adminUserIds: Types.ObjectId[] = [],
+  ): Promise<void> {
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
+    const existingCount = await this.roleModel.countDocuments({
+      companyId: compObjectId,
+    });
+    if (existingCount === 0) {
+      const defaultRoles = buildDefaultRoles(adminUserIds).map((r) => ({
+        ...r,
+        companyId: compObjectId,
+      }));
+      await this.roleModel.insertMany(defaultRoles);
+      await this.policyCompilerService.compileAndPersist(compObjectId);
+    }
+  }
+
+  /**
+   * Return all roles for the current company sorted descending by priority rank.
+   * Automatically bootstraps default company roles if this company has none yet.
+   */
+  async findAll(companyId: Types.ObjectId | string) {
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
+    const count = await this.roleModel.countDocuments({
+      companyId: compObjectId,
+    });
+
+    if (count === 0) {
+      // Find company owner membership if any to bootstrap system-admin member
+      const ownerMembership = await this.membershipModel
+        .findOne({
+          companyId: compObjectId,
+          isCompanyOwner: true,
+        })
+        .exec();
+
+      const adminIds = ownerMembership ? [ownerMembership.userId] : [];
+      await this.seedDefaultRolesForCompany(compObjectId, adminIds as any);
+
+      if (ownerMembership) {
+        const sysAdminRole = await this.roleModel.findOne({
+          companyId: compObjectId,
+          slug: 'system-admin',
+        });
+        if (sysAdminRole) {
+          await this.membershipModel.updateOne(
+            { _id: ownerMembership._id },
+            { $addToSet: { roleIds: sysAdminRole._id } },
+          );
+        }
+      }
+    }
+
     return this.roleModel
-      .find()
+      .find({ companyId: compObjectId })
       .populate('members', '_id name email avatarUrl')
       .sort({ priority: -1, name: 1 })
       .lean()
@@ -35,40 +96,47 @@ export class RolesService {
   }
 
   /**
-   * Return a single role by ID.
+   * Return a single role by ID within the current company.
    */
-  async findById(id: string) {
+  async findById(companyId: Types.ObjectId | string, id: string) {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Invalid role ID: ${id}`);
     }
 
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
     const role = await this.roleModel
-      .findById(id)
+      .findOne({ _id: new Types.ObjectId(id), companyId: compObjectId })
       .populate('members', '_id name email avatarUrl')
       .lean()
       .exec();
 
     if (!role) {
-      throw new NotFoundException(`Role #${id} not found`);
+      throw new NotFoundException(`Role #${id} not found in this company`);
     }
 
     return role;
   }
 
   /**
-   * Create a new custom role and recompile active policy.
+   * Create a new custom role for the current company and recompile company policy.
    */
-  async create(dto: CreateRoleDto) {
+  async create(companyId: Types.ObjectId | string, dto: CreateRoleDto) {
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
     const slug = dto.slug.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '-');
 
-    // Check slug and name uniqueness
+    // Check slug and name uniqueness within this company
     const existing = await this.roleModel.findOne({
+      companyId: compObjectId,
       $or: [{ slug }, { name: dto.name.trim() }],
     });
 
     if (existing) {
       throw new ConflictException(
-        `A role with name "${dto.name}" or slug "${slug}" already exists.`,
+        `A role with name "${dto.name}" or slug "${slug}" already exists in this company.`,
       );
     }
 
@@ -110,12 +178,26 @@ export class RolesService {
       };
     });
 
-    // Map member IDs
-    const memberObjectIds = (dto.members || [])
+    // Validate that candidate members belong to this company
+    const inputMemberObjectIds = (dto.members || [])
       .filter((m) => Types.ObjectId.isValid(m))
       .map((m) => new Types.ObjectId(m));
 
+    const validMemberships = await this.membershipModel
+      .find({
+        companyId: compObjectId,
+        userId: { $in: inputMemberObjectIds },
+        status: 'active',
+      })
+      .select('userId')
+      .exec();
+
+    const validMemberObjectIds = validMemberships.map(
+      (m: any) => m.userId as Types.ObjectId,
+    );
+
     const newRole = new this.roleModel({
+      companyId: compObjectId,
       name: dto.name.trim(),
       slug,
       description: dto.description || '',
@@ -123,40 +205,64 @@ export class RolesService {
       priority: dto.priority ?? 20,
       isSystem: false,
       isActive: dto.isActive !== false,
-      members: memberObjectIds,
+      members: validMemberObjectIds,
       moduleGrants: normalizedModuleGrants,
       fieldGrants: normalizedFieldGrants,
     });
 
     const saved = await newRole.save();
 
-    // Recompile policy document
-    await this.policyCompilerService.compileAndPersist();
+    // Sync Membership.roleIds for the assigned members
+    if (validMemberObjectIds.length > 0) {
+      await this.membershipModel.updateMany(
+        {
+          companyId: compObjectId,
+          userId: { $in: validMemberObjectIds },
+        },
+        { $addToSet: { roleIds: saved._id } },
+      );
+    }
 
-    return this.findById(saved._id.toString());
+    // Recompile policy document for this company
+    await this.policyCompilerService.compileAndPersist(compObjectId);
+
+    return this.findById(companyId, saved._id.toString());
   }
 
   /**
-   * Update an existing role and recompile active policy.
+   * Update an existing role in the company and recompile active company policy.
    */
-  async update(id: string, dto: UpdateRoleDto) {
+  async update(
+    companyId: Types.ObjectId | string,
+    id: string,
+    dto: UpdateRoleDto,
+  ) {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Invalid role ID: ${id}`);
     }
 
-    const role = await this.roleModel.findById(id);
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
+    const role = await this.roleModel.findOne({
+      _id: new Types.ObjectId(id),
+      companyId: compObjectId,
+    });
     if (!role) {
-      throw new NotFoundException(`Role #${id} not found`);
+      throw new NotFoundException(`Role #${id} not found in this company`);
     }
 
-    // Name uniqueness check if name is changed
+    // Name uniqueness check if name is changed in this company
     if (dto.name && dto.name.trim() !== role.name) {
       const conflict = await this.roleModel.findOne({
+        companyId: compObjectId,
         name: dto.name.trim(),
         _id: { $ne: role._id },
       });
       if (conflict) {
-        throw new ConflictException(`Role with name "${dto.name}" already exists.`);
+        throw new ConflictException(
+          `Role with name "${dto.name}" already exists in this company.`,
+        );
       }
       role.name = dto.name.trim();
     }
@@ -166,11 +272,14 @@ export class RolesService {
       const slug = dto.slug.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '-');
       if (slug !== role.slug) {
         const conflict = await this.roleModel.findOne({
+          companyId: compObjectId,
           slug,
           _id: { $ne: role._id },
         });
         if (conflict) {
-          throw new ConflictException(`Role with slug "${slug}" already exists.`);
+          throw new ConflictException(
+            `Role with slug "${slug}" already exists in this company.`,
+          );
         }
         role.slug = slug;
       }
@@ -192,10 +301,59 @@ export class RolesService {
       role.isActive = dto.isActive;
     }
 
+    // Member synchronization scoped to this company
     if (dto.members !== undefined) {
-      role.members = dto.members
+      const candidateUserIds = dto.members
         .filter((m) => Types.ObjectId.isValid(m))
-        .map((m) => new Types.ObjectId(m)) as any;
+        .map((m) => new Types.ObjectId(m));
+
+      const validMemberships = await this.membershipModel
+        .find({
+          companyId: compObjectId,
+          userId: { $in: candidateUserIds },
+          status: 'active',
+        })
+        .select('userId')
+        .exec();
+
+      const newValidUserIds = validMemberships.map((m: any) =>
+        m.userId.toString(),
+      );
+
+      const previousUserIds = (role.members || []).map((m: any) =>
+        m.toString(),
+      );
+
+      const addedUserIds = newValidUserIds.filter(
+        (uid) => !previousUserIds.includes(uid),
+      );
+      const removedUserIds = previousUserIds.filter(
+        (uid) => !newValidUserIds.includes(uid),
+      );
+
+      role.members = newValidUserIds.map(
+        (uid) => new Types.ObjectId(uid),
+      ) as any;
+
+      if (addedUserIds.length > 0) {
+        await this.membershipModel.updateMany(
+          {
+            companyId: compObjectId,
+            userId: { $in: addedUserIds.map((uid) => new Types.ObjectId(uid)) },
+          },
+          { $addToSet: { roleIds: role._id } },
+        );
+      }
+
+      if (removedUserIds.length > 0) {
+        await this.membershipModel.updateMany(
+          {
+            companyId: compObjectId,
+            userId: { $in: removedUserIds.map((uid) => new Types.ObjectId(uid)) },
+          },
+          { $pull: { roleIds: role._id } },
+        );
+      }
     }
 
     if (dto.moduleGrants !== undefined) {
@@ -239,24 +397,30 @@ export class RolesService {
 
     await role.save();
 
-    // Recompile policy document
-    await this.policyCompilerService.compileAndPersist();
+    // Recompile policy document for this company
+    await this.policyCompilerService.compileAndPersist(compObjectId);
 
-    return this.findById(id);
+    return this.findById(companyId, id);
   }
 
   /**
-   * Delete a custom role and recompile active policy.
+   * Delete a custom role and recompile active company policy.
    * System roles cannot be deleted.
    */
-  async remove(id: string) {
+  async remove(companyId: Types.ObjectId | string, id: string) {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Invalid role ID: ${id}`);
     }
 
-    const role = await this.roleModel.findById(id);
+    const compObjectId =
+      typeof companyId === 'string' ? new Types.ObjectId(companyId) : companyId;
+
+    const role = await this.roleModel.findOne({
+      _id: new Types.ObjectId(id),
+      companyId: compObjectId,
+    });
     if (!role) {
-      throw new NotFoundException(`Role #${id} not found`);
+      throw new NotFoundException(`Role #${id} not found in this company`);
     }
 
     if (role.isSystem) {
@@ -265,8 +429,14 @@ export class RolesService {
 
     await this.roleModel.findByIdAndDelete(id);
 
-    // Recompile policy document
-    await this.policyCompilerService.compileAndPersist();
+    // Pull role from all memberships in this company
+    await this.membershipModel.updateMany(
+      { companyId: compObjectId },
+      { $pull: { roleIds: new Types.ObjectId(id) } },
+    );
+
+    // Recompile policy document for this company
+    await this.policyCompilerService.compileAndPersist(compObjectId);
 
     return { message: `Role "${role.name}" deleted successfully.` };
   }

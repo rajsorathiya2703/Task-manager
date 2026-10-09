@@ -1,12 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Role, RoleDocument } from './schemas/role.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { PolicyCompilerService } from './policy-compiler.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { MODULE_CATALOG, ModuleDef } from './catalog';
 import { Subject, ScopeType } from './policy.engine';
+import { Membership } from '../companies/schemas/membership.schema';
 
 /**
  * Role summary returned in the effective access payload.
@@ -51,7 +52,7 @@ export interface EffectiveAccessResult {
 }
 
 /**
- * AccessService (Phase 1 — P1-03)
+ * AccessService (Phase 1 — P1-02 & P1-03)
  *
  * Computes a user's merged effective permissions across all catalog modules
  * and fields based on the latest compiled policy document snapshot.
@@ -65,17 +66,64 @@ export class AccessService {
     private readonly userModel: Model<UserDocument>,
     private readonly policyCompilerService: PolicyCompilerService,
     private readonly policyEngineService: PolicyEngineService,
+    @Optional()
+    @InjectModel(Membership.name)
+    private readonly membershipModel?: Model<any>,
   ) {}
 
   /**
-   * Calculates the full effective access shape (§10.1) for a given user ID.
+   * Calculates the full effective access shape (§10.1) for a given user ID,
+   * scoped to an optional companyId.
    */
-  async getEffectiveAccess(userId: string): Promise<EffectiveAccessResult> {
-    const [user, userRoles, policyDoc] = await Promise.all([
+  async getEffectiveAccess(
+    userId: string,
+    companyId?: string | Types.ObjectId,
+  ): Promise<EffectiveAccessResult> {
+    const compObjectId =
+      companyId && Types.ObjectId.isValid(companyId)
+        ? new Types.ObjectId(companyId)
+        : undefined;
+
+    const roleQuery: any = { members: userId, isActive: true };
+    if (compObjectId) {
+      roleQuery.companyId = compObjectId;
+    }
+
+    const membershipPromise =
+      compObjectId && this.membershipModel
+        ? this.membershipModel
+            .findOne({
+              userId: new Types.ObjectId(userId),
+              companyId: compObjectId,
+              status: 'active',
+            })
+            .lean()
+            .exec()
+        : Promise.resolve(null);
+
+    const [user, initialUserRoles, policyDoc, membership] = await Promise.all([
       this.userModel.findById(userId).lean().exec(),
-      this.roleModel.find({ members: userId, isActive: true }).lean().exec(),
-      this.policyCompilerService.getLatestPolicyDocument(),
+      this.roleModel.find(roleQuery).lean().exec(),
+      this.policyCompilerService.getLatestPolicyDocument(compObjectId),
+      membershipPromise,
     ]);
+
+    let userRoles = initialUserRoles;
+    // If no roles found directly via role.members, check membership.roleIds
+    if (
+      userRoles.length === 0 &&
+      membership &&
+      membership.roleIds &&
+      membership.roleIds.length > 0
+    ) {
+      const roleObjIds = membership.roleIds
+        .filter((r: any) => Types.ObjectId.isValid(r))
+        .map((r: any) => new Types.ObjectId(r));
+      userRoles = await this.roleModel
+        .find({ _id: { $in: roleObjIds }, isActive: true })
+        .lean()
+        .exec();
+    }
 
     const plainPolicy = policyDoc
       ? typeof (policyDoc as any).toObject === 'function'
@@ -84,7 +132,10 @@ export class AccessService {
       : undefined;
 
     const policyVersion = plainPolicy?.version ?? 0;
-    const isSystemAdmin = user?.is_system_admin === true;
+    const isSystemAdmin =
+      user?.is_system_admin === true ||
+      membership?.isCompanyOwner === true ||
+      membership?.isSystemAdmin === true;
 
     // Build subject for PDP evaluation
     const subject: Subject = {

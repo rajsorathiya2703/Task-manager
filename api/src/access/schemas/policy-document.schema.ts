@@ -24,6 +24,10 @@ export type PolicyDocumentDoc = PolicyDocument & Document;
  */
 @Schema({ timestamps: false, collection: 'policy_documents' })
 export class PolicyDocument {
+  /** The tenant / company this compiled policy belongs to. Nullable for legacy/global fallback. */
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Company', index: true })
+  companyId?: Types.ObjectId;
+
   /**
    * Monotonically increasing integer. Bumped on every role change.
    * Clients compare their cached version to detect staleness.
@@ -73,5 +77,6 @@ export class PolicyDocument {
 export const PolicyDocumentSchema =
   SchemaFactory.createForClass(PolicyDocument);
 
-// Always query the latest compiled policy by descending version.
+// Always query the latest compiled policy by descending version, per company or globally.
+PolicyDocumentSchema.index({ companyId: 1, version: -1 });
 PolicyDocumentSchema.index({ version: -1 });

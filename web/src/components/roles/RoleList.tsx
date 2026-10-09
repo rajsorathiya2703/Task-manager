@@ -129,7 +129,13 @@ export default function RoleList({
         /* Roles Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRoles.map((role) => {
-            const memberCount = Array.isArray(role.members) ? role.members.length : 0;
+            const validUserIds = new Set(allUsers.map((u) => u._id));
+            const memberCount = Array.isArray(role.members)
+              ? role.members.filter((m) => {
+                  const id = typeof m === "string" ? m : (m as any)?._id;
+                  return validUserIds.size === 0 || validUserIds.has(id);
+                }).length
+              : 0;
             const grantedModules = (role.moduleGrants || []).filter((g) => g.read);
 
             return (

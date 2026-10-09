@@ -14,10 +14,13 @@ import { AccessService } from './access.service';
 import { FieldAccessInterceptor } from './field-access.interceptor';
 import { AccessController } from './access.controller';
 
+import { Membership, MembershipSchema } from '../companies/schemas/membership.schema';
+import { Company, CompanySchema } from '../companies/schemas/company.schema';
+
 /**
  * AccessModule (Phase 0 — P0-06 & P0-07, Phase 1 — P1-02 & P1-03, Phase 2 — P2-01, Phase 3 — P3-10)
  *
- * Registers the Role, PolicyDocument, and User schemas with Mongoose,
+ * Registers the Role, PolicyDocument, User, Membership, and Company schemas with Mongoose,
  * provides PolicyCompilerService, PolicyEngineService, AccessSeedService,
  * AccessGuard, AccessService, and FieldAccessInterceptor.
  * Exposes AccessController with the /access/preview/:userId endpoint.
@@ -29,6 +32,8 @@ import { AccessController } from './access.controller';
       { name: Role.name, schema: RoleSchema },
       { name: PolicyDocument.name, schema: PolicyDocumentSchema },
       { name: User.name, schema: UserSchema },
+      { name: Membership.name, schema: MembershipSchema },
+      { name: Company.name, schema: CompanySchema },
     ]),
   ],
   controllers: [AccessController],

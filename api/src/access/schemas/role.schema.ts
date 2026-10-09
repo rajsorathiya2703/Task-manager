@@ -96,15 +96,19 @@ export type RoleDocument = Role & Document;
  */
 @Schema({ timestamps: true, collection: 'roles' })
 export class Role {
-  /** Human-readable display name, e.g. "Manager". Must be unique. */
-  @Prop({ required: true, unique: true, type: String })
+  /** The tenant / company this role belongs to. */
+  @Prop({ type: Types.ObjectId, ref: 'Company', index: true })
+  companyId?: Types.ObjectId;
+
+  /** Human-readable display name, e.g. "Manager". Unique per company. */
+  @Prop({ required: true, type: String })
   name: string;
 
   /**
    * URL-safe machine identifier derived from the name, e.g. "manager".
-   * Used as a stable key in the compiled policy document.
+   * Used as a stable key in the compiled policy document. Unique per company.
    */
-  @Prop({ required: true, unique: true, type: String })
+  @Prop({ required: true, type: String })
   slug: string;
 
   @Prop({ type: String })
@@ -136,9 +140,8 @@ export class Role {
   isActive: boolean;
 
   /**
-   * User ObjectIds that hold this role.
-   * Source of truth for role membership.
-   * Keep `User.roleIds` in sync on every assign / unassign operation.
+   * User ObjectIds that hold this role within this company.
+   * Kept in sync with Membership.roleIds for the company.
    */
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
   members: Types.ObjectId[];
@@ -157,5 +160,10 @@ export class Role {
 
 export const RoleSchema = SchemaFactory.createForClass(Role);
 
-// Compound index: fast look-up of all roles a specific user belongs to.
+// Compound index: unique slug and name per company
+RoleSchema.index({ companyId: 1, slug: 1 }, { unique: true });
+RoleSchema.index({ companyId: 1, name: 1 }, { unique: true });
+
+// Compound index: fast look-up of all roles a specific user belongs to within a company
+RoleSchema.index({ companyId: 1, members: 1 });
 RoleSchema.index({ members: 1 });
