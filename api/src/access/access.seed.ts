@@ -41,6 +41,22 @@ export class AccessSeedService {
    */
   async seedDefaultRoles(): Promise<void> {
     try {
+      // Clean up legacy single-field unique indexes on name or slug if they exist
+      try {
+        const indexes = await this.roleModel.collection.indexes();
+        for (const idxName of ['name_1', 'slug_1']) {
+          const found = indexes.find((i: any) => i.name === idxName && i.unique);
+          if (found) {
+            this.logger.log(`Dropping legacy unique index "${idxName}" from roles collection to support company-scoped roles...`);
+            await this.roleModel.collection.dropIndex(idxName).catch((err: any) => {
+              this.logger.warn(`Could not drop legacy index ${idxName}: ${err.message}`);
+            });
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Index verification check failed: ${err.message}`);
+      }
+
       const count = await this.roleModel.countDocuments({
         $or: [{ companyId: { $exists: false } }, { companyId: null }],
       });

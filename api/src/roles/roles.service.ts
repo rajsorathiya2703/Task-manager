@@ -44,8 +44,18 @@ export class RolesService {
         ...r,
         companyId: compObjectId,
       }));
-      await this.roleModel.insertMany(defaultRoles);
-      await this.policyCompilerService.compileAndPersist(compObjectId);
+      try {
+        await this.roleModel.insertMany(defaultRoles, { ordered: false });
+      } catch (err: any) {
+        if (err?.code !== 11000 && !err?.message?.includes('E11000')) {
+          throw err;
+        }
+      }
+      try {
+        await this.policyCompilerService.compileAndPersist(compObjectId);
+      } catch {
+        // Fallback: compilation will be retried on next role update or request
+      }
     }
   }
 
