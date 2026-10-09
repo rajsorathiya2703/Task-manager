@@ -171,6 +171,7 @@ export class AuthService {
     userId: string,
     companySlug: string,
   ): Promise<{
+    companyId: string;
     roleIds: string[];
     isCompanyOwner: boolean;
     employeeId: string | null;
