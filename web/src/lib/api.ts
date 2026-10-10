@@ -12,7 +12,9 @@ export const setCompanySlug = (slug: string) => {
   const changed = currentCompanySlug !== next;
   currentCompanySlug = next;
   if (changed && typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('companySlugChanged', { detail: next }));
+    queueMicrotask(() => {
+      window.dispatchEvent(new CustomEvent('companySlugChanged', { detail: next }));
+    });
   }
 };
 

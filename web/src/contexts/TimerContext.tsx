@@ -60,15 +60,15 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const handleSlugChange = (e: any) => {
       const nextSlug = e?.detail || getCompanySlug();
-      setCurrentSlug(nextSlug);
+      setCurrentSlug((prev) => (prev !== nextSlug ? nextSlug : prev));
     };
 
     window.addEventListener('companySlugChanged', handleSlugChange);
 
     // Initial check
     const slug = getCompanySlug();
-    if (slug && slug !== currentSlug) {
-      setCurrentSlug(slug);
+    if (slug) {
+      setCurrentSlug((prev) => (prev !== slug ? slug : prev));
     }
 
     return () => window.removeEventListener('companySlugChanged', handleSlugChange);
@@ -77,8 +77,8 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
   // Update slug state on pathname navigation (e.g., if setCompanySlug ran during layout render)
   useEffect(() => {
     const slug = getCompanySlug();
-    if (slug !== currentSlug) {
-      setCurrentSlug(slug);
+    if (slug) {
+      setCurrentSlug((prev) => (prev !== slug ? slug : prev));
     }
   }, [pathname]);
 
