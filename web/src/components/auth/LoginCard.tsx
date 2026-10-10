@@ -62,7 +62,7 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
             router.push(`/${slug}/join`);
           }
         } else {
-          router.push("/");
+          window.location.href = "/my-account";
         }
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to login with Google");

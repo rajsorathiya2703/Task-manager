@@ -4,20 +4,26 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { usePathname } from 'next/navigation';
 import { getActiveTimer, getCompanySlug } from '../lib/api';
 
+const PUBLIC_ROUTES = [
+  '/',
+  '/login',
+  '/register',
+  '/about',
+  '/services',
+  '/pricing',
+  '/contact',
+  '/help',
+  '/register-company',
+  '/select-company',
+];
+
 /**
  * Public routes that don't require authentication or tenant timer tracking.
- * Treats '/{slug}/login', '/{slug}/join', '/register-company', '/select-company',
- * '/', '/login', '/register' as public.
+ * Treats marketing routes, auth routes, and '/{slug}/login', '/{slug}/join' as public.
  */
 const checkIsPublicRoute = (pathname: string | null): boolean => {
   if (!pathname) return true;
-  if (
-    pathname === '/' ||
-    pathname === '/login' ||
-    pathname === '/register' ||
-    pathname === '/register-company' ||
-    pathname === '/select-company'
-  ) {
+  if (PUBLIC_ROUTES.includes(pathname)) {
     return true;
   }
 

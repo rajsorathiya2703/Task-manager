@@ -19,7 +19,7 @@ describe('ProjectsController (P1-08 & MC-20)', () => {
     projectsService = {
       create: jest.fn(),
       findAll: jest.fn(),
-      findOne: jest.fn(),
+      findOne: jest.fn().mockResolvedValue({ _id: mockProjectId } as any),
       update: jest.fn(),
       remove: jest.fn(),
     } as any;

@@ -143,6 +143,7 @@ describe('AuthService (MC-33 — Multi-company Auth Service)', () => {
       const res = await service.getCompanyMembership(mockUserId.toString(), 'acme');
 
       expect(res).toEqual({
+        companyId: mockCompanyId.toString(),
         roleIds: [roleId1.toString()],
         isCompanyOwner: false,
         employeeId: employeeId.toString(),

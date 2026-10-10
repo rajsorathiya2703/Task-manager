@@ -1,77 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getModelToken, getConnectionToken } from '@nestjs/mongoose';
-import {
-  ConflictException,
-  BadRequestException,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
-import { CompaniesService, defaultRoleNames } from './companies.service';
+import { CompaniesService } from './companies.service';
 import { Company } from './schemas/company.schema';
-import { Membership } from './schemas/membership.schema';
-import { hashSecretCode } from './secret-code.util';
-import { EmployeesService } from '../employees/employees.service';
-import { UsersService } from '../users/users.service';
-import { DayOffService } from '../day-off/day-off.service';
+import { CompanyMember } from './schemas/company-member.schema';
+import { CreateCompanyDto } from './dto/create-company.dto';
 
 describe('CompaniesService', () => {
   let service: CompaniesService;
   let companyModel: any;
-  let membershipModel: any;
-  let connection: any;
-  let employeesService: any;
-  let usersService: any;
-  let dayOffService: any;
+  let companyMemberModel: any;
 
   const mockUserId = new Types.ObjectId().toString();
+  const mockCompanyId = new Types.ObjectId();
 
   beforeEach(async () => {
     companyModel = {
-      findOne: jest.fn(),
       create: jest.fn(),
       findByIdAndDelete: jest.fn(),
-      findByIdAndUpdate: jest.fn(),
-    };
-
-    membershipModel = {
       find: jest.fn(),
       findOne: jest.fn(),
+    };
+
+    companyMemberModel = {
       create: jest.fn(),
-      findByIdAndUpdate: jest.fn(),
-      deleteMany: jest.fn().mockReturnValue({ exec: jest.fn() }),
-    };
-
-    connection = {
-      startSession: jest.fn().mockResolvedValue(null),
-    };
-
-    employeesService = {
-      createFromUser: jest.fn().mockImplementation((companyId, user, role = 'Employee', status = 'Active') =>
-        Promise.resolve({
-          _id: new Types.ObjectId(),
-          companyId,
-          userId: user?._id || new Types.ObjectId(mockUserId),
-          role,
-          status,
-        }),
-      ),
-      linkUserByEmail: jest.fn().mockResolvedValue(null),
-    };
-
-    usersService = {
-      findById: jest.fn().mockImplementation((id: string) =>
-        Promise.resolve({
-          _id: new Types.ObjectId(id),
-          email: 'user@example.com',
-          name: 'Test User',
-        }),
-      ),
-      findByEmail: jest.fn(),
-    };
-
-    dayOffService = {
-      seedCompanyDefaults: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -82,24 +35,8 @@ describe('CompaniesService', () => {
           useValue: companyModel,
         },
         {
-          provide: getModelToken(Membership.name),
-          useValue: membershipModel,
-        },
-        {
-          provide: getConnectionToken(),
-          useValue: connection,
-        },
-        {
-          provide: EmployeesService,
-          useValue: employeesService,
-        },
-        {
-          provide: UsersService,
-          useValue: usersService,
-        },
-        {
-          provide: DayOffService,
-          useValue: dayOffService,
+          provide: getModelToken(CompanyMember.name),
+          useValue: companyMemberModel,
         },
       ],
     }).compile();
@@ -107,760 +44,193 @@ describe('CompaniesService', () => {
     service = module.get<CompaniesService>(CompaniesService);
   });
 
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   describe('create', () => {
-    const validDto = {
+    const validDto: CreateCompanyDto = {
       name: 'Acme Corp',
-      slug: 'acme-corp',
-      industry: 'Software',
-      sizeRange: '11-50',
-      country: 'USA',
+      industry: 'Technology',
+      employeeCount: '11-50',
+      website: 'https://acme.com',
+      phone: '+1 555-0100',
+      country: 'United States',
     };
 
-    it('should reject an invalid slug format with BadRequestException', async () => {
-      await expect(
-        service.create(mockUserId, { ...validDto, slug: 'invalid_slug!' }),
-      ).rejects.toThrow(BadRequestException);
-    });
+    it('sets plan "trial", trialEndsAt about 14 days ahead, and creates an owner membership', async () => {
+      const createdCompany: any = {
+        _id: mockCompanyId,
+        ...validDto,
+        slug: 'acme-corp',
+        plan: 'trial',
+        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      };
 
-    it('should reject a reserved slug with ConflictException', async () => {
-      await expect(
-        service.create(mockUserId, { ...validDto, slug: 'dashboard' }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('should throw ConflictException if slug is already taken', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
-      });
-
-      await expect(service.create(mockUserId, validDto)).rejects.toThrow(ConflictException);
-    });
-
-    it('should successfully create company and membership, returning plain secretCode and NOT secretCodeHash', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      const mockCompanyId = new Types.ObjectId();
-      companyModel.create.mockImplementation((data: any) =>
-        Promise.resolve({
-          _id: mockCompanyId,
-          ...data,
-          toObject: () => ({ _id: mockCompanyId, ...data }),
-        }),
-      );
-
-      const mockEmployeeId = new Types.ObjectId();
-      employeesService.createFromUser.mockResolvedValue({
-        _id: mockEmployeeId,
+      companyModel.create.mockResolvedValue(createdCompany);
+      companyMemberModel.create.mockResolvedValue({
+        _id: new Types.ObjectId(),
         companyId: mockCompanyId,
-        role: 'Owner',
-        status: 'Active',
-      });
-
-      let savedMembership: any = null;
-      membershipModel.create.mockImplementation((data: any) => {
-        savedMembership = {
-          _id: new Types.ObjectId(),
-          ...data,
-          save: jest.fn().mockResolvedValue(true),
-        };
-        return Promise.resolve(savedMembership);
+        userId: new Types.ObjectId(mockUserId),
+        role: 'owner',
       });
 
       const result = await service.create(mockUserId, validDto);
 
-      expect(result).toBeDefined();
-      expect(result.company).toBeDefined();
-      expect(result.company.name).toBe('Acme Corp');
-      expect(result.company.slug).toBe('acme-corp');
-      // Must NOT contain secretCodeHash
-      expect((result.company as any).secretCodeHash).toBeUndefined();
+      expect(companyModel.create).toHaveBeenCalledTimes(1);
+      const createArgs = companyModel.create.mock.calls[0][0];
+      expect(createArgs.plan).toBe('trial');
+      expect(createArgs.name).toBe(validDto.name);
+      expect(createArgs.slug).toBe('acme-corp');
 
-      // Must return plain secretCode matching XXXX-XXXX-XXXX
-      expect(result.secretCode).toMatch(
-        /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/,
-      );
+      // Verify trial ends approximately 14 days from now
+      const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+      const expectedEnd = Date.now() + fourteenDaysMs;
+      expect(Math.abs(createArgs.trialEndsAt.getTime() - expectedEnd)).toBeLessThan(5000);
 
-      // Verify membership creation
-      expect(membershipModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: true,
-          isSystemAdmin: true,
-          roleIds: [],
-          status: 'active',
-        }),
-      );
-
-      // Verify owner employee was created with role 'Owner' and status 'Active'
-      expect(employeesService.createFromUser).toHaveBeenCalledWith(
-        mockCompanyId,
-        expect.objectContaining({ _id: new Types.ObjectId(mockUserId) }),
-        'Owner',
-        'Active',
-      );
-
-      // Verify membership.employeeId was set
-      expect(savedMembership.employeeId).toEqual(mockEmployeeId);
-
-      // Verify DayOffService.seedCompanyDefaults was called with owner email
-      expect(dayOffService.seedCompanyDefaults).toHaveBeenCalledWith(
-        mockCompanyId,
-        'user@example.com',
-      );
-    });
-
-    it('should pass contactEmail to DayOffService.seedCompanyDefaults if provided', async () => {
-      const mockCompanyId = new Types.ObjectId();
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      companyModel.create.mockResolvedValue({
-        _id: mockCompanyId,
-        name: 'Acme Corp',
-        slug: 'acme-corp',
-        contactEmail: 'contact@acme.com',
-        toObject: () => ({ _id: mockCompanyId, name: 'Acme Corp', slug: 'acme-corp' }),
-      });
-
-      membershipModel.create.mockResolvedValue({
-        _id: new Types.ObjectId(),
-        save: jest.fn().mockResolvedValue(true),
-      });
-
-      await service.create(mockUserId, {
-        ...validDto,
-        contactEmail: 'contact@acme.com',
-      });
-
-      expect(dayOffService.seedCompanyDefaults).toHaveBeenCalledWith(
-        mockCompanyId,
-        'contact@acme.com',
-      );
-    });
-
-    it('should define defaultRoleNames constant with 5 placeholder roles', () => {
-      expect(defaultRoleNames).toEqual([
-        'System Admin',
-        'Admin',
-        'Manager',
-        'Team Leader',
-        'Employee',
-      ]);
-    });
-  });
-
-  describe('isSlugAvailable', () => {
-    it('should return false for reserved or invalid slugs', async () => {
-      expect(await service.isSlugAvailable('dashboard')).toBe(false);
-      expect(await service.isSlugAvailable('a')).toBe(false);
-    });
-
-    it('should return false if slug already exists in db', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
-      });
-
-      expect(await service.isSlugAvailable('acme-corp')).toBe(false);
-    });
-
-    it('should return true if slug is valid, unreserved, and unused', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      expect(await service.isSlugAvailable('brand-new-co')).toBe(true);
-    });
-  });
-
-  describe('getPublicInfo', () => {
-    it('should throw NotFoundException if company does not exist', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(service.getPublicInfo('unknown')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should return public name, slug, and logoUrl', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          name: 'Acme Corp',
-          slug: 'acme-corp',
-          logoUrl: 'https://example.com/logo.png',
-        }),
-      });
-
-      const res = await service.getPublicInfo('acme-corp');
-      expect(res).toEqual({
-        name: 'Acme Corp',
-        slug: 'acme-corp',
-        logoUrl: 'https://example.com/logo.png',
-      });
-    });
-  });
-
-  describe('listMine', () => {
-    it('should return active companies user belongs to', async () => {
-      membershipModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue([
-          {
-            companyId: {
-              name: 'Acme Corp',
-              slug: 'acme-corp',
-              logoUrl: 'https://example.com/logo.png',
-              status: 'active',
-            },
-            isCompanyOwner: true,
-          },
-          {
-            companyId: {
-              name: 'Globex',
-              slug: 'globex',
-              status: 'suspended',
-            },
-            isCompanyOwner: false,
-          },
-        ]),
-      });
-
-      const res = await service.listMine(mockUserId);
-      expect(res).toEqual([
-        {
-          name: 'Acme Corp',
-          slug: 'acme-corp',
-          logoUrl: 'https://example.com/logo.png',
-          isCompanyOwner: true,
-        },
-      ]);
-    });
-  });
-
-  describe('join', () => {
-    const validSecretCode = 'ACME-7K3Q-9XPD';
-    let hashedCode: string;
-    const mockCompanyId = new Types.ObjectId();
-
-    beforeAll(async () => {
-      hashedCode = await hashSecretCode(validSecretCode);
-    });
-
-    it('should throw NotFoundException if company does not exist or is suspended', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(
-        service.join(mockUserId, 'unknown', validSecretCode),
-      ).rejects.toThrow(NotFoundException);
-
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ status: 'suspended' }),
-      });
-
-      await expect(
-        service.join(mockUserId, 'suspended-co', validSecretCode),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should be idempotent and return company info without checking code if active membership exists', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          _id: new Types.ObjectId(),
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          status: 'active',
-        }),
-      });
-
-      const res = await service.join(mockUserId, 'acme-corp', 'ANY-DUMMY-CODE');
-      expect(res).toEqual({ slug: 'acme-corp', name: 'Acme Corp' });
-      expect(membershipModel.create).not.toHaveBeenCalled();
-    });
-
-    it('should throw ForbiddenException if user membership is suspended', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          _id: new Types.ObjectId(),
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          status: 'suspended',
-        }),
-      });
-
-      await expect(
-        service.join(mockUserId, 'acme-corp', validSecretCode),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if secret code is incorrect', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(
-        service.join(mockUserId, 'acme-corp', 'WRONG-CODE-1234'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should create membership and return slug and name for correct secret code', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      let savedMembership: any = null;
-      membershipModel.create.mockImplementation((data: any) => {
-        savedMembership = {
-          _id: new Types.ObjectId(),
-          ...data,
-          save: jest.fn().mockResolvedValue(true),
-        };
-        return Promise.resolve(savedMembership);
-      });
-
-      const res = await service.join(mockUserId, 'acme-corp', validSecretCode);
-      expect(res).toEqual({ slug: 'acme-corp', name: 'Acme Corp' });
-
-      expect(membershipModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: false,
-          isSystemAdmin: false,
-          roleIds: [],
-          status: 'active',
-        }),
-      );
-    });
-
-    it('should link an existing pre-created employee with same email in the same company and set membership.employeeId', async () => {
-      const mockEmpId = new Types.ObjectId();
-      const existingEmployee = {
-        _id: mockEmpId,
+      // Verify owner membership creation
+      expect(companyMemberModel.create).toHaveBeenCalledWith({
         companyId: mockCompanyId,
-        email: 'joining@example.com',
-        userId: null,
-      };
-
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      usersService.findById.mockResolvedValue({
-        _id: new Types.ObjectId(mockUserId),
-        email: 'joining@example.com',
-        name: 'Joining User',
-      });
-
-      employeesService.linkUserByEmail.mockResolvedValue({
-        ...existingEmployee,
         userId: new Types.ObjectId(mockUserId),
+        role: 'owner',
       });
 
-      let savedMembership: any = null;
-      membershipModel.create.mockImplementation((data: any) => {
-        savedMembership = {
-          _id: new Types.ObjectId(),
-          ...data,
-          save: jest.fn().mockResolvedValue(true),
-        };
-        return Promise.resolve(savedMembership);
-      });
-
-      const res = await service.join(mockUserId, 'acme-corp', validSecretCode);
-      expect(res).toEqual({ slug: 'acme-corp', name: 'Acme Corp' });
-
-      expect(employeesService.linkUserByEmail).toHaveBeenCalledWith(
-        mockCompanyId,
-        'joining@example.com',
-        new Types.ObjectId(mockUserId),
-      );
-
-      // createFromUser should NOT be called since an unlinked employee was linked
-      expect(employeesService.createFromUser).not.toHaveBeenCalled();
-
-      // membership.employeeId must be set to the linked employee's _id
-      expect(savedMembership.employeeId).toEqual(mockEmpId);
+      expect(result).toEqual(createdCompany);
     });
 
-    it('should not touch an employee with same email in another company', async () => {
-      const otherCompanyId = new Types.ObjectId();
-      const sharedEmail = 'shared@example.com';
+    it('retries with a suffixed slug on duplicate-key error (code 11000)', async () => {
+      const duplicateError: any = new Error('E11000 duplicate key error');
+      duplicateError.code = 11000;
 
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          name: 'Acme Corp',
-          status: 'active',
-          secretCodeHash: hashedCode,
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      usersService.findById.mockResolvedValue({
-        _id: new Types.ObjectId(mockUserId),
-        email: sharedEmail,
-        name: 'Joining User',
-      });
-
-      // Employee with same email exists in other company, but NOT in this company
-      employeesService.linkUserByEmail.mockImplementation((targetCompanyId: Types.ObjectId) => {
-        if (targetCompanyId.toString() === otherCompanyId.toString()) {
-          return Promise.resolve({
-            _id: new Types.ObjectId(),
-            companyId: otherCompanyId,
-            email: sharedEmail,
-          });
-        }
-        return Promise.resolve(null);
-      });
-
-      const newEmpId = new Types.ObjectId();
-      employeesService.createFromUser.mockResolvedValue({
-        _id: newEmpId,
-        companyId: mockCompanyId,
-        email: sharedEmail,
-      });
-
-      let savedMembership: any = null;
-      membershipModel.create.mockImplementation((data: any) => {
-        savedMembership = {
-          _id: new Types.ObjectId(),
-          ...data,
-          save: jest.fn().mockResolvedValue(true),
-        };
-        return Promise.resolve(savedMembership);
-      });
-
-      const res = await service.join(mockUserId, 'acme-corp', validSecretCode);
-      expect(res).toEqual({ slug: 'acme-corp', name: 'Acme Corp' });
-
-      // Verifies linkUserByEmail was strictly called for this company
-      expect(employeesService.linkUserByEmail).toHaveBeenCalledWith(
-        mockCompanyId,
-        sharedEmail,
-        new Types.ObjectId(mockUserId),
-      );
-
-      // And because this company did not have that employee, createFromUser was called for this company
-      expect(employeesService.createFromUser).toHaveBeenCalledWith(
-        mockCompanyId,
-        expect.objectContaining({ email: sharedEmail }),
-      );
-      expect(savedMembership.employeeId).toEqual(newEmpId);
-    });
-  });
-
-  describe('getMembershipStatus', () => {
-    const mockCompanyId = new Types.ObjectId();
-
-    it('should throw NotFoundException if company does not exist', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(service.getMembershipStatus(mockUserId, 'unknown')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('should return { isMember: true } when active membership is found', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ _id: mockCompanyId }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
-      });
-
-      const res = await service.getMembershipStatus(mockUserId, 'acme-corp');
-      expect(res).toEqual({ isMember: true });
-    });
-
-    it('should return { isMember: false } when no active membership exists', async () => {
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue({ _id: mockCompanyId }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      const res = await service.getMembershipStatus(mockUserId, 'acme-corp');
-      expect(res).toEqual({ isMember: false });
-    });
-  });
-
-  describe('regenerateSecretCode', () => {
-    const mockCompanyId = new Types.ObjectId();
-
-    it('should throw NotFoundException if company does not exist', async () => {
-      companyModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(service.regenerateSecretCode(mockUserId, 'unknown')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('should throw ForbiddenException if caller is not the company owner', async () => {
-      companyModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          status: 'active',
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: false,
-          status: 'active',
-        }),
-      });
-
-      await expect(service.regenerateSecretCode(mockUserId, 'acme-corp')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('should generate a new code, update DB, and invalidate the old code for joins', async () => {
-      const oldPlainCode = 'OLDD-CODE-1234';
-      let currentHash = await hashSecretCode(oldPlainCode);
-
-      const mockCompany: any = {
+      const createdCompany: any = {
         _id: mockCompanyId,
-        slug: 'acme-corp',
-        name: 'Acme Corp',
-        status: 'active',
-        get secretCodeHash() {
-          return currentHash;
-        },
+        ...validDto,
+        slug: 'acme-corp-abcd',
+        plan: 'trial',
       };
 
-      // 1. Setup company lookup
-      companyModel.findOne.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockImplementation(() => Promise.resolve(mockCompany)),
-      });
+      // First attempt fails with 11000, second attempt succeeds
+      companyModel.create
+        .mockRejectedValueOnce(duplicateError)
+        .mockResolvedValueOnce(createdCompany);
 
-      // 2. Setup owner membership check
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: true,
-          status: 'active',
-        }),
-      });
+      companyMemberModel.create.mockResolvedValue({});
 
-      // 3. Mock findByIdAndUpdate to update the hash
-      companyModel.findByIdAndUpdate.mockImplementation((_id: any, update: any) => {
-        if (update?.$set?.secretCodeHash) {
-          currentHash = update.$set.secretCodeHash;
-        }
-        return {
-          exec: jest.fn().mockResolvedValue(mockCompany),
-        };
-      });
+      const result = await service.create(mockUserId, validDto);
 
-      // 4. Owner regenerates code
-      const { secretCode: newCode } = await service.regenerateSecretCode(
-        mockUserId,
-        'acme-corp',
+      expect(companyModel.create).toHaveBeenCalledTimes(2);
+
+      // First call used base slug
+      expect(companyModel.create.mock.calls[0][0].slug).toBe('acme-corp');
+
+      // Second call appended random suffix
+      const secondCallSlug = companyModel.create.mock.calls[1][0].slug;
+      expect(secondCallSlug).toMatch(/^acme-corp-[a-z0-9]{4}$/);
+
+      expect(result).toEqual(createdCompany);
+    });
+
+    it('deletes the company and rethrows if membership creation fails', async () => {
+      const createdCompany: any = {
+        _id: mockCompanyId,
+        ...validDto,
+        slug: 'acme-corp',
+      };
+
+      companyModel.create.mockResolvedValue(createdCompany);
+      companyModel.findByIdAndDelete.mockResolvedValue(createdCompany);
+
+      const membershipError = new Error('Membership database failure');
+      companyMemberModel.create.mockRejectedValue(membershipError);
+
+      await expect(service.create(mockUserId, validDto)).rejects.toThrow(
+        'Membership database failure',
       );
-      expect(newCode).toBeDefined();
-      expect(newCode).not.toBe(oldPlainCode);
-      expect(newCode).toMatch(
-        /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/,
-      );
 
-      // 5. Test join with old code -> MUST fail
-      const otherUserId = new Types.ObjectId().toString();
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
-      });
-
-      await expect(
-        service.join(otherUserId, 'acme-corp', oldPlainCode),
-      ).rejects.toThrow(ForbiddenException);
-
-      // 6. Test join with new code -> MUST succeed
-      membershipModel.create.mockResolvedValue({});
-      const joinRes = await service.join(otherUserId, 'acme-corp', newCode);
-      expect(joinRes).toEqual({ slug: 'acme-corp', name: 'Acme Corp' });
+      // Rollback expectation
+      expect(companyModel.findByIdAndDelete).toHaveBeenCalledWith(mockCompanyId);
     });
   });
 
-  describe('update', () => {
-    const mockCompanyId = new Types.ObjectId();
+  describe('findMine', () => {
+    it('skips memberships whose company is null and returns the flat shape sorted desc', async () => {
+      const date1 = new Date('2026-01-01T10:00:00Z');
+      const date2 = new Date('2026-03-01T10:00:00Z');
 
-    it('should throw ForbiddenException if caller is not the owner', async () => {
-      companyModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          status: 'active',
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: false,
-          status: 'active',
-        }),
-      });
-
-      await expect(
-        service.update(mockUserId, 'acme-corp', { name: 'New Name' }),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should update permitted company fields when caller is owner', async () => {
-      companyModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          _id: mockCompanyId,
-          slug: 'acme-corp',
-          status: 'active',
-        }),
-      });
-
-      membershipModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({
-          userId: new Types.ObjectId(mockUserId),
-          companyId: mockCompanyId,
-          isCompanyOwner: true,
-          status: 'active',
-        }),
-      });
-
-      const updatedDoc = {
-        _id: mockCompanyId,
-        name: 'Acme Global',
-        slug: 'acme-corp',
-        industry: 'Tech',
-        timezone: 'Asia/Kolkata',
+      const mockCompanyA = {
+        _id: new Types.ObjectId(),
+        name: 'Company Alpha',
+        slug: 'company-alpha',
+        industry: 'Software',
+        employeeCount: '1-10',
+        plan: 'trial',
+        trialEndsAt: new Date(),
+        createdAt: date1,
       };
 
-      companyModel.findByIdAndUpdate.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue(updatedDoc),
-      });
+      const mockCompanyB = {
+        _id: new Types.ObjectId(),
+        name: 'Company Beta',
+        slug: 'company-beta',
+        industry: 'Healthcare',
+        employeeCount: '51-200',
+        plan: 'active',
+        trialEndsAt: new Date(),
+        createdAt: date2,
+      };
 
-      const res = await service.update(mockUserId, 'acme-corp', {
-        name: '  Acme Global  ',
-        industry: 'Tech',
-        timezone: 'Asia/Kolkata',
-      });
-
-      expect(res).toEqual(updatedDoc);
-      expect(companyModel.findByIdAndUpdate).toHaveBeenCalledWith(
-        mockCompanyId,
+      const mockMemberships = [
         {
-          $set: {
-            name: 'Acme Global',
-            industry: 'Tech',
-            timezone: 'Asia/Kolkata',
-          },
+          _id: new Types.ObjectId(),
+          role: 'member',
+          companyId: mockCompanyA,
         },
-        expect.objectContaining({ new: true, runValidators: true }),
-      );
+        {
+          _id: new Types.ObjectId(),
+          role: 'admin',
+          companyId: null, // Should be filtered out
+        },
+        {
+          _id: new Types.ObjectId(),
+          role: 'owner',
+          companyId: mockCompanyB,
+        },
+      ];
+
+      companyMemberModel.find.mockReturnValue({
+        populate: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(mockMemberships),
+        }),
+      });
+
+      const results = await service.findMine(mockUserId);
+
+      expect(results).toHaveLength(2);
+
+      // Sorted by company createdAt desc (Company Beta created after Company Alpha)
+      expect(results[0]).toEqual({
+        _id: mockCompanyB._id,
+        name: mockCompanyB.name,
+        slug: mockCompanyB.slug,
+        industry: mockCompanyB.industry,
+        employeeCount: mockCompanyB.employeeCount,
+        role: 'owner',
+        plan: mockCompanyB.plan,
+        trialEndsAt: mockCompanyB.trialEndsAt,
+        createdAt: mockCompanyB.createdAt,
+      });
+
+      expect(results[1]).toEqual({
+        _id: mockCompanyA._id,
+        name: mockCompanyA.name,
+        slug: mockCompanyA.slug,
+        industry: mockCompanyA.industry,
+        employeeCount: mockCompanyA.employeeCount,
+        role: 'member',
+        plan: mockCompanyA.plan,
+        trialEndsAt: mockCompanyA.trialEndsAt,
+        createdAt: mockCompanyA.createdAt,
+      });
     });
   });
 });

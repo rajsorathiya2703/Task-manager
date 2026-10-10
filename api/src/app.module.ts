@@ -15,6 +15,7 @@ import { TeamsModule } from './teams/teams.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { DayOffModule } from './day-off/day-off.module';
+import { ContactModule } from './contact/contact.module';
 import { AccessModule } from './access/access.module';
 import { RolesModule } from './roles/roles.module';
 import { CompaniesModule } from './companies/companies.module';
@@ -48,9 +49,10 @@ import { FieldAccessInterceptor } from './access/field-access.interceptor';
     DashboardModule,
     ChatbotModule,
     DayOffModule,
+    ContactModule,
+    CompaniesModule,
     AccessModule,
     RolesModule,
-    CompaniesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -9,6 +9,7 @@ import { TaskChatbot } from "@/src/components/chatbot/TaskChatbot";
 import { ChatbotTrigger } from "@/src/components/chatbot/ChatbotTrigger";
 import { fetchMe } from "@/src/lib/api";
 import { useCompany } from "@/src/contexts/CompanyContext";
+import { MobileRestrictionNotice } from "@/src/components/common/MobileRestrictionNotice";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -60,6 +61,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <SidebarProvider>
       <ChatbotProvider>
         <div className="flex h-screen overflow-hidden bg-background">
+          <MobileRestrictionNotice />
           <Sidebar user={user} />
           <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
             {children}

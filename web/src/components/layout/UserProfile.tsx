@@ -303,6 +303,18 @@ export function UserProfile({ user }: UserProfileProps) {
               type="button"
               onClick={() => {
                 setIsOpen(false);
+                router.push("/my-account");
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground hover:bg-muted/50 transition-colors text-left"
+            >
+              <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span>My companies</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
                 router.push(cp("/settings"));
               }}
               className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-foreground hover:bg-muted/50 transition-colors text-left"

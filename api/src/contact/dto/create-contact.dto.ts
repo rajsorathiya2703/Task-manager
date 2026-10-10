@@ -1,34 +1,17 @@
-import {
-  IsString,
-  IsOptional,
-  IsIn,
-  IsUrl,
-  MinLength,
-  MaxLength,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
-export class CreateCompanyDto {
+export class CreateContactDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(2)
-  @MaxLength(100)
+  @MaxLength(80)
   name: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @MinLength(2)
-  @MaxLength(60)
-  industry: string;
-
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsIn(['1-10', '11-50', '51-200', '201-500', '500+'])
-  employeeCount: string;
-
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsOptional()
-  @IsUrl()
-  website?: string;
+  @IsEmail()
+  @MaxLength(120)
+  email: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
@@ -39,6 +22,22 @@ export class CreateCompanyDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString()
-  @MaxLength(60)
-  country?: string;
+  @MaxLength(120)
+  subject?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(10)
+  @MaxLength(2000)
+  message: string;
+
+  /**
+   * Honeypot field: automated bots fill this out, while real users leave it empty.
+   * If present and non-empty, the submission is silently dropped.
+   */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  website?: string;
 }
