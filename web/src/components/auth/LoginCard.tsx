@@ -78,7 +78,7 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
       setIsLoadingGuest(true);
       setError(null);
       await api.post(authEndpoints.guestLogin);
-      router.push("/dashboard");
+      router.push(slug ? `/${slug}/dashboard` : "/tasks");
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to continue as guest");
     } finally {

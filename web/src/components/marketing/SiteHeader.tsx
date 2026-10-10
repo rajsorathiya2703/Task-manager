@@ -5,13 +5,35 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { siteConfig } from "@/src/content/site";
+import { fetchMe } from "@/src/lib/api";
 
 export function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const pathname = usePathname();
 
   useEffect(() => {
     setIsOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchMe()
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.authType !== "guest") {
+          setUser(data);
+        } else {
+          setUser(null);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setUser(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [pathname]);
 
   const isActive = (href: string) => {
@@ -72,18 +94,29 @@ export function SiteHeader() {
 
         {/* Right: Actions (Desktop) */}
         <div className="hidden md:flex items-center gap-3">
-          <Link
-            href={siteConfig.cta.login.href}
-            className="px-3.5 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {siteConfig.cta.login.label}
-          </Link>
-          <Link
-            href={siteConfig.cta.trial.href}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-4 h-9 inline-flex items-center justify-center text-sm font-medium transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {siteConfig.cta.trial.label}
-          </Link>
+          {user ? (
+            <Link
+              href="/my-account"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-5 h-9 inline-flex items-center justify-center text-sm font-semibold transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Go to account
+            </Link>
+          ) : (
+            <>
+              <Link
+                href={siteConfig.cta.login.href}
+                className="px-3.5 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {siteConfig.cta.login.label}
+              </Link>
+              <Link
+                href={siteConfig.cta.trial.href}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-4 h-9 inline-flex items-center justify-center text-sm font-medium transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {siteConfig.cta.trial.label}
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Hamburger Button */}
@@ -127,18 +160,29 @@ export function SiteHeader() {
             })}
           </nav>
           <div className="flex flex-col gap-2 pt-2 border-t border-border/60">
-            <Link
-              href={siteConfig.cta.login.href}
-              className="w-full text-center py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {siteConfig.cta.login.label}
-            </Link>
-            <Link
-              href={siteConfig.cta.trial.href}
-              className="w-full text-center py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {siteConfig.cta.trial.label}
-            </Link>
+            {user ? (
+              <Link
+                href="/my-account"
+                className="w-full text-center py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                Go to account
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href={siteConfig.cta.login.href}
+                  className="w-full text-center py-2.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {siteConfig.cta.login.label}
+                </Link>
+                <Link
+                  href={siteConfig.cta.trial.href}
+                  className="w-full text-center py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {siteConfig.cta.trial.label}
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

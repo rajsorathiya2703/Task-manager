@@ -84,9 +84,11 @@ export function NotificationDropdown() {
 
     const syncNotifications = async () => {
       try {
+        // Use { fresh: true } so the 10-second poll always hits the network
+        // and detects new comments exactly as before the cache was introduced.
         const [tasks, teams] = await Promise.all([
-          fetchTasks().catch(() => []),
-          fetchTeams().catch(() => []),
+          fetchTasks(undefined, { fresh: true }).catch(() => []),
+          fetchTeams({ fresh: true }).catch(() => []),
         ]);
 
         const currentUserId = (currentUser.id || currentUser._id)?.toString();

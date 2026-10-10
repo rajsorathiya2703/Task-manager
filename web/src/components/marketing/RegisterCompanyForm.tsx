@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useGoogleLogin } from "@react-oauth/google";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ArrowRight, Building2 } from "lucide-react";
 import { fetchMe, api, authEndpoints } from "../../lib/api";
-import { createCompany, Company } from "../../lib/company-api";
+import { createCompany, Company, setActiveCompany } from "../../lib/company-api";
 
 const INDUSTRIES = [
   "Software/IT",
@@ -174,6 +174,9 @@ export function RegisterCompanyForm() {
         country: country.trim() || undefined,
       });
 
+      if (created) {
+        setActiveCompany(created);
+      }
       setSuccessCompany(created);
     } catch (err: any) {
       const msg = err?.response?.data?.message;
@@ -265,13 +268,23 @@ export function RegisterCompanyForm() {
             <strong className="text-foreground">{formattedDate}</strong>.
           </p>
         </div>
-        <div className="pt-2">
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             href="/my-account"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-7 h-11 inline-flex items-center justify-center text-sm font-medium transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-7 h-11 inline-flex items-center justify-center text-sm font-semibold transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 gap-1.5"
           >
-            Go to my account
+            <span>Go to account</span>
+            <ArrowRight className="w-4 h-4" />
           </Link>
+          {successCompany.slug && (
+            <Link
+              href={`/${successCompany.slug}/dashboard`}
+              className="w-full sm:w-auto border border-border bg-card hover:bg-muted text-foreground rounded-full px-7 h-11 inline-flex items-center justify-center text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5"
+            >
+              <Building2 className="w-4 h-4 text-primary" />
+              <span>Open workspace</span>
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -282,27 +295,37 @@ export function RegisterCompanyForm() {
 
   return (
     <div className="bg-card border border-border/80 rounded-2xl p-6 sm:p-8 shadow-lg max-w-xl mx-auto space-y-6">
-      {/* User Chip */}
-      <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border/60">
-        {user.avatar ? (
-          <img
-            src={user.avatar}
-            alt={user.name}
-            className="w-10 h-10 rounded-full object-cover shrink-0"
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-sm shrink-0">
-            {userInitial}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-foreground truncate">
-            {user.name}
-          </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {user.email}
+      {/* User Chip with Go to Account Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-muted/40 border border-border/60">
+        <div className="flex items-center gap-3 min-w-0">
+          {user.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user.name}
+              className="w-10 h-10 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-sm shrink-0">
+              {userInitial}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground truncate">
+              {user.name}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {user.email}
+            </div>
           </div>
         </div>
+
+        <Link
+          href="/my-account"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors shrink-0 shadow-2xs"
+        >
+          <span>Go to account</span>
+          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+        </Link>
       </div>
 
       {submitError && (

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { clearCache, invalidateTags, cached } from './cache';
+import { getInvalidationTags } from './cache-rules';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -51,6 +53,25 @@ const processQueue = (error: any = null) => {
   failedQueue = [];
 };
 
+// ─── Mutation-invalidation interceptor ───────────────────────────────────────
+// Runs on every successful response. For non-GET requests it invalidates
+// the relevant cache tags so subsequent reads see fresh data.
+api.interceptors.response.use(
+  (response) => {
+    const method = (response.config?.method ?? '').toUpperCase();
+    if (method !== 'GET') {
+      const url = response.config?.url ?? '';
+      const tags = getInvalidationTags(method, url);
+      if (tags.length > 0) {
+        invalidateTags(tags);
+      }
+    }
+    return response;
+  },
+  (err) => Promise.reject(err),
+);
+
+// ─── Auth / error interceptor (existing behaviour preserved) ─────────────────
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -79,12 +100,12 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // Try refresh token using plain axios to prevent recursive interceptor calls
         await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
         processQueue();
         return api(originalRequest);
       } catch (refreshErr) {
         processQueue(refreshErr);
+        clearCache(); // terminal 401: wipe the cache so stale /auth/me can't mask the expired session
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
@@ -141,13 +162,21 @@ export const authEndpoints = {
   me: '/auth/me',
 };
 
-export const fetchMe = async (companySlug?: string) => {
+export const fetchMe = async (
+  companySlug?: string,
+  opts?: { fresh?: boolean },
+): Promise<any> => {
   const targetCompany = companySlug || currentCompanySlug;
   const url = targetCompany
     ? `${authEndpoints.me}?company=${encodeURIComponent(targetCompany)}`
     : authEndpoints.me;
-  const res = await api.get(url);
-  return res.data;
+  const key = `me:${targetCompany || '_global'}`;
+
+  return cached(key, () => api.get(url).then((r) => r.data), {
+    ttl: 2 * 60 * 1000, // 2 min
+    tags: ['me'],
+    fresh: opts?.fresh,
+  });
 };
 
 // ─── Global (Un-prefixed) Company Management Endpoints ──────────────────────
@@ -227,9 +256,27 @@ export const taskEndpoints = {
   upload: (id: any) => cp(`/tasks/${toId(id)}/upload`),
 };
 
-export const fetchTasks = async (projectId?: any) => {
-  const res = await api.get(taskEndpoints.getAll(projectId));
-  return res.data;
+export const fetchTasks = async (
+  projectId?: any,
+  opts?: { fresh?: boolean },
+): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const pid = projectId
+    ? typeof projectId === 'object'
+      ? projectId._id || projectId.id || ''
+      : String(projectId)
+    : '';
+  const key = `tasks:${slug}:${pid || '_all'}`;
+
+  return cached(
+    key,
+    () => api.get(taskEndpoints.getAll(projectId)).then((r) => r.data),
+    {
+      ttl: 20 * 1000, // 20 s — tasks change often
+      tags: ['tasks'],
+      fresh: opts?.fresh,
+    },
+  );
 };
 
 export const createTask = async (data: any) => {
@@ -404,9 +451,15 @@ export const projectEndpoints = {
   delete: (id: any) => cp(`/projects/${toId(id)}`),
 };
 
-export const fetchProjects = async () => {
-  const res = await api.get(projectEndpoints.getAll);
-  return res.data;
+export const fetchProjects = async (opts?: { fresh?: boolean }): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const key = `projects:${slug}`;
+
+  return cached(key, () => api.get(projectEndpoints.getAll).then((r) => r.data), {
+    ttl: 60 * 1000, // 1 min
+    tags: ['projects'],
+    fresh: opts?.fresh,
+  });
 };
 
 export const createProject = async (data: any) => {
@@ -414,9 +467,15 @@ export const createProject = async (data: any) => {
   return res.data;
 };
 
-export const fetchProjectById = async (id: string) => {
-  const res = await api.get(projectEndpoints.getOne(id));
-  return res.data;
+export const fetchProjectById = async (id: string, opts?: { fresh?: boolean }): Promise<any> => {
+  const slug = currentCompanySlug;
+  const key = `project:${slug}:${id}`;
+
+  return cached(key, () => api.get(projectEndpoints.getOne(id)).then((r) => r.data), {
+    ttl: 60 * 1000, // 1 min
+    tags: ['projects'],
+    fresh: opts?.fresh,
+  });
 };
 
 export const updateProject = async (id: string, data: any) => {
@@ -442,14 +501,26 @@ export const teamEndpoints = {
   delete: (id: any) => cp(`/teams/${toId(id)}`),
 };
 
-export const fetchTeams = async () => {
-  const res = await api.get(teamEndpoints.getAll);
-  return res.data;
+export const fetchTeams = async (opts?: { fresh?: boolean }): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const key = `teams:${slug}`;
+
+  return cached(key, () => api.get(teamEndpoints.getAll).then((r) => r.data), {
+    ttl: 60 * 1000, // 1 min
+    tags: ['teams'],
+    fresh: opts?.fresh,
+  });
 };
 
-export const fetchTeamById = async (id: string) => {
-  const res = await api.get(teamEndpoints.getOne(id));
-  return res.data;
+export const fetchTeamById = async (id: string, opts?: { fresh?: boolean }): Promise<any> => {
+  const slug = currentCompanySlug;
+  const key = `team:${slug}:${id}`;
+
+  return cached(key, () => api.get(teamEndpoints.getOne(id)).then((r) => r.data), {
+    ttl: 60 * 1000, // 1 min
+    tags: ['teams'],
+    fresh: opts?.fresh,
+  });
 };
 
 export const createTeam = async (data: any) => {
@@ -490,9 +561,15 @@ export const employeeEndpoints = {
   delete: (id: any) => cp(`/employees/${toId(id)}`),
 };
 
-export const fetchEmployees = async () => {
-  const res = await api.get(employeeEndpoints.getAll);
-  return res.data;
+export const fetchEmployees = async (opts?: { fresh?: boolean }): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const key = `employees:${slug}`;
+
+  return cached(key, () => api.get(employeeEndpoints.getAll).then((r) => r.data), {
+    ttl: 2 * 60 * 1000, // 2 min
+    tags: ['employees'],
+    fresh: opts?.fresh,
+  });
 };
 
 export const fetchEmployeeById = async (id: string) => {
@@ -594,18 +671,29 @@ export const fetchEmployeeActivity = async (
   startDate?: string,
   endDate?: string,
   employeeId?: string,
-) => {
-  const params = new URLSearchParams();
-  if (range) params.append('range', range);
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
-  if (employeeId) params.append('employeeId', employeeId);
-  const queryString = params.toString();
-  const path = queryString
-    ? `/dashboard/employee-activity?${queryString}`
-    : '/dashboard/employee-activity';
-  const res = await api.get(cp(path));
-  return res.data;
+  opts?: { fresh?: boolean },
+): Promise<any> => {
+  const slug = currentCompanySlug;
+  const key = `dashboard:${slug}:${range ?? 'weekly'}:${startDate ?? ''}:${endDate ?? ''}:${employeeId ?? ''}`;
+
+  const loader = () => {
+    const params = new URLSearchParams();
+    if (range) params.append('range', range);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (employeeId) params.append('employeeId', employeeId);
+    const queryString = params.toString();
+    const path = queryString
+      ? `/dashboard/employee-activity?${queryString}`
+      : '/dashboard/employee-activity';
+    return api.get(cp(path)).then((r) => r.data);
+  };
+
+  return cached(key, loader, {
+    ttl: 30 * 1000, // 30 s
+    tags: ['dashboard'],
+    fresh: opts?.fresh,
+  });
 };
 
 // ─── Tenant-Scoped: Day Off Module Endpoints ────────────────────────────────
@@ -651,9 +739,22 @@ export const updateDayOffSettings = async (data: any) => {
   return res.data;
 };
 
-export const fetchLeaveTypes = async (activeOnly?: boolean) => {
-  const res = await api.get(dayOffEndpoints.leaveTypes(activeOnly));
-  return res.data;
+export const fetchLeaveTypes = async (
+  activeOnly?: boolean,
+  opts?: { fresh?: boolean },
+): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const key = `leaveTypes:${slug}:${activeOnly ? 'active' : 'all'}`;
+
+  return cached(
+    key,
+    () => api.get(dayOffEndpoints.leaveTypes(activeOnly)).then((r) => r.data),
+    {
+      ttl: 5 * 60 * 1000, // 5 min — leave types rarely change
+      tags: ['dayoff'],
+      fresh: opts?.fresh,
+    },
+  );
 };
 
 export const fetchLeaveTypeById = async (id: string) => {
@@ -676,14 +777,40 @@ export const deleteLeaveType = async (id: string) => {
   return res.data;
 };
 
-export const fetchMyLeaveBalances = async (year?: number) => {
-  const res = await api.get(dayOffEndpoints.balances(year));
-  return res.data;
+export const fetchMyLeaveBalances = async (
+  year?: number,
+  opts?: { fresh?: boolean },
+): Promise<any> => {
+  const slug = currentCompanySlug;
+  const key = `leaveBalances:${slug}:${year ?? 'cur'}`;
+
+  return cached(
+    key,
+    () => api.get(dayOffEndpoints.balances(year)).then((r) => r.data),
+    {
+      ttl: 60 * 1000, // 1 min
+      tags: ['dayoff'],
+      fresh: opts?.fresh,
+    },
+  );
 };
 
-export const fetchMyLeaveApplications = async (year?: number) => {
-  const res = await api.get(dayOffEndpoints.myApplications(year));
-  return res.data;
+export const fetchMyLeaveApplications = async (
+  year?: number,
+  opts?: { fresh?: boolean },
+): Promise<any[]> => {
+  const slug = currentCompanySlug;
+  const key = `myLeaveApps:${slug}:${year ?? 'cur'}`;
+
+  return cached(
+    key,
+    () => api.get(dayOffEndpoints.myApplications(year)).then((r) => r.data),
+    {
+      ttl: 30 * 1000, // 30 s
+      tags: ['dayoff'],
+      fresh: opts?.fresh,
+    },
+  );
 };
 
 export const fetchAllLeaveApplications = async (params?: { status?: string; year?: number }) => {
@@ -730,6 +857,22 @@ export const markNotificationRead = async (id: string) => {
 export const markAllNotificationsRead = async () => {
   const res = await api.post(dayOffEndpoints.markAllNotificationsRead);
   return res.data;
+};
+
+// ─── Cache lifecycle helpers (called by auth flows) ──────────────────────────
+/**
+ * Called by login / guest-login pages after a successful auth response.
+ * Clears any stale data from a previous session.
+ */
+export const onLoginSuccess = (): void => {
+  clearCache();
+};
+
+/**
+ * Called by the logout flow before redirecting to /login.
+ */
+export const onLogout = (): void => {
+  clearCache();
 };
 
 // ─── Tenant-Scoped: Chatbot Endpoint URL ────────────────────────────────────

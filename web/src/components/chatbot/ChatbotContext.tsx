@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getCompanySlug, API_URL } from "@/src/lib/api";
+import { clearCache } from "@/src/lib/cache";
 
 const CHATBOT_API_URL = process.env.NEXT_PUBLIC_API_URL || API_URL || 'http://localhost:3001';
 
@@ -147,6 +148,9 @@ export function ChatbotProvider({ children }: { children: ReactNode }) {
         content: data.message || "I completed your request.",
       };
       setMessages((prev) => [...prev, aiResponse]);
+      // The chatbot may have mutated server data via its own HTTP calls.
+      // Wipe the in-memory cache so the next component read fetches fresh data.
+      clearCache();
     } catch (err) {
       // Graceful fallback: show error message in chat
       const errorResponse: ChatMessage = {

@@ -52,6 +52,13 @@ export default function RegisterCompanyPage() {
             <p className="text-sm text-muted-foreground">
               Already have an organization or workspace?{" "}
               <Link
+                href="/my-account"
+                className="text-foreground font-semibold underline underline-offset-4 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xs"
+              >
+                Go to account
+              </Link>
+              {" "}or{" "}
+              <Link
                 href={siteConfig.cta.login.href}
                 className="text-foreground font-semibold underline underline-offset-4 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xs"
               >

@@ -40,7 +40,8 @@ export default function DashboardPage() {
 
     try {
       // 1. Verify current user profile & employee status
-      const me = await fetchMe();
+      // When the user presses "Refresh" or "Check Again" we skip the cache.
+      const me = await fetchMe(undefined, { fresh: !showSpinner ? true : undefined });
       setCurrentUser(me);
 
       if (!me?.is_employee) {
@@ -52,7 +53,7 @@ export default function DashboardPage() {
       }
 
       setIsNonEmployee(false);
-      const res = await fetchEmployeeActivity(range);
+      const res = await fetchEmployeeActivity(range, undefined, undefined, undefined, { fresh: !showSpinner ? true : undefined });
       setData(res);
     } catch (err: any) {
       console.error("Failed to load dashboard activity", err);
