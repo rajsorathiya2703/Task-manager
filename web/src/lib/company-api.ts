@@ -48,6 +48,9 @@ export function setActiveCompany(
         name: company.name,
       }),
     );
+    if (company.slug) {
+      localStorage.setItem('lastCompany', company.slug);
+    }
     document.cookie = `active_company=${company._id}; path=/; max-age=2592000; SameSite=Lax`;
   } catch (err) {
     console.error('Failed to set active company in storage:', err);
@@ -79,9 +82,10 @@ export function trialDaysLeft(trialEndsAt: string | Date): number {
   return Math.max(0, wholeDays);
 }
 
-// When multi-company routing ships, change this to `/${company._id}/tasks`. This is the only place that knows the workspace URL.
+// Scoped workspace URL using the selected company's slug
 export function getWorkspaceUrl(
-  _company: Pick<Company, '_id'> | Company,
+  company: Pick<Company, '_id' | 'slug'> | Company,
 ): string {
-  return '/tasks';
+  const slug = (company as any)?.slug;
+  return slug ? `/${slug}/tasks` : '/tasks';
 }

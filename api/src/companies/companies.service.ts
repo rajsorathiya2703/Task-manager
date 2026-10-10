@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Company } from './schemas/company.schema';
 import { CompanyMember } from './schemas/company-member.schema';
+import { Membership } from './schemas/membership.schema';
 import { CreateCompanyDto } from './dto/create-company.dto';
 
 function generateBaseSlug(name: string): string {
@@ -29,6 +30,9 @@ export class CompaniesService {
     @InjectModel(Company.name) private readonly companyModel: Model<Company>,
     @InjectModel(CompanyMember.name)
     private readonly companyMemberModel: Model<CompanyMember>,
+    @Optional()
+    @InjectModel(Membership.name)
+    private readonly membershipModel?: Model<Membership>,
   ) {}
 
   async create(
@@ -63,6 +67,7 @@ export class CompaniesService {
           ownerUserId: userObjectId,
           plan: 'trial',
           trialEndsAt,
+          status: 'active',
         });
 
         break;
@@ -85,6 +90,16 @@ export class CompaniesService {
         userId: userObjectId,
         role: 'owner',
       });
+      if (this.membershipModel) {
+        await this.membershipModel.create({
+          companyId: company._id,
+          userId: userObjectId,
+          isCompanyOwner: true,
+          isSystemAdmin: true,
+          status: 'active',
+          roleIds: [],
+        });
+      }
     } catch (memberErr) {
       await this.companyModel.findByIdAndDelete(company._id);
       throw memberErr;
@@ -106,6 +121,32 @@ export class CompaniesService {
       const comp = member.companyId as any;
       if (!comp || !comp._id) {
         continue;
+      }
+
+      // Ensure backward compatibility: activate status & sync Membership for multi-company workspace
+      if (this.membershipModel && comp._id) {
+        try {
+          await this.membershipModel.updateOne(
+            { companyId: comp._id, userId: userObjectId },
+            {
+              $setOnInsert: {
+                companyId: comp._id,
+                userId: userObjectId,
+                isCompanyOwner: member.role === 'owner',
+                isSystemAdmin: member.role === 'owner',
+                status: 'active',
+                roleIds: [],
+              },
+            },
+            { upsert: true },
+          );
+          if (!comp.status) {
+            await this.companyModel.updateOne(
+              { _id: comp._id },
+              { $set: { status: 'active' } },
+            );
+          }
+        } catch {}
       }
 
       results.push({
