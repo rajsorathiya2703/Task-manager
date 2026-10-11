@@ -522,8 +522,8 @@ describe('TasksService - Authorization & Tenant Scoping (P1-05 & MC-21)', () => 
     });
   });
 
-  describe('getTimeline (MC-22)', () => {
-    it('starts aggregation pipeline with companyId match stage ensuring isolation', async () => {
+  describe('getTimeline (MC-22 / BUG-04)', () => {
+    it('starts aggregation pipeline with companyId match stage ensuring isolation and employee/user matching with email fallback', async () => {
       taskModel.aggregate
         .mockReturnValueOnce({
           exec: jest.fn().mockResolvedValue([{ total: 1 }]),
@@ -546,20 +546,63 @@ describe('TasksService - Authorization & Tenant Scoping (P1-05 & MC-21)', () => 
 
       // Verify aggregate was called with first stage matching companyId
       const firstPipelineCall = taskModel.aggregate.mock.calls[0][0];
-      expect(firstPipelineCall[0]).toEqual({
-        $match: {
-          companyId: mockCompanyId,
-          'timeEntries.user.email': 'user@example.com',
-        },
-      });
+      expect(firstPipelineCall[0].$match.companyId).toEqual(mockCompanyId);
+      expect(firstPipelineCall[0].$match.$or).toBeDefined();
+      expect(firstPipelineCall[0].$match.$or).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            'timeEntries.user.email': { $regex: expect.any(RegExp) },
+          }),
+        ]),
+      );
 
       const secondPipelineCall = taskModel.aggregate.mock.calls[1][0];
-      expect(secondPipelineCall[0]).toEqual({
-        $match: {
-          companyId: mockCompanyId,
-          'timeEntries.user.email': 'user@example.com',
-        },
-      });
+      expect(secondPipelineCall[0].$match.companyId).toEqual(mockCompanyId);
+      expect(secondPipelineCall[0].$match.$or).toBeDefined();
+    });
+
+    it('isolates timeline when the same email is present in two companies (BUG-04)', async () => {
+      const company1Id = new Types.ObjectId();
+      const company2Id = new Types.ObjectId();
+      const sharedEmail = 'multi.company.user@example.com';
+      const userId = new Types.ObjectId().toString();
+
+      const comp1Entry = {
+        taskId: new Types.ObjectId(),
+        title: 'Company 1 Task',
+        timeEntry: { durationSeconds: 1800, user: { email: sharedEmail } },
+      };
+      const comp2Entry = {
+        taskId: new Types.ObjectId(),
+        title: 'Company 2 Task',
+        timeEntry: { durationSeconds: 3600, user: { email: sharedEmail } },
+      };
+
+      taskModel.aggregate
+        // Call for Company 1: count + entries
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([{ total: 1 }]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([comp1Entry]) })
+        // Call for Company 2: count + entries
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([{ total: 1 }]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([comp2Entry]) });
+
+      // 1. Query timeline for Company 1
+      const res1 = await service.getTimeline(company1Id, userId, sharedEmail, { page: 1 });
+      expect(res1.entries).toEqual([comp1Entry]);
+      expect(res1.entries).not.toContainEqual(comp2Entry);
+
+      // Verify Company 1 pipeline matches company1Id
+      const comp1Pipeline = taskModel.aggregate.mock.calls[0][0];
+      expect(comp1Pipeline[0].$match.companyId).toEqual(company1Id);
+
+      // 2. Query timeline for Company 2
+      const res2 = await service.getTimeline(company2Id, userId, sharedEmail, { page: 1 });
+      expect(res2.entries).toEqual([comp2Entry]);
+      expect(res2.entries).not.toContainEqual(comp1Entry);
+
+      // Verify Company 2 pipeline matches company2Id
+      const comp2Pipeline = taskModel.aggregate.mock.calls[2][0];
+      expect(comp2Pipeline[0].$match.companyId).toEqual(company2Id);
     });
   });
 

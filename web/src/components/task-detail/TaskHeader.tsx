@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon } from "lucide-react";
+import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon, Download } from "lucide-react";
 import { Popover } from "@headlessui/react";
-import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles, normalizeUrl } from "../../lib/api";
+import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles, normalizeUrl, openAttachment, isAuthenticatedFileViewUrl } from "../../lib/api";
 import { useEffect } from "react";
 import { BoundField } from "../access";
 
@@ -231,18 +231,40 @@ export function TaskHeader({
                       else if (isVideo) icon = <Video className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
                       else if (isImage) icon = <ImageIcon className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
 
+                      const isAuthFile = isAuthenticatedFileViewUrl(fileUrl);
+
                       return (
                         <a 
                           key={idx}
                           href={fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={res.type === 'link' ? undefined : res.name}
-                          className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors"
+                          target={isAuthFile ? undefined : "_blank"}
+                          rel={isAuthFile ? undefined : "noopener noreferrer"}
+                          download={res.type === 'link' || isAuthFile ? undefined : res.name}
+                          onClick={(e) => {
+                            if (isAuthFile) {
+                              e.preventDefault();
+                              openAttachment(fileUrl, res.name, false);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors group"
                           title={res.name}
                         >
                           {icon}
                           <span className="truncate max-w-[200px]">{res.name}</span>
+                          {res.type !== 'link' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openAttachment(fileUrl, res.name, true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-foreground text-muted-foreground transition-opacity cursor-pointer"
+                              title="Download"
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                          )}
                         </a>
                       );
                     })}

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText, ExternalLink } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
-import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles, getCompanySlug, normalizeUrl } from "../../lib/api";
+import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles, getCompanySlug, normalizeUrl, openAttachment, isAuthenticatedFileViewUrl } from "../../lib/api";
 
 export interface CommentUser {
   name: string;
@@ -659,17 +659,25 @@ export function Comments({
                     const isLastAtt = i === comment.attachments!.length - 1;
                     const showTimeInCard = !hasText && isLastAtt;
 
+                    const isAuthFile = isAuthenticatedFileViewUrl(fileUrl);
+
                     return (
                       <a
                         key={i}
                         href={fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={att.type === 'link' ? undefined : att.name}
+                        target={isAuthFile ? undefined : "_blank"}
+                        rel={isAuthFile ? undefined : "noopener noreferrer"}
+                        download={att.type === 'link' || isAuthFile ? undefined : att.name}
+                        onClick={(e) => {
+                          if (isAuthFile) {
+                            e.preventDefault();
+                            openAttachment(fileUrl, att.name, false);
+                          }
+                        }}
                         style={tailStyle}
                         title={att.name}
                         className={`
-                          flex items-center gap-2 px-3 py-2.5 text-sm shadow-sm
+                          flex items-center gap-2 px-3 py-2.5 text-sm shadow-sm cursor-pointer
                           hover:opacity-90 transition-opacity
                           ${isMine
                             ? 'bg-primary text-primary-foreground'
@@ -697,14 +705,14 @@ export function Comments({
                                   onClick={e => e.preventDefault()}
                                 >
                                   <button
-                                    onClick={(e) => { e.preventDefault(); setEditingId(comment._id); setEditContent(comment.content); }}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingId(comment._id); setEditContent(comment.content); }}
                                     className="p-0.5 rounded hover:bg-white/20 transition-colors"
                                     title="Edit"
                                   >
                                     <Edit2 className="w-2.5 h-2.5" />
                                   </button>
                                   <button
-                                    onClick={(e) => { e.preventDefault(); handleDelete(comment._id); }}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(comment._id); }}
                                     className="p-0.5 rounded hover:bg-red-400/30 transition-colors"
                                     title="Delete"
                                   >
@@ -721,7 +729,20 @@ export function Comments({
                         )}
 
                         {/* Download icon */}
-                        <Download className={`w-3.5 h-3.5 shrink-0 ${isMine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} />
+                        {att.type !== 'link' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openAttachment(fileUrl, att.name, true);
+                            }}
+                            className="p-0.5 hover:opacity-80 transition-opacity cursor-pointer shrink-0"
+                            title="Download"
+                          >
+                            <Download className={`w-3.5 h-3.5 ${isMine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`} />
+                          </button>
+                        )}
                       </a>
                     );
                   })}

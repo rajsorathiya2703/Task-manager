@@ -2,6 +2,7 @@
 
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { Toaster } from "sonner";
 
 import { TimerProvider } from "../contexts/TimerContext";
 import { AccessProvider } from "../contexts/AccessContext";
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <TimerProvider>
             {children}
             <AccessErrorNotification />
+            <Toaster position="top-right" richColors />
           </TimerProvider>
         </AccessProvider>
       </GoogleOAuthProvider>

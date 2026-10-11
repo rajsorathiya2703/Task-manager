@@ -38,6 +38,7 @@ async function bootstrap() {
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
+    exposedHeaders: ['Content-Disposition', 'Content-Type'],
   });
 
   app.useGlobalPipes(

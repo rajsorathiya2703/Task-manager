@@ -326,6 +326,65 @@ export const uploadGenericResource = async (formData: FormData) => {
 
 export { normalizeUrl } from './utils';
 
+import { toast } from 'sonner';
+
+export const isAuthenticatedFileViewUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.includes('/tasks/file/view');
+};
+
+export const openAttachment = async (
+  url: string,
+  name?: string,
+  download = false,
+): Promise<void> => {
+  if (!url) return;
+  const safeName = name || 'attachment';
+
+  let newTab: Window | null = null;
+  if (!download && typeof window !== 'undefined') {
+    newTab = window.open('about:blank', '_blank');
+  }
+
+  try {
+    let targetUrl = url;
+    if (download && targetUrl.includes('/tasks/file/view') && !targetUrl.includes('download=')) {
+      targetUrl += `${targetUrl.includes('?') ? '&' : '?'}download=1`;
+    }
+
+    const res = await api.get(targetUrl, { responseType: 'blob' });
+    const contentType =
+      typeof res.headers['content-type'] === 'string'
+        ? res.headers['content-type']
+        : 'application/octet-stream';
+    const blob = new Blob([res.data], { type: contentType });
+    const blobUrl = URL.createObjectURL(blob);
+
+    if (download) {
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = safeName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      if (newTab && !newTab.closed) {
+        newTab.location.href = blobUrl;
+      } else {
+        window.open(blobUrl, '_blank', 'noopener');
+      }
+    }
+
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  } catch (error: any) {
+    if (newTab && !newTab.closed) {
+      newTab.close();
+    }
+    console.error('Failed to open or download attachment:', error);
+    toast.error('Failed to open attachment. Please try again.');
+  }
+};
+
 export const getAttachmentUrl = (url: string, name?: string): string => {
   if (!url) return '';
   const isCloudinaryPdf =

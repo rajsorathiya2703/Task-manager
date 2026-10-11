@@ -1605,9 +1605,9 @@ export class TasksService {
   }
 
   /**
-   * Retrieves timeline entries scoped to a specific company and user email.
-   * Pipeline begins with { $match: { companyId, 'timeEntries.user.email': email } }
-   * ensuring entries from other companies are never returned.
+   * Retrieves timeline entries scoped to a specific company and employee/user identity.
+   * Scoped by companyId on the task/project level, matching entries by employee/user id first,
+   * falling back to escaped email for legacy rows.
    */
   async getTimeline(
     companyId: Types.ObjectId,
@@ -1631,7 +1631,14 @@ export class TasksService {
     let email: string;
     let filterParams: any;
 
-    if (companyIdOrUserId instanceof Types.ObjectId) {
+    if (maybeFilterParams !== undefined) {
+      companyId = Types.ObjectId.isValid(companyIdOrUserId)
+        ? new Types.ObjectId(companyIdOrUserId as any)
+        : (companyIdOrUserId as any);
+      _userId = userIdOrEmail;
+      email = emailOrFilterParams;
+      filterParams = maybeFilterParams || {};
+    } else if (companyIdOrUserId instanceof Types.ObjectId) {
       companyId = companyIdOrUserId;
       _userId = userIdOrEmail;
       email = emailOrFilterParams;
@@ -1640,24 +1647,67 @@ export class TasksService {
       _userId = companyIdOrUserId as string;
       email = userIdOrEmail;
       filterParams = emailOrFilterParams || {};
-      companyId = filterParams?.companyId;
+      if (filterParams?.companyId) {
+        companyId = Types.ObjectId.isValid(filterParams.companyId)
+          ? new Types.ObjectId(filterParams.companyId)
+          : filterParams.companyId;
+      }
     }
 
     const { startDate, endDate, page = 1 } = filterParams;
     const limit = 80;
     const skip = (Number(page) - 1) * limit;
 
-    const initialMatch: any = {
-      'timeEntries.user.email': email,
-    };
+    // 1. Resolve employee and user IDs for the user in this company
+    const candidateIds: any[] = [];
+    if (companyId) {
+      const empIds = await this.getEmployeeIdsForUser(companyId, _userId, email);
+      for (const id of empIds) {
+        if (id && Types.ObjectId.isValid(id)) {
+          candidateIds.push(new Types.ObjectId(id));
+        }
+        if (id) {
+          candidateIds.push(id.toString());
+        }
+      }
+    } else if (_userId) {
+      if (Types.ObjectId.isValid(_userId)) {
+        candidateIds.push(new Types.ObjectId(_userId));
+      }
+      candidateIds.push(_userId.toString());
+    }
+
+    // 2. Build time entry match conditions (employee/user ID first, falling back to escaped email for legacy rows)
+    const entryMatchOr: any[] = [];
+    if (candidateIds.length > 0) {
+      entryMatchOr.push(
+        { 'timeEntries.assigneeId': { $in: candidateIds } },
+        { 'timeEntries.userId': { $in: candidateIds } },
+        { 'timeEntries.user._id': { $in: candidateIds } },
+        { 'timeEntries.user.id': { $in: candidateIds } },
+      );
+    }
+    if (email && typeof email === 'string' && email.trim()) {
+      const cleanEmail = escapeRegExp(email.trim());
+      entryMatchOr.push({
+        'timeEntries.user.email': { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+      });
+    }
+
+    const timeEntryFilter = entryMatchOr.length === 1 ? entryMatchOr[0] : { $or: entryMatchOr };
+
+    const initialMatch: any = {};
     if (companyId) {
       initialMatch.companyId = companyId;
+    }
+    if (entryMatchOr.length > 0) {
+      Object.assign(initialMatch, timeEntryFilter);
     }
 
     const pipeline: any[] = [
       { $match: initialMatch },
       { $unwind: '$timeEntries' },
-      { $match: { 'timeEntries.user.email': email } }
+      { $match: timeEntryFilter },
     ];
 
     if (startDate && endDate) {

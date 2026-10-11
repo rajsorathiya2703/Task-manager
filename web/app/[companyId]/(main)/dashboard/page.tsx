@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CompanyLink } from "@/src/lib/useCompanyPath";
 import { PageHeader } from "@/src/components/layout/PageHeader";
 import { EmployeeProfileStreakCard } from "@/src/components/dashboard/EmployeeProfileStreakCard";
@@ -11,13 +13,24 @@ import { StatusDistributionChart } from "@/src/components/dashboard/StatusDistri
 import { LiveActivityFeed } from "@/src/components/dashboard/LiveActivityFeed";
 import { fetchEmployeeActivity, fetchMe } from "@/src/lib/api";
 import { useAccess } from "@/src/contexts/AccessContext";
-import { Loader2, RefreshCw, ShieldAlert, ArrowRight, AlertCircle } from "lucide-react";
+import { useCompany } from "@/src/contexts/CompanyContext";
+import {
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  ArrowRight,
+  Building2,
+  AlertTriangle,
+} from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { slug, companyName } = useCompany();
   const [range, setRange] = useState<"weekly" | "monthly">("weekly");
   const [data, setData] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isNonEmployee, setIsNonEmployee] = useState(false);
+  const [accessState, setAccessState] = useState<"ok" | "no_company" | "forbidden" | "error">("ok");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const accessContext = useAccess();
@@ -35,30 +48,45 @@ export default function DashboardPage() {
   }, [accessContext.loading, accessContext.policyVersion]);
 
   const loadDashboard = async (showSpinner = true) => {
+    if (!slug) {
+      setAccessState("no_company");
+      setLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
     if (showSpinner) setLoading(true);
     else setIsRefreshing(true);
 
     try {
-      // 1. Verify current user profile & employee status
-      // When the user presses "Refresh" or "Check Again" we skip the cache.
-      const me = await fetchMe(undefined, { fresh: !showSpinner ? true : undefined });
+      // 1. Verify current user profile
+      const me = await fetchMe(slug, { fresh: !showSpinner ? true : undefined });
       setCurrentUser(me);
 
-      if (!me?.is_employee) {
-        setIsNonEmployee(true);
-        setData(null);
-        setLoading(false);
-        setIsRefreshing(false);
+      // 2. Fetch employee activity dashboard metrics
+      const res = await fetchEmployeeActivity(range, undefined, undefined, undefined, {
+        fresh: !showSpinner ? true : undefined,
+      });
+      setData(res);
+      setAccessState("ok");
+      setErrorMessage(null);
+    } catch (err: any) {
+      console.error("Failed to load dashboard activity", err);
+      const status = err?.response?.status;
+
+      // 401 Unauthorized -> redirect to login
+      if (status === 401) {
+        router.replace(slug ? `/${slug}/login` : "/login");
         return;
       }
 
-      setIsNonEmployee(false);
-      const res = await fetchEmployeeActivity(range, undefined, undefined, undefined, { fresh: !showSpinner ? true : undefined });
-      setData(res);
-    } catch (err: any) {
-      console.error("Failed to load dashboard activity", err);
-      if (err?.response?.status === 403) {
-        setIsNonEmployee(true);
+      // 403 Forbidden -> show access pending/restricted state with company name
+      if (status === 403) {
+        setAccessState("forbidden");
+        setData(null);
+      } else {
+        setAccessState("error");
+        setErrorMessage(err?.response?.data?.message || err?.message || "Failed to load dashboard data");
         setData(null);
       }
     } finally {
@@ -69,7 +97,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboard(true);
-  }, [range]);
+  }, [range, slug]);
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -127,47 +155,64 @@ export default function DashboardPage() {
             <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
             <p className="text-sm font-medium">Computing aggregated analytics & activity heatmap...</p>
           </div>
-        ) : isNonEmployee ? (
-          /* Non-Employee Access Restriction State */
+        ) : accessState === "no_company" ? (
+          /* No Active Company Selected State */
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 shadow-sm text-center">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-4">
+                <Building2 className="w-7 h-7" />
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20 mb-3">
+                Workspace Required
+              </span>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                No Active Workspace
+              </h3>
+              <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                No active company workspace is selected. Please select or join a company in your account.
+              </p>
+              <Link
+                href="/my-account"
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                Go to My Account
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        ) : accessState === "forbidden" ? (
+          /* 403 Forbidden: Workspace Access Pending / Restricted State */
           <div className="flex flex-col items-center justify-center py-12 px-4">
             <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 shadow-sm text-center">
               <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4">
                 <ShieldAlert className="w-7 h-7" />
               </div>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-3">
-                Employee Profile Required
+                Access Pending
               </span>
               <h3 className="text-lg font-bold text-foreground mb-2">
-                Dashboard Access Restricted
+                You don't have access to this workspace yet
               </h3>
-              <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-                You are logged in as{" "}
+              <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                You are signed in as{" "}
                 <span className="font-semibold text-foreground">
                   {currentUser?.email || currentUser?.name || "User"}
                 </span>
-                . The Activity Dashboard, streak heatmaps, and time logs are only available to users with an active employee profile.
+                . Your account is pending role assignment or workspace administrator approval for{" "}
+                <span className="font-semibold text-foreground">
+                  {companyName || slug || "this workspace"}
+                </span>
+                . Please contact your workspace administrator to grant you access.
               </p>
 
-              <div className="bg-muted/40 border border-border/60 rounded-xl p-4 text-xs text-left text-muted-foreground mb-6 space-y-1.5">
-                <div className="font-semibold text-foreground flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-primary" />
-                  How to enable access:
-                </div>
-                <p>
-                  Ask a workspace administrator to enable{" "}
-                  <span className="font-medium text-foreground">Is Employee</span> on your user account, or create an Employee record with your email address under{" "}
-                  <span className="font-medium text-foreground">Configuration &gt; Employees</span>.
-                </p>
-              </div>
-
               <div className="flex flex-col sm:flex-row items-center gap-3">
-                <CompanyLink
-                  href="/tasks"
+                <Link
+                  href="/my-account"
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
                 >
-                  Go to Tasks
+                  Go to My Account
                   <ArrowRight className="w-4 h-4" />
-                </CompanyLink>
+                </Link>
                 <button
                   onClick={() => loadDashboard(true)}
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-foreground font-medium text-sm hover:bg-muted transition-colors"
@@ -176,6 +221,28 @@ export default function DashboardPage() {
                   Check Again
                 </button>
               </div>
+            </div>
+          </div>
+        ) : accessState === "error" ? (
+          /* Generic Error State */
+          <div className="flex flex-col items-center justify-center py-12 px-4">
+            <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 shadow-sm text-center">
+              <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                Failed to load dashboard
+              </h3>
+              <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                {errorMessage || "An unexpected error occurred while loading dashboard metrics."}
+              </p>
+              <button
+                onClick={() => loadDashboard(true)}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Try Again
+              </button>
             </div>
           </div>
         ) : (
