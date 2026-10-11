@@ -88,8 +88,10 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
 
     function MockEmployeeModel(this: any, dto: any) {
       Object.assign(this, dto);
-      this.save = jest.fn().mockResolvedValue(this);
     }
+    MockEmployeeModel.prototype.save = jest.fn().mockImplementation(function (this: any) {
+      return Promise.resolve(this);
+    });
     Object.assign(MockEmployeeModel, {
       find: jest.fn().mockReturnValue({
         populate: jest.fn().mockReturnValue({
@@ -784,6 +786,65 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
       expect(created.status).toBe('Active');
       expect(created.companyId).toEqual(companyAId);
       expect(created.userId).toEqual(userDoc._id);
+    });
+
+    it('allows same email to be created in two different companies (BUG-09)', async () => {
+      const companyAId = new Types.ObjectId();
+      const companyBId = new Types.ObjectId();
+      const sharedEmail = 'multicompany.user@example.com';
+
+      findOneMock.mockImplementation(() => ({
+        select: () => ({
+          lean: () => ({
+            exec: jest.fn().mockResolvedValue(null),
+          }),
+        }),
+      }));
+
+      const empA = await service.create(companyAId, {
+        email: sharedEmail,
+        fullName: { firstName: 'Multi', lastName: 'User' },
+        role: 'Employee',
+        joiningDate: new Date(),
+      });
+      expect(empA).toBeDefined();
+      expect(empA.companyId).toEqual(companyAId);
+      expect(empA.email).toBe(sharedEmail);
+
+      const empB = await service.create(companyBId, {
+        email: sharedEmail,
+        fullName: { firstName: 'Multi', lastName: 'User' },
+        role: 'Employee',
+        joiningDate: new Date(),
+      });
+      expect(empB).toBeDefined();
+      expect(empB.companyId).toEqual(companyBId);
+      expect(empB.email).toBe(sharedEmail);
+    });
+
+    it('catches Mongo E11000 duplicate key error and throws ConflictException (BUG-09)', async () => {
+      const companyAId = new Types.ObjectId();
+      const empDto = {
+        email: 'collision@example.com',
+        fullName: { firstName: 'Collide', lastName: 'User' },
+        role: 'Employee',
+        joiningDate: new Date(),
+      };
+
+      findOneMock.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(null),
+          }),
+        }),
+      });
+
+      jest.spyOn(employeeModel.prototype, 'save').mockRejectedValueOnce({
+        code: 11000,
+        message: 'E11000 duplicate key error',
+      });
+
+      await expect(service.create(companyAId, empDto)).rejects.toThrow(ConflictException);
     });
   });
 

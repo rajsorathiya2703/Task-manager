@@ -343,7 +343,17 @@ export class EmployeesService implements OnModuleInit {
 
     createEmployeeDto.companyId = companyId;
     const newEmployee = new this.employeeModel(createEmployeeDto);
-    const saved = await newEmployee.save();
+    let saved: Employee;
+    try {
+      saved = await newEmployee.save();
+    } catch (err: any) {
+      if (err.code === 11000) {
+        throw new ConflictException(
+          `An employee with email "${createEmployeeDto.email}" already exists in this company`,
+        );
+      }
+      throw err;
+    }
 
     if (saved.email) {
       const existingUser = await this.usersService.findByEmail(saved.email);
@@ -585,14 +595,24 @@ export class EmployeesService implements OnModuleInit {
       }
     }
 
-    const existingEmployee = await this.employeeModel
-      .findOneAndUpdate(
-        { _id: new Types.ObjectId(id), companyId },
-        { $set: updateEmployeeDto },
-        { new: true },
-      )
-      .populate('userId')
-      .exec();
+    let existingEmployee: Employee | null;
+    try {
+      existingEmployee = await this.employeeModel
+        .findOneAndUpdate(
+          { _id: new Types.ObjectId(id), companyId },
+          { $set: updateEmployeeDto },
+          { new: true },
+        )
+        .populate('userId')
+        .exec();
+    } catch (err: any) {
+      if (err.code === 11000) {
+        throw new ConflictException(
+          `An employee with email "${updateEmployeeDto.email}" already exists in this company`,
+        );
+      }
+      throw err;
+    }
 
     if (!existingEmployee) {
       throw new NotFoundException(`Employee #${id} not found`);
