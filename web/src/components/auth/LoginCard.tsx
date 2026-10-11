@@ -19,12 +19,14 @@ const GoogleIcon = () => (
 
 const PyramidLogo = () => (
   <div className="flex flex-col items-center justify-center mb-8">
-    <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-4 shadow-sm" aria-label="Pyramid Logo">
-      <svg className="w-6 h-6 text-primary-foreground" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-        <path d="M12 2L2 20h20L12 2zm0 4.2L17.5 17H6.5L12 6.2z" />
-      </svg>
+    <div className="w-16 h-16 flex items-center justify-center mb-3 shadow-xs" aria-label="Own Technology Logo">
+      <img
+        src="/logo.png"
+        alt="Own Technology Logo"
+        className="w-full h-full object-contain"
+      />
     </div>
-    <h1 className="text-2xl font-bold tracking-tight text-foreground">Pyramid</h1>
+    <h1 className="text-2xl font-bold tracking-tight text-foreground">Own Technology</h1>
   </div>
 );
 
@@ -53,7 +55,7 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
             if (status?.isMember) {
               try {
                 localStorage.setItem("lastCompany", slug);
-              } catch {}
+              } catch { }
               router.push(`/${slug}/dashboard`);
             } else {
               router.push(`/${slug}/join`);
@@ -105,7 +107,7 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
             </div>
           )}
           <h1 className="text-2xl font-bold tracking-tight text-foreground text-center">
-            {companyName || "Pyramid Workspace"}
+            {companyName || "Own Technology Workspace"}
           </h1>
           <p className="text-xs font-mono text-muted-foreground mt-1">/{slug}</p>
         </div>

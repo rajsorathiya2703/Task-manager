@@ -52,17 +52,14 @@ export function SiteHeader() {
           className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg py-1 px-1.5 -ml-1.5 transition-colors"
         >
           <div
-            className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-sm"
+            className="w-9 h-9 flex items-center justify-center shrink-0"
             aria-hidden="true"
           >
-            <svg
-              className="w-4 h-4 text-primary-foreground"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              stroke="none"
-            >
-              <path d="M12 2L2 20h20L12 2zm0 4.2L17.5 17H6.5L12 6.2z" />
-            </svg>
+            <img
+              src="/logo.png"
+              alt="Pyramid Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
           <span className="text-lg font-bold tracking-tight text-foreground">
             {siteConfig.brand.name}
@@ -80,11 +77,10 @@ export function SiteHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`h-16 inline-flex items-center border-b-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-sm ${
-                  active
-                    ? "text-foreground border-foreground font-semibold"
-                    : "text-muted-foreground border-transparent hover:text-foreground"
-                }`}
+                className={`h-16 inline-flex items-center border-b-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-sm ${active
+                  ? "text-foreground border-foreground font-semibold"
+                  : "text-muted-foreground border-transparent hover:text-foreground"
+                  }`}
               >
                 {item.label}
               </Link>
@@ -148,11 +144,10 @@ export function SiteHeader() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    active
-                      ? "bg-muted text-foreground font-semibold"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  }`}
+                  className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active
+                    ? "bg-muted text-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    }`}
                 >
                   {item.label}
                 </Link>

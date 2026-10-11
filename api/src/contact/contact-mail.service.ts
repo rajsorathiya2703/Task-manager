@@ -46,12 +46,12 @@ export class ContactMailService {
       process.env.BREVO_SENDER_EMAIL ||
       process.env.SMTP_FROM ||
       process.env.SMTP_USER ||
-      'noreply@pyramid.com'
+      'noreply@owntechnology.com'
     ).trim();
   }
 
   private getSenderName(): string {
-    return (process.env.BREVO_SENDER_NAME || 'Pyramid Website').trim();
+    return (process.env.BREVO_SENDER_NAME || 'Own Technology Website').trim();
   }
 
   async sendContactQuery(input: ContactQueryInput): Promise<boolean> {
@@ -89,14 +89,13 @@ export class ContactMailService {
               <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Email:</td>
               <td style="padding: 8px 0; color: #0f172a;"><a href="mailto:${safeEmail}" style="color: #2563eb;">${safeEmail}</a></td>
             </tr>
-            ${
-              safePhone
-                ? `<tr>
+            ${safePhone
+          ? `<tr>
                     <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Phone:</td>
                     <td style="padding: 8px 0; color: #0f172a;">${safePhone}</td>
                   </tr>`
-                : ''
-            }
+          : ''
+        }
             <tr>
               <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Subject:</td>
               <td style="padding: 8px 0; color: #0f172a;">${safeSubject}</td>
@@ -114,9 +113,8 @@ export class ContactMailService {
         </div>
       `.trim();
 
-      const textContent = `New Website Contact Query\n\nName: ${input.name}\nEmail: ${input.email}${
-        input.phone ? `\nPhone: ${input.phone}` : ''
-      }\nSubject: ${input.subject || 'New message'}\n\nMessage:\n${input.message}\n`;
+      const textContent = `New Website Contact Query\n\nName: ${input.name}\nEmail: ${input.email}${input.phone ? `\nPhone: ${input.phone}` : ''
+        }\nSubject: ${input.subject || 'New message'}\n\nMessage:\n${input.message}\n`;
 
       const brevoApiKey = process.env.BREVO_API_KEY?.trim();
 

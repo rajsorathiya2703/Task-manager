@@ -20,6 +20,10 @@ export const metadata: Metadata = {
     template: "%s | " + siteConfig.brand.name,
   },
   description: siteConfig.brand.description,
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

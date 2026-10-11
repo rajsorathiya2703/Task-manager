@@ -3,13 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { 
-  Building2, 
-  ArrowRight, 
-  Plus, 
-  KeyRound, 
-  LogOut, 
-  Loader2, 
+import {
+  Building2,
+  ArrowRight,
+  Plus,
+  KeyRound,
+  LogOut,
+  Loader2,
   ChevronRight,
   ShieldCheck,
   UserCheck
@@ -74,7 +74,7 @@ export default function SelectCompanyPage() {
         if (activeList.length === 1) {
           try {
             localStorage.setItem("lastCompany", activeList[0].slug);
-          } catch {}
+          } catch { }
           window.location.href = `/${activeList[0].slug}/dashboard`;
           return;
         }
@@ -99,7 +99,7 @@ export default function SelectCompanyPage() {
   const handleSelectCompany = (slug: string) => {
     try {
       localStorage.setItem("lastCompany", slug);
-    } catch {}
+    } catch { }
     // Reset client state via full page reload to the new tenant dashboard
     window.location.href = `/${slug}/dashboard`;
   };
@@ -134,10 +134,12 @@ export default function SelectCompanyPage() {
       <div className="w-full max-w-xl space-y-6">
         {/* Brand Header */}
         <div className="flex flex-col items-center justify-center text-center space-y-2">
-          <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center mb-2 shadow-sm text-primary-foreground">
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 20h20L12 2zm0 4.2L17.5 17H6.5L12 6.2z" />
-            </svg>
+          <div className="w-16 h-16 flex items-center justify-center mb-2 shadow-xs">
+            <img
+              src="/logo.png"
+              alt="Own Technology Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Select Workspace

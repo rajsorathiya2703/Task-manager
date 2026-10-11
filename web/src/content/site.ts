@@ -67,7 +67,7 @@ export interface SiteConfig {
 
 export const siteConfig: SiteConfig = {
   brand: {
-    name: 'Pyramid',
+    name: 'Own Technology',
     tagline: 'Modern task and team management for fast-moving organizations.',
     description:
       'Run tasks, track billable time, manage leave balances, and collaborate seamlessly across teams with an AI-powered workspace.',
@@ -91,12 +91,12 @@ export const siteConfig: SiteConfig = {
     },
   },
   contact: {
-    email: 'TODO_contact@pyramid.com',
+    email: 'TODO_contact@owntechnology.com',
     phone: 'TODO_+1 (555) 000-0000',
     address: 'TODO_123 Business Avenue, Suite 400, Tech City',
     hours: 'TODO_Mon - Fri: 9:00 AM - 6:00 PM EST',
-    linkedin: 'TODO_https://linkedin.com/company/pyramid',
-    instagram: 'TODO_https://instagram.com/pyramid',
+    linkedin: 'TODO_https://linkedin.com/company/owntechnology',
+    instagram: 'TODO_https://instagram.com/owntechnology',
   },
   // Replace these values with real business statistics
   stats: {
@@ -185,6 +185,6 @@ export const siteConfig: SiteConfig = {
   pricing: {
     headline: 'Pricing tailored to your team',
     body: 'We are currently finalizing our subscription tiers to best serve teams of all sizes. Contact our sales team today to discuss your organization needs and find the right fit.',
-    salesEmail: 'TODO_sales@pyramid.com',
+    salesEmail: 'TODO_sales@owntechnology.com',
   },
 };

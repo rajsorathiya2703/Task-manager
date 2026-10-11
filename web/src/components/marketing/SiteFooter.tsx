@@ -32,17 +32,14 @@ export function SiteFooter() {
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <div
-                className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-sm"
+                className="w-9 h-9 flex items-center justify-center shrink-0"
                 aria-hidden="true"
               >
-                <svg
-                  className="w-4 h-4 text-primary-foreground"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  stroke="none"
-                >
-                  <path d="M12 2L2 20h20L12 2zm0 4.2L17.5 17H6.5L12 6.2z" />
-                </svg>
+                <img
+                  src="/logo.png"
+                  alt="Pyramid Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="text-lg font-bold tracking-tight text-foreground">
                 {siteConfig.brand.name}
