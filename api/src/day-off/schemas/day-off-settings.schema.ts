@@ -4,7 +4,7 @@ import { applyTenantPlugin } from '../../common/tenant.plugin';
 
 @Schema({ timestamps: true })
 export class DayOffSettings extends Document {
-  @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'Company', required: true })
   companyId: Types.ObjectId;
 
   @Prop({ default: 'admin@taskmanager.com', trim: true, lowercase: true })

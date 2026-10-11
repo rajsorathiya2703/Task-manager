@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Types } from 'mongoose';
 import { EmployeesService } from './employees.service';
 import { Employee } from './schemas/employee.schema';
@@ -1120,4 +1125,181 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
       expect(membershipsAfterSecond[0].roleIds).toHaveLength(1);
     });
   });
+
+  describe('BUG-01: Employee Invitation Flow', () => {
+    let mockEmailService: any;
+    let mockCompanyModel: any;
+    let serviceWithEmail: EmployeesService;
+    let testEmpModel: any;
+    let testUsersService: any;
+
+    beforeEach(() => {
+      mockEmailService = {
+        sendEmployeeInvite: jest.fn().mockResolvedValue(true),
+      };
+
+      mockCompanyModel = {
+        findById: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue({ _id: mockCompanyId, name: 'Acme Test Corp' }),
+            }),
+          }),
+        }),
+      };
+
+      testUsersService = {
+        findByEmail: jest.fn().mockResolvedValue(null),
+      };
+
+      function TestEmp(this: any, dto: any) {
+        Object.assign(this, dto);
+      }
+      TestEmp.prototype.save = jest.fn().mockImplementation(function (this: any) {
+        this._id = this._id || new Types.ObjectId();
+        return Promise.resolve(this);
+      });
+      TestEmp.findOne = jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(null),
+          }),
+        }),
+      });
+
+      testEmpModel = TestEmp;
+
+      serviceWithEmail = new EmployeesService(
+        testEmpModel,
+        {} as any,
+        testUsersService,
+        undefined,
+        undefined,
+        undefined,
+        mockEmailService,
+        mockCompanyModel,
+      );
+    });
+
+    it('invokes emailService.sendEmployeeInvite after saving a new employee', async () => {
+      const dto = {
+        email: 'invited@example.com',
+        fullName: { firstName: 'John', lastName: 'Doe' },
+        role: 'Engineer',
+        joiningDate: new Date(),
+      };
+
+      const result = await serviceWithEmail.create(mockCompanyId, dto, 'Admin Lead');
+      expect(result).toBeDefined();
+      expect(mockEmailService.sendEmployeeInvite).toHaveBeenCalledTimes(1);
+      const inviteCall = mockEmailService.sendEmployeeInvite.mock.calls[0][0];
+      expect(inviteCall.to).toBe('invited@example.com');
+      expect(inviteCall.companyName).toBe('Acme Test Corp');
+      expect(inviteCall.inviterName).toBe('Admin Lead');
+      expect(inviteCall.employeeName).toBe('John Doe');
+    });
+
+    it('creates employee successfully even when emailService.sendEmployeeInvite throws/rejects', async () => {
+      mockEmailService.sendEmployeeInvite.mockRejectedValue(new Error('SMTP Network Failure'));
+
+      const dto = {
+        email: 'robust@example.com',
+        fullName: { firstName: 'Robust', lastName: 'Worker' },
+        role: 'Engineer',
+        joiningDate: new Date(),
+      };
+
+      const result = await serviceWithEmail.create(mockCompanyId, dto, 'Admin Lead');
+      expect(result).toBeDefined();
+      expect(result.email).toBe('robust@example.com');
+      expect(mockEmailService.sendEmployeeInvite).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls activateForUser when user with email already exists', async () => {
+      const existingUser = {
+        _id: new Types.ObjectId(),
+        email: 'preexisting@example.com',
+      };
+      testUsersService.findByEmail.mockResolvedValue(existingUser);
+      const activateSpy = jest.spyOn(serviceWithEmail, 'activateForUser').mockResolvedValue(1);
+
+      const dto = {
+        email: 'preexisting@example.com',
+        fullName: { firstName: 'Pre', lastName: 'Existing' },
+        role: 'Designer',
+        joiningDate: new Date(),
+      };
+
+      const result = await serviceWithEmail.create(mockCompanyId, dto, 'Admin Lead');
+      expect(result).toBeDefined();
+      expect(activateSpy).toHaveBeenCalledWith(existingUser);
+      expect(mockEmailService.sendEmployeeInvite).toHaveBeenCalledTimes(1);
+    });
+
+    describe('resendInvite', () => {
+      it('throws NotFoundException when employee is not found', async () => {
+        testEmpModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        });
+
+        let error: any;
+        try {
+          await serviceWithEmail.resendInvite(mockCompanyId, new Types.ObjectId().toString(), 'Admin');
+        } catch (err) {
+          error = err;
+        }
+        expect(error).toBeInstanceOf(NotFoundException);
+      });
+
+      it('throws BadRequestException when employee has no email', async () => {
+        const empWithoutEmail = {
+          _id: new Types.ObjectId(),
+          companyId: mockCompanyId,
+          email: '',
+          fullName: { firstName: 'No', lastName: 'Mail' },
+        };
+        testEmpModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(empWithoutEmail),
+        });
+
+        let error: any;
+        try {
+          await serviceWithEmail.resendInvite(mockCompanyId, empWithoutEmail._id.toString(), 'Admin');
+        } catch (err) {
+          error = err;
+        }
+        expect(error).toBeInstanceOf(BadRequestException);
+      });
+
+      it('resends invite successfully and calls activateForUser if user exists', async () => {
+        const empId = new Types.ObjectId();
+        const empWithEmail = {
+          _id: empId,
+          companyId: mockCompanyId,
+          email: 'resend@example.com',
+          fullName: { firstName: 'Resend', lastName: 'User' },
+        };
+        testEmpModel.findOne = jest.fn().mockResolvedValue(empWithEmail);
+
+        const existingUser = {
+          _id: new Types.ObjectId(),
+          email: 'resend@example.com',
+        };
+        testUsersService.findByEmail.mockResolvedValue(existingUser);
+        const activateSpy = jest.spyOn(serviceWithEmail, 'activateForUser').mockResolvedValue(1);
+
+        const result = await serviceWithEmail.resendInvite(mockCompanyId, empId.toString(), 'Admin Inviter');
+        expect(result).toEqual({ success: true, message: 'Invitation email resent successfully' });
+        expect(activateSpy).toHaveBeenCalledWith(existingUser);
+        expect(mockEmailService.sendEmployeeInvite).toHaveBeenCalledWith({
+          to: 'resend@example.com',
+          employeeName: 'Resend User',
+          companyName: 'Acme Test Corp',
+          inviterName: 'Admin Inviter',
+          url: process.env.WEB_URL,
+        });
+      });
+    });
+  });
 });
+

@@ -133,4 +133,61 @@ describe('EmailService', () => {
       expect(callArg.html).not.toContain('/undefined/tasks');
     });
   });
+
+  describe('sendEmployeeInvite (BUG-01)', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('sends invitation email with company name, inviter, and one button linking to WEB_URL', async () => {
+      process.env.WEB_URL = 'https://app.taskmanager.io';
+
+      await service.sendEmployeeInvite({
+        to: 'newemp@example.com',
+        employeeName: 'Jane Doe',
+        companyName: 'Acme Corp',
+        inviterName: 'Admin Alice',
+      });
+
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      const callArg = sendEmailSpy.mock.calls[0][0];
+
+      expect(callArg.to).toBe('newemp@example.com');
+      expect(callArg.subject).toContain('Acme Corp');
+      expect(callArg.text).toContain('Admin Alice');
+      expect(callArg.text).toContain('https://app.taskmanager.io');
+      expect(callArg.html).toContain('Acme Corp');
+      expect(callArg.html).toContain('Admin Alice');
+      expect(callArg.html).toContain('Jane Doe');
+      expect(callArg.html).toContain('href="https://app.taskmanager.io"');
+      expect(callArg.html).toContain('Log in to Workspace');
+    });
+
+    it('escapes HTML tags in company name, inviter name, and employee name', async () => {
+      process.env.WEB_URL = 'https://app.taskmanager.io';
+
+      await service.sendEmployeeInvite({
+        to: 'newemp@example.com',
+        employeeName: '<script>alert("emp")</script>',
+        companyName: '<b>Evil Company</b>',
+        inviterName: '<img src=x onerror=alert(1)>',
+      });
+
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      const callArg = sendEmailSpy.mock.calls[0][0];
+
+      expect(callArg.html).toContain('&lt;script&gt;alert(&quot;emp&quot;)&lt;/script&gt;');
+      expect(callArg.html).toContain('&lt;b&gt;Evil Company&lt;/b&gt;');
+      expect(callArg.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+      expect(callArg.html).not.toContain('<script>');
+      expect(callArg.html).not.toContain('<b>Evil Company</b>');
+    });
+  });
 });
+

@@ -24,6 +24,7 @@ describe('EmployeesController (P1-14 — Employees Controller Module Gate)', () 
       linkByUserId: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
+      resendInvite: jest.fn(),
     } as any;
 
     controller = new EmployeesController(employeesService);
@@ -32,6 +33,11 @@ describe('EmployeesController (P1-14 — Employees Controller Module Gate)', () 
   describe('Route @RequireAccess metadata', () => {
     it('decorates create with { module: "employees", action: "create" }', () => {
       const meta = reflector.get(ACCESS_REQUIREMENT_KEY, controller.create);
+      expect(meta).toEqual({ module: 'employees', action: 'create' });
+    });
+
+    it('decorates resendInvite with { module: "employees", action: "create" }', () => {
+      const meta = reflector.get(ACCESS_REQUIREMENT_KEY, controller.resendInvite);
       expect(meta).toEqual({ module: 'employees', action: 'create' });
     });
 
@@ -356,6 +362,45 @@ describe('EmployeesController (P1-14 — Employees Controller Module Gate)', () 
         'all',
       );
       expect(dtoWithCompanyId.companyId).toBeUndefined();
+    });
+  });
+
+  describe('POST /employees/:id/resend-invite (admin-only)', () => {
+    it('throws ForbiddenException when non-admin tries to resend invite', async () => {
+      const req = {
+        user: { id: 'user-normal', is_system_admin: false },
+        membership: { isCompanyOwner: false, isSystemAdmin: false },
+        access: { employees: { scope: 'own' } },
+      };
+
+      await expect(
+        controller.resendInvite(new Types.ObjectId(), 'emp-123', req),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(employeesService.resendInvite).not.toHaveBeenCalled();
+    });
+
+    it('allows company admin to resend invite and passes inviterName', async () => {
+      employeesService.resendInvite.mockResolvedValue({
+        success: true,
+        message: 'Invitation resent',
+      });
+
+      const companyId = new Types.ObjectId();
+      const req = {
+        user: { id: 'admin-1', name: 'Admin Alice', is_system_admin: false },
+        membership: { isCompanyOwner: true, isSystemAdmin: false },
+        access: { employees: { scope: 'all' } },
+      };
+
+      const result = await controller.resendInvite(companyId, 'emp-123', req);
+
+      expect(result).toEqual({ success: true, message: 'Invitation resent' });
+      expect(employeesService.resendInvite).toHaveBeenCalledWith(
+        companyId,
+        'emp-123',
+        'Admin Alice',
+      );
     });
   });
 });

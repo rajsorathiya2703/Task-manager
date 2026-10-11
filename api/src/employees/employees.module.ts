@@ -7,8 +7,10 @@ import { Team, TeamSchema } from '../teams/schemas/team.schema';
 import { Membership, MembershipSchema } from '../companies/schemas/membership.schema';
 import { Role, RoleSchema } from '../access/schemas/role.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { UsersModule } from '../users/users.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 @Module({
   imports: [
@@ -18,9 +20,11 @@ import { CompaniesModule } from '../companies/companies.module';
       { name: Membership.name, schema: MembershipSchema },
       { name: Role.name, schema: RoleSchema },
       { name: User.name, schema: UserSchema },
+      { name: Company.name, schema: CompanySchema },
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => CompaniesModule),
+    forwardRef(() => TasksModule),
   ],
   controllers: [EmployeesController],
   providers: [EmployeesService],

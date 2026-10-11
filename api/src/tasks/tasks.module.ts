@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TasksService } from './tasks.service';
 import { TasksController } from './tasks.controller';
@@ -23,10 +23,11 @@ import { CompaniesModule } from '../companies/companies.module';
     ]),
     CloudinaryModule,
     CommentsModule,
-    CompaniesModule,
+    forwardRef(() => CompaniesModule),
   ],
   controllers: [TasksController],
   providers: [TasksService, EmailService],
+  exports: [EmailService, TasksService],
 })
 export class TasksModule {}
 

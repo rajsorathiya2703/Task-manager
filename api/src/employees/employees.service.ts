@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   ConflictException,
   OnModuleInit,
   Logger,
@@ -15,6 +16,8 @@ import { UsersService } from '../users/users.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Membership } from '../companies/schemas/membership.schema';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
+import { Company } from '../companies/schemas/company.schema';
+import { EmailService } from '../tasks/email.service';
 import {
   isEmployeeInScope,
   EmployeeSubject,
@@ -43,6 +46,11 @@ export class EmployeesService implements OnModuleInit {
     @Optional()
     @InjectModel(User.name)
     private userModel?: Model<UserDocument>,
+    @Optional()
+    private emailService?: EmailService,
+    @Optional()
+    @InjectModel(Company.name)
+    private companyModel?: Model<Company>,
   ) {}
 
   async onModuleInit() {
@@ -312,7 +320,11 @@ export class EmployeesService implements OnModuleInit {
     return null;
   }
 
-  async create(companyId: Types.ObjectId, createEmployeeDto: any): Promise<Employee> {
+  async create(
+    companyId: Types.ObjectId,
+    createEmployeeDto: any,
+    inviterName?: string,
+  ): Promise<Employee> {
     if (createEmployeeDto.email && typeof createEmployeeDto.email === 'string') {
       const cleanEmail = escapeRegex(createEmployeeDto.email.trim().toLowerCase());
 
@@ -360,9 +372,96 @@ export class EmployeesService implements OnModuleInit {
       if (existingUser && existingUser.email) {
         await this.activateForUser(existingUser);
       }
+
+      // (2) Call EmailService.sendEmployeeInvite wrapped in try/catch so failure never blocks creation
+      try {
+        if (this.emailService) {
+          let companyName = 'our company';
+          if (this.companyModel) {
+            const comp = await this.companyModel.findById(companyId).select('name').lean().exec();
+            if (comp?.name) companyName = comp.name;
+          }
+          const employeeName =
+            (saved as any)?.name ||
+            [saved?.fullName?.firstName, saved?.fullName?.lastName].filter(Boolean).join(' ') ||
+            undefined;
+
+          await this.emailService.sendEmployeeInvite({
+            to: saved.email,
+            employeeName,
+            companyName,
+            inviterName,
+            url: process.env.WEB_URL,
+          });
+        }
+      } catch (emailErr: any) {
+        this.logger.warn(
+          `Failed to send employee invite email to ${saved.email}: ${emailErr?.message || emailErr}`,
+        );
+      }
     }
 
     return saved;
+  }
+
+  /**
+   * Resends invitation email for an existing employee.
+   * Ensures activateForUser is triggered if User already exists.
+   */
+  async resendInvite(
+    companyId: Types.ObjectId,
+    employeeId: string,
+    inviterName?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (!employeeId || !Types.ObjectId.isValid(employeeId)) {
+      throw new NotFoundException('Invalid employee ID');
+    }
+
+    const findQuery: any = this.employeeModel.findOne({
+      _id: new Types.ObjectId(employeeId),
+      companyId,
+    });
+    const employee =
+      findQuery && typeof findQuery.exec === 'function'
+        ? await findQuery.exec()
+        : await findQuery;
+
+    if (!employee) {
+      throw new NotFoundException(`Employee not found in this company`);
+    }
+
+    if (!employee.email) {
+      throw new BadRequestException(`Employee does not have an email address`);
+    }
+
+    // When User with that email already exists, call activateForUser
+    const existingUser = await this.usersService.findByEmail(employee.email);
+    if (existingUser && existingUser.email) {
+      await this.activateForUser(existingUser);
+    }
+
+    let companyName = 'our company';
+    if (this.companyModel) {
+      const comp = await this.companyModel.findById(companyId).select('name').lean().exec();
+      if (comp?.name) companyName = comp.name;
+    }
+
+    const employeeName =
+      (employee as any)?.name ||
+      [employee?.fullName?.firstName, employee?.fullName?.lastName].filter(Boolean).join(' ') ||
+      undefined;
+
+    if (this.emailService) {
+      await this.emailService.sendEmployeeInvite({
+        to: employee.email,
+        employeeName,
+        companyName,
+        inviterName,
+        url: process.env.WEB_URL,
+      });
+    }
+
+    return { success: true, message: 'Invitation email resent successfully' };
   }
 
   async findAll(

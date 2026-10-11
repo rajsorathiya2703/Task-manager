@@ -14,6 +14,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { siteConfig, ServiceIconKey } from "@/src/content/site";
+import { AuthHomeRedirect } from "@/src/components/marketing/AuthHomeRedirect";
 
 export const metadata: Metadata = {
   title: {
@@ -39,6 +40,7 @@ export default function MarketingHomePage() {
 
   return (
     <div className="flex flex-col gap-16 sm:gap-24 pb-20">
+      <AuthHomeRedirect />
       {/* 1. Hero Section */}
       <section className="pt-12 sm:pt-20 lg:pt-24 max-w-6xl mx-auto px-4 sm:px-6 w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
@@ -65,8 +67,14 @@ export default function MarketingHomePage() {
                 {siteConfig.cta.trial.label}
               </Link>
               <Link
+                href="/login"
+                className="w-full sm:w-auto bg-card border border-border hover:bg-muted text-foreground rounded-full px-7 h-12 inline-flex items-center justify-center text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Log in
+              </Link>
+              <Link
                 href="/contact"
-                className="w-full sm:w-auto border border-border bg-card hover:bg-muted text-foreground rounded-full px-7 h-12 inline-flex items-center justify-center text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full sm:w-auto text-muted-foreground hover:text-foreground rounded-full px-5 h-12 inline-flex items-center justify-center text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Contact sales
               </Link>

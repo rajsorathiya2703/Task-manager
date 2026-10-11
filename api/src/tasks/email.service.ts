@@ -305,4 +305,51 @@ export class EmailService {
       html,
     });
   }
+
+  async sendEmployeeInvite(options: {
+    to: string;
+    employeeName?: string;
+    companyName: string;
+    inviterName?: string;
+    url?: string;
+  }): Promise<boolean> {
+    const homeUrl = (
+      options.url ||
+      process.env.WEB_URL ||
+      process.env.APP_URL ||
+      this.getBaseUrl()
+    ).trim().replace(/\/+$/, '');
+
+    const safeCompanyName = escapeHtml(options.companyName || 'the workspace');
+    const safeInviterName = escapeHtml(options.inviterName || 'A workspace administrator');
+    const safeEmployeeName = escapeHtml(options.employeeName || 'there');
+
+    const subject = `You've been invited to join ${options.companyName || 'our workspace'}`;
+    const text = `Hello ${options.employeeName || ''},\n\n${options.inviterName || 'A workspace administrator'} has invited you to join ${options.companyName || 'our workspace'}.\n\nGet started by logging in: ${homeUrl}\n\nThis is an automated message. Please do not reply.`;
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #eaeaea; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #111827; margin-top: 0; font-size: 22px;">Invitation to join ${safeCompanyName}</h2>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.5;">Hello <strong>${safeEmployeeName}</strong>,</p>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.5;">
+          <strong>${safeInviterName}</strong> has invited you to join and collaborate on <strong>${safeCompanyName}</strong>.
+        </p>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.5;">
+          Click the button below to log in and access your workspace:
+        </p>
+        <div style="margin: 32px 0; text-align: center;">
+          <a href="${homeUrl}" style="background-color: #0070f3; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">Log in to Workspace</a>
+        </div>
+        <p style="color: #999; font-size: 12px; margin-top: 40px; text-align: center;">
+          This is an automated message. Please do not reply.
+        </p>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: options.to,
+      subject,
+      text,
+      html,
+    });
+  }
 }

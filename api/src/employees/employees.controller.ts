@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { EmployeesService } from './employees.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -27,13 +28,37 @@ export class EmployeesController {
   create(
     @CurrentCompany() companyId: Types.ObjectId,
     @Body() createEmployeeDto: any,
+    @Req() req?: any,
   ) {
     // DO NOT add companyId to the request body; strip any companyId sent by the client
     if (createEmployeeDto && typeof createEmployeeDto === 'object') {
       delete createEmployeeDto.companyId;
     }
 
-    return this.employeesService.create(companyId, createEmployeeDto);
+    const inviterName = req?.user?.name || req?.user?.email;
+    return inviterName
+      ? this.employeesService.create(companyId, createEmployeeDto, inviterName)
+      : this.employeesService.create(companyId, createEmployeeDto);
+  }
+
+  @Post(':id/resend-invite')
+  @RequireAccess({ module: 'employees', action: 'create' })
+  async resendInvite(
+    @CurrentCompany() companyId: Types.ObjectId,
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    const isSystemAdmin = req?.user?.is_system_admin === true;
+    const isCompanyOwner = req?.membership?.isCompanyOwner === true;
+    const isMembershipAdmin = req?.membership?.isSystemAdmin === true;
+    const hasAdminScope = req?.access?.employees?.scope === 'all';
+
+    if (!isSystemAdmin && !isCompanyOwner && !isMembershipAdmin && !hasAdminScope) {
+      throw new ForbiddenException('Only company administrators can resend invitations.');
+    }
+
+    const inviterName = req?.user?.name || req?.user?.email;
+    return this.employeesService.resendInvite(companyId, id, inviterName);
   }
 
   @Get()

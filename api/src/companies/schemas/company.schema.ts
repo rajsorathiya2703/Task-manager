@@ -77,5 +77,3 @@ export class Company extends Document {
 }
 
 export const CompanySchema = SchemaFactory.createForClass(Company);
-
-CompanySchema.index({ slug: 1 }, { unique: true });
