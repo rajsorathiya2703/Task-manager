@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AccessModule } from '../access/access.module';
 import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { Membership, MembershipSchema } from '../companies/schemas/membership.schema';
+import { EmployeesModule } from '../employees/employees.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { Membership, MembershipSchema } from '../companies/schemas/membership.sc
       { name: Membership.name, schema: MembershipSchema },
     ]),
     UsersModule,
+    forwardRef(() => EmployeesModule),
     PassportModule,
     JwtModule.register({}),
     ConfigModule,

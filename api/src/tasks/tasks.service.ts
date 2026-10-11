@@ -24,6 +24,10 @@ import {
   TaskProjectContext,
   ScopeType,
 } from '../access/resolvers/tasks.resolver';
+import { COMPLETED_STATUSES } from './constants/task.constants';
+import { escapeRegExp } from '../common/utils/escape-regexp';
+
+export { COMPLETED_STATUSES };
 
 @Injectable()
 export class TasksService {
@@ -65,7 +69,7 @@ export class TasksService {
     }
     if (email && typeof email === 'string' && email.trim()) {
       const cleanEmail = email.trim();
-      employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+      employeeQuery.push({ email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') } });
     }
 
     const employees: any[] =
@@ -201,7 +205,7 @@ export class TasksService {
       ownConditions.push({ assignedBy: { $in: employeeIds } });
     }
     if (email && typeof email === 'string' && email.trim()) {
-      const emailRegex = new RegExp(`^${email.trim()}$`, 'i');
+      const emailRegex = new RegExp(`^${escapeRegExp(email.trim())}$`, 'i');
       ownConditions.push({ assigneeEmail: { $regex: emailRegex } });
       ownConditions.push({ 'members.email': { $regex: emailRegex } });
     }
@@ -308,7 +312,7 @@ export class TasksService {
     if (creatorEmployeeId && !taskData.assignedBy) {
       taskData.assignedBy = creatorEmployeeId;
     }
-    if (createTaskDto.status === 'Done') {
+    if (createTaskDto.status && (COMPLETED_STATUSES as readonly string[]).includes(createTaskDto.status)) {
       taskData.completedAt = new Date();
     }
     const createdTask = new this.taskModel(taskData);
@@ -326,7 +330,7 @@ export class TasksService {
             try {
               const cleanEmpEmail = employee.email.trim();
               const existingUser = await this.employeeModel.db.collection('users').findOne({
-                email: { $regex: new RegExp(`^${cleanEmpEmail}$`, 'i') },
+                email: { $regex: new RegExp(`^${escapeRegExp(cleanEmpEmail)}$`, 'i') },
               });
               if (existingUser) {
                 await this.employeeModel.updateOne(
@@ -694,9 +698,9 @@ export class TasksService {
     delete sanitizedDto.companyId;
 
     if (updateTaskDto.status !== undefined) {
-      if (updateTaskDto.status === 'Done') {
+      if ((COMPLETED_STATUSES as readonly string[]).includes(updateTaskDto.status)) {
         sanitizedDto.completedAt = new Date();
-      } else if (existingTask.status === 'Done') {
+      } else if (existingTask.status && (COMPLETED_STATUSES as readonly string[]).includes(existingTask.status)) {
         sanitizedDto.completedAt = null;
       }
     }
@@ -738,7 +742,7 @@ export class TasksService {
             if (employee && employee.email && !employee.userId) {
               const cleanEmpEmail = employee.email.trim();
               const existingUser = await this.employeeModel.db.collection('users').findOne({
-                email: { $regex: new RegExp(`^${cleanEmpEmail}$`, 'i') },
+                email: { $regex: new RegExp(`^${escapeRegExp(cleanEmpEmail)}$`, 'i') },
               });
               if (existingUser) {
                 await this.employeeModel.updateOne(
@@ -1222,7 +1226,7 @@ export class TasksService {
     let employeeAssigneeId: any = undefined;
     if (cleanInviteEmail) {
       const employeeQuery: any = {
-        email: { $regex: new RegExp(`^${cleanInviteEmail}$`, 'i') },
+        email: { $regex: new RegExp(`^${escapeRegExp(cleanInviteEmail)}$`, 'i') },
       };
       if (resolvedCompanyId) {
         employeeQuery.companyId = resolvedCompanyId;

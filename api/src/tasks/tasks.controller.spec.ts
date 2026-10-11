@@ -435,6 +435,20 @@ describe('TasksController (P1-05 & MC-23 — Company-scoped Tasks Controller)', 
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('throws BadRequestException for host bypass attempts like evilcloudinary.com (BUG-11)', async () => {
+      const res: any = { redirect: jest.fn() };
+      await expect(
+        controller.viewFile(mockCompanyId, 'https://evilcloudinary.com/file.pdf', 'test.pdf', '', res),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for non-https Cloudinary URLs (BUG-11)', async () => {
+      const res: any = { redirect: jest.fn() };
+      await expect(
+        controller.viewFile(mockCompanyId, 'http://res.cloudinary.com/demo/image/upload/sample.pdf', 'sample.pdf', '', res),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('throws NotFoundException (404) if URL does not belong to the company', async () => {
       const fileUrl = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
       tasksService.verifyFileBelongsToCompany.mockResolvedValue(false);

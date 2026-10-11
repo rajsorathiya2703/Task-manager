@@ -685,4 +685,206 @@ describe('TasksService - Authorization & Tenant Scoping (P1-05 & MC-21)', () => 
       expect(result).toBe(false);
     });
   });
+
+  describe('BUG-06: Task completion status and completedAt handling', () => {
+    it('sets completedAt when creating a task with status Done', async () => {
+      const savedTask = await service.create(mockCompanyId, mockOwnerUserId, {
+        title: 'Task Done',
+        status: 'Done',
+      } as any);
+
+      expect(savedTask.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('sets completedAt when creating a task with status Completed', async () => {
+      const savedTask = await service.create(mockCompanyId, mockOwnerUserId, {
+        title: 'Task Completed',
+        status: 'Completed',
+      } as any);
+
+      expect(savedTask.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('sets completedAt when updating a task to Completed', async () => {
+      const existing = {
+        _id: new Types.ObjectId(mockTaskId),
+        companyId: mockCompanyId,
+        title: 'Task 1',
+        userId: mockOwnerUserId,
+        status: 'In Progress',
+        completedAt: null,
+        members: [],
+        toObject: () => ({ ...existing }),
+      };
+
+      taskModel.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(existing),
+      });
+
+      let capturedUpdateOps: any;
+      taskModel.findOneAndUpdate.mockImplementation((filter: any, ops: any) => {
+        capturedUpdateOps = ops;
+        return {
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue({
+            ...existing,
+            ...ops.$set,
+            toObject: () => ({ ...existing, ...ops.$set }),
+          }),
+        };
+      });
+
+      await service.update(
+        mockCompanyId,
+        mockTaskId,
+        { status: 'Completed' } as any,
+        mockOwnerUserId,
+        'owner@example.com',
+        undefined,
+        true,
+        'all',
+      );
+
+      expect(capturedUpdateOps.$set.completedAt).toBeInstanceOf(Date);
+      expect(capturedUpdateOps.$set.status).toBe('Completed');
+    });
+
+    it('sets completedAt when updating a task to Done', async () => {
+      const existing = {
+        _id: new Types.ObjectId(mockTaskId),
+        companyId: mockCompanyId,
+        title: 'Task 1',
+        userId: mockOwnerUserId,
+        status: 'To Do',
+        completedAt: null,
+        members: [],
+        toObject: () => ({ ...existing }),
+      };
+
+      taskModel.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(existing),
+      });
+
+      let capturedUpdateOps: any;
+      taskModel.findOneAndUpdate.mockImplementation((filter: any, ops: any) => {
+        capturedUpdateOps = ops;
+        return {
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue({
+            ...existing,
+            ...ops.$set,
+            toObject: () => ({ ...existing, ...ops.$set }),
+          }),
+        };
+      });
+
+      await service.update(
+        mockCompanyId,
+        mockTaskId,
+        { status: 'Done' } as any,
+        mockOwnerUserId,
+        'owner@example.com',
+        undefined,
+        true,
+        'all',
+      );
+
+      expect(capturedUpdateOps.$set.completedAt).toBeInstanceOf(Date);
+      expect(capturedUpdateOps.$set.status).toBe('Done');
+    });
+
+    it('clears completedAt when moving back from Completed to In Progress', async () => {
+      const existing = {
+        _id: new Types.ObjectId(mockTaskId),
+        companyId: mockCompanyId,
+        title: 'Task 1',
+        userId: mockOwnerUserId,
+        status: 'Completed',
+        completedAt: new Date(),
+        members: [],
+        toObject: () => ({ ...existing }),
+      };
+
+      taskModel.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(existing),
+      });
+
+      let capturedUpdateOps: any;
+      taskModel.findOneAndUpdate.mockImplementation((filter: any, ops: any) => {
+        capturedUpdateOps = ops;
+        return {
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue({
+            ...existing,
+            ...ops.$set,
+            toObject: () => ({ ...existing, ...ops.$set }),
+          }),
+        };
+      });
+
+      await service.update(
+        mockCompanyId,
+        mockTaskId,
+        { status: 'In Progress' } as any,
+        mockOwnerUserId,
+        'owner@example.com',
+        undefined,
+        true,
+        'all',
+      );
+
+      expect(capturedUpdateOps.$set.completedAt).toBeNull();
+      expect(capturedUpdateOps.$set.status).toBe('In Progress');
+    });
+
+    it('clears completedAt when moving back from Done to To Do', async () => {
+      const existing = {
+        _id: new Types.ObjectId(mockTaskId),
+        companyId: mockCompanyId,
+        title: 'Task 1',
+        userId: mockOwnerUserId,
+        status: 'Done',
+        completedAt: new Date(),
+        members: [],
+        toObject: () => ({ ...existing }),
+      };
+
+      taskModel.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(existing),
+      });
+
+      let capturedUpdateOps: any;
+      taskModel.findOneAndUpdate.mockImplementation((filter: any, ops: any) => {
+        capturedUpdateOps = ops;
+        return {
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue({
+            ...existing,
+            ...ops.$set,
+            toObject: () => ({ ...existing, ...ops.$set }),
+          }),
+        };
+      });
+
+      await service.update(
+        mockCompanyId,
+        mockTaskId,
+        { status: 'To Do' } as any,
+        mockOwnerUserId,
+        'owner@example.com',
+        undefined,
+        true,
+        'all',
+      );
+
+      expect(capturedUpdateOps.$set.completedAt).toBeNull();
+      expect(capturedUpdateOps.$set.status).toBe('To Do');
+    });
+  });
 });
+
+

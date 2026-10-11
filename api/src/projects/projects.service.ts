@@ -19,6 +19,7 @@ import {
   ProjectTeamContext,
   ScopeType,
 } from '../access/resolvers/projects.resolver';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class ProjectsService {
@@ -48,7 +49,7 @@ export class ProjectsService {
     }
     if (email && typeof email === 'string' && email.trim()) {
       const cleanEmail = email.trim();
-      employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+      employeeQuery.push({ email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') } });
     }
 
     const employees: any[] =

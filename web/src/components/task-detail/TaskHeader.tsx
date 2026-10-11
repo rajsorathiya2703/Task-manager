@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Tag, Paperclip, Link2, FileText, Loader2, File, ExternalLink, Play, Square, Video, Image as ImageIcon } from "lucide-react";
 import { Popover } from "@headlessui/react";
-import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles } from "../../lib/api";
+import { uploadResource, fetchMe, getAttachmentUrl, validateUploadFiles, normalizeUrl } from "../../lib/api";
 import { useEffect } from "react";
 import { BoundField } from "../access";
 
@@ -83,9 +83,10 @@ export function TaskHeader({
 
   const handleAddLink = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      const url = e.currentTarget.value.trim();
-      if (url && setTaskData && taskData) {
-        const newResource = { name: url, url, type: 'link' };
+      const rawUrl = e.currentTarget.value.trim();
+      if (rawUrl && setTaskData && taskData) {
+        const url = normalizeUrl(rawUrl);
+        const newResource = { name: rawUrl, url, type: 'link' };
         setTaskData({
           ...taskData,
           resources: [...(taskData.resources || []), newResource]
@@ -218,7 +219,7 @@ export function TaskHeader({
                 {taskData?.resources?.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-1">
                     {taskData.resources.map((res: any, idx: number) => {
-                      const fileUrl = getAttachmentUrl(res.url, res.name);
+                      const fileUrl = res.type === 'link' ? normalizeUrl(res.url) : getAttachmentUrl(res.url, res.name);
                       const ext = res.name?.split('.').pop()?.toLowerCase() || '';
                       const isPdf = ext === 'pdf';
                       const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
@@ -236,7 +237,7 @@ export function TaskHeader({
                           href={fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          download={res.name}
+                          download={res.type === 'link' ? undefined : res.name}
                           className="flex items-center gap-1.5 bg-muted/30 hover:bg-muted px-2.5 py-1.5 rounded-md text-foreground font-medium text-xs border border-border/50 transition-colors"
                           title={res.name}
                         >

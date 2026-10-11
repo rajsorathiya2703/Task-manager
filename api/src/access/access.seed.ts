@@ -9,6 +9,7 @@ import { MODULE_CATALOG, getSensitiveFields, ModuleDef } from './catalog';
 import { Optional } from '@nestjs/common';
 import { Company } from '../companies/schemas/company.schema';
 import { Membership } from '../companies/schemas/membership.schema';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 /**
  * AccessSeedService (Phase 0 — P0-07)
@@ -206,7 +207,7 @@ export class AccessSeedService {
         if (emp.email && typeof emp.email === 'string' && emp.email.trim()) {
           const cleanEmail = emp.email.trim();
           const matchingUser = await this.userModel.findOne({
-            email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+            email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') },
           }).exec();
 
           if (matchingUser) {

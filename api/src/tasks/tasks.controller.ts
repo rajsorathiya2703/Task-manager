@@ -138,14 +138,23 @@ export class TasksController {
       throw new BadRequestException('File URL is required');
     }
 
-    // Validate that the URL is a trusted Cloudinary host or a safe relative path to prevent open redirect
+    // Validate that the URL is a trusted Cloudinary host (https only, strict domain) or a safe relative path
     let isAllowedHost = false;
     try {
-      const parsed = new URL(fileUrl, 'http://localhost');
-      isAllowedHost =
-        parsed.hostname.endsWith('cloudinary.com') ||
-        parsed.hostname === 'localhost' ||
-        (fileUrl.startsWith('/') && !fileUrl.startsWith('//'));
+      if (fileUrl.startsWith('/') && !fileUrl.startsWith('//')) {
+        isAllowedHost = true;
+      } else {
+        const parsed = new URL(fileUrl);
+        const isHttps = parsed.protocol === 'https:';
+        const isCloudinary =
+          parsed.hostname === 'res.cloudinary.com' ||
+          parsed.hostname.endsWith('.cloudinary.com');
+        const isLocalhost =
+          parsed.hostname === 'localhost' &&
+          (parsed.protocol === 'http:' || parsed.protocol === 'https:');
+
+        isAllowedHost = (isHttps && isCloudinary) || isLocalhost;
+      }
     } catch {
       isAllowedHost = false;
     }

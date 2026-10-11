@@ -5,13 +5,16 @@ import {
   ConflictException,
   OnModuleInit,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Employee } from './schemas/employee.schema';
 import { Team } from '../teams/schemas/team.schema';
 import { UsersService } from '../users/users.service';
-import { UserDocument } from '../users/schemas/user.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import { Membership } from '../companies/schemas/membership.schema';
+import { Role, RoleDocument } from '../access/schemas/role.schema';
 import {
   isEmployeeInScope,
   EmployeeSubject,
@@ -19,10 +22,9 @@ import {
   EmployeeTeamContext,
   ScopeType,
 } from '../access/resolvers/employees.resolver';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
-function escapeRegex(text: string): string {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-}
+const escapeRegex = escapeRegExp;
 
 @Injectable()
 export class EmployeesService implements OnModuleInit {
@@ -32,6 +34,15 @@ export class EmployeesService implements OnModuleInit {
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Team.name) private teamModel: Model<Team>,
     private usersService: UsersService,
+    @Optional()
+    @InjectModel(Membership.name)
+    private membershipModel?: Model<Membership>,
+    @Optional()
+    @InjectModel(Role.name)
+    private roleModel?: Model<RoleDocument>,
+    @Optional()
+    @InjectModel(User.name)
+    private userModel?: Model<UserDocument>,
   ) {}
 
   async onModuleInit() {
@@ -43,6 +54,143 @@ export class EmployeesService implements OnModuleInit {
     } catch {
       // Index already dropped or not present; ignore
     }
+  }
+
+  /**
+   * Idempotently activates pre-created or existing Employee record(s) for a given User.
+   * Links employee.userId if unlinked or already pointing to this user (never overwrites a different user).
+   * Ensures company membership and attaches the default Employee role for each employee's company.
+   * Sets user.is_employee = true.
+   * Safe for multi-company employees with the same email.
+   */
+  async activateForUser(user: { _id: any; email?: string | null }): Promise<number> {
+    if (!user || !user.email || !user.email.trim()) {
+      return 0;
+    }
+
+    const cleanEmail = escapeRegex(user.email.trim());
+    const emailRe = new RegExp(`^${cleanEmail}$`, 'i');
+    const userObjId = Types.ObjectId.isValid(user._id)
+      ? new Types.ObjectId(user._id)
+      : user._id;
+
+    // 1. ALL employee records for this email (multi-company => can be >1)
+    const findQuery: any = this.employeeModel.find({ email: emailRe });
+    const employees =
+      (typeof findQuery?.exec === 'function'
+        ? await findQuery.exec()
+        : await findQuery) || [];
+
+    let activatedCount = 0;
+    for (const emp of employees) {
+      // 2. Link only if unlinked, or already linked to this user. Never overwrite another user's link.
+      if (!emp.userId) {
+        emp.userId = userObjId;
+        if (typeof emp.save === 'function') {
+          await emp.save();
+        } else {
+          await this.employeeModel.updateOne(
+            { _id: emp._id },
+            { $set: { userId: userObjId } },
+          );
+        }
+      }
+
+      if (String(emp.userId) !== String(user._id)) {
+        continue;
+      }
+      activatedCount++;
+
+      // 3. Ensure membership for that company with the employee's default role
+      if (this.membershipModel && emp.companyId) {
+        const compId = emp.companyId;
+
+        // Look up default employee role in this company, fallback to global role
+        let defaultRoleId: Types.ObjectId | undefined;
+        if (this.roleModel) {
+          const roleDoc = await this.roleModel
+            .findOne({
+              $or: [{ companyId: compId }, { companyId: null }, { companyId: { $exists: false } }],
+              slug: 'employee',
+              isActive: true,
+            })
+            .sort({ companyId: -1 })
+            .select('_id')
+            .lean()
+            .exec();
+
+          if (roleDoc) {
+            defaultRoleId = roleDoc._id as Types.ObjectId;
+            // Add user to role.members array
+            await this.roleModel.updateOne(
+              { _id: roleDoc._id },
+              { $addToSet: { members: userObjId } },
+            );
+          }
+        }
+
+        const roleIdsToAdd = defaultRoleId ? [defaultRoleId] : [];
+
+        const existingMembership = await this.membershipModel
+          .findOne({ companyId: compId, userId: userObjId })
+          .exec();
+
+        if (existingMembership) {
+          existingMembership.employeeId = emp._id as Types.ObjectId;
+          existingMembership.status = 'active';
+          if (
+            defaultRoleId &&
+            !existingMembership.roleIds?.some((r: any) => String(r) === String(defaultRoleId))
+          ) {
+            existingMembership.roleIds = [
+              ...(existingMembership.roleIds || []),
+              defaultRoleId,
+            ];
+          }
+          if (typeof existingMembership.save === 'function') {
+            await existingMembership.save();
+          } else {
+            await this.membershipModel.updateOne(
+              { _id: existingMembership._id },
+              {
+                $set: {
+                  employeeId: emp._id,
+                  status: 'active',
+                  roleIds: existingMembership.roleIds,
+                },
+              },
+            );
+          }
+        } else {
+          await this.membershipModel.create({
+            companyId: compId,
+            userId: userObjId,
+            employeeId: emp._id,
+            roleIds: roleIdsToAdd,
+            isCompanyOwner: false,
+            isSystemAdmin: false,
+            status: 'active',
+            joinedAt: new Date(),
+          });
+        }
+      }
+    }
+
+    // 4. Global flag on User
+    if (employees.length > 0) {
+      if (this.userModel) {
+        await this.userModel.updateOne(
+          { _id: userObjId },
+          { $set: { is_employee: true } },
+        );
+      } else if (this.usersService?.updateUser) {
+        await this.usersService.updateUser(String(user._id), {
+          is_employee: true,
+        });
+      }
+    }
+
+    return employees.length;
   }
 
   /**
@@ -195,7 +343,16 @@ export class EmployeesService implements OnModuleInit {
 
     createEmployeeDto.companyId = companyId;
     const newEmployee = new this.employeeModel(createEmployeeDto);
-    return newEmployee.save();
+    const saved = await newEmployee.save();
+
+    if (saved.email) {
+      const existingUser = await this.usersService.findByEmail(saved.email);
+      if (existingUser && existingUser.email) {
+        await this.activateForUser(existingUser);
+      }
+    }
+
+    return saved;
   }
 
   async findAll(
@@ -500,7 +657,12 @@ export class EmployeesService implements OnModuleInit {
     const existing = await this.employeeModel
       .findOne({ companyId, userId: userQuery })
       .exec();
-    if (existing) return existing;
+    if (existing) {
+      if (user.email) {
+        await this.activateForUser(user);
+      }
+      return existing;
+    }
 
     // 2. Unlinked Employee with matching email in this company -> link instead of creating duplicate
     if (user.email) {
@@ -512,6 +674,7 @@ export class EmployeesService implements OnModuleInit {
             await linked.save();
           }
         }
+        await this.activateForUser(user);
         return linked;
       }
     }
@@ -535,7 +698,11 @@ export class EmployeesService implements OnModuleInit {
     }
 
     const newEmployee = new this.employeeModel(payload);
-    return newEmployee.save();
+    const saved = await newEmployee.save();
+    if (user.email) {
+      await this.activateForUser(user);
+    }
+    return saved;
   }
 
   /**

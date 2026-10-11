@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,6 +9,7 @@ import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
 import { Company } from '../companies/schemas/company.schema';
 import { Membership } from '../companies/schemas/membership.schema';
+import { EmployeesService } from '../employees/employees.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,9 @@ export class AuthService {
     private configService: ConfigService,
     @InjectModel(Company.name) private companyModel: Model<Company>,
     @InjectModel(Membership.name) private membershipModel: Model<Membership>,
+    @Optional()
+    @Inject(forwardRef(() => EmployeesService))
+    private readonly employeesService?: EmployeesService,
   ) {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID') || 'placeholder';
     this.googleClient = new OAuth2Client(clientId);
@@ -93,6 +97,12 @@ export class AuthService {
     } else {
       if (existingGuestId) {
         user = await this.usersService.findByGuestId(existingGuestId);
+        if (!user && Types.ObjectId.isValid(existingGuestId)) {
+          const candidate = await this.usersService.findById(existingGuestId);
+          if (candidate && candidate.authType === 'guest') {
+            user = candidate;
+          }
+        }
       }
       
       if (user) {
@@ -117,7 +127,9 @@ export class AuthService {
       }
     }
 
-    // Auto-linking is removed per MC-33 (linking now happens on join, per company)
+    if (user.email && this.employeesService) {
+      await this.employeesService.activateForUser(user);
+    }
 
     const tokens = await this.issueTokens(user._id.toString());
     return { user, tokens };

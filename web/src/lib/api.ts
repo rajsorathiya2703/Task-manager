@@ -324,6 +324,8 @@ export const uploadGenericResource = async (formData: FormData) => {
   return res.data;
 };
 
+export { normalizeUrl } from './utils';
+
 export const getAttachmentUrl = (url: string, name?: string): string => {
   if (!url) return '';
   const isCloudinaryPdf =

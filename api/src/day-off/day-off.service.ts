@@ -19,6 +19,7 @@ import { Team } from '../teams/schemas/team.schema';
 import { Company } from '../companies/schemas/company.schema';
 import { DayOffMailService } from './day-off-mail.service';
 import { ScopeType } from '../access/policy.engine';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class DayOffService {
@@ -436,7 +437,7 @@ export class DayOffService {
       employee = await this.employeeModel.findOne({ userId }).exec();
       if (!employee && user.email) {
         employee = await this.employeeModel.findOne({
-          email: { $regex: new RegExp(`^${user.email.trim()}$`, 'i') },
+          email: { $regex: new RegExp(`^${escapeRegExp(user.email.trim())}$`, 'i') },
         }).exec();
       }
       if (employee && !companyId && employee.companyId) {
@@ -594,7 +595,7 @@ export class DayOffService {
     }
     if (email && typeof email === 'string' && email.trim()) {
       const cleanEmail = email.trim();
-      queryConditions.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+      queryConditions.push({ email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') } });
     }
     if (queryConditions.length === 0) return [];
     const filter: any = { $or: queryConditions };

@@ -16,6 +16,7 @@ import {
   TeamResource,
   ScopeType,
 } from '../access/resolvers/teams.resolver';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class TeamsService {
@@ -44,7 +45,7 @@ export class TeamsService {
     }
     if (email && typeof email === 'string' && email.trim()) {
       const cleanEmail = email.trim();
-      employeeQuery.push({ email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } });
+      employeeQuery.push({ email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') } });
     }
 
     const employees: any[] =

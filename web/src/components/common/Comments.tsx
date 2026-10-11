@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText } from "lucide-react";
+import { Paperclip, Send, Smile, File, Trash, Edit2, X, Download, CheckCheck, Lock, Video, Image as ImageIcon, FileText, ExternalLink } from "lucide-react";
 import EmojiPicker from 'emoji-picker-react';
-import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles, getCompanySlug } from "../../lib/api";
+import { uploadGenericResource, fetchMe, fetchEmployees, getAttachmentUrl, validateUploadFiles, getCompanySlug, normalizeUrl } from "../../lib/api";
 
 export interface CommentUser {
   name: string;
@@ -643,14 +643,15 @@ export function Comments({
               {hasAttachments && (
                 <div className={`flex flex-col gap-1 w-full ${isMine ? 'items-end' : 'items-start'}`}>
                   {comment.attachments!.map((att, i) => {
-                    const fileUrl = getAttachmentUrl(att.url, att.name);
+                    const fileUrl = att.type === 'link' ? normalizeUrl(att.url) : getAttachmentUrl(att.url, att.name);
                     const ext = att.name?.split('.').pop()?.toLowerCase() || '';
                     const isPdf = ext === 'pdf';
                     const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'].includes(ext);
                     const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'avif'].includes(ext);
 
                     let icon = <File className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-primary'}`} />;
-                    if (isPdf) icon = <FileText className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-red-500'}`} />;
+                    if (att.type === 'link') icon = <ExternalLink className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-orange-500'}`} />;
+                    else if (isPdf) icon = <FileText className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-red-500'}`} />;
                     else if (isVideo) icon = <Video className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-purple-500'}`} />;
                     else if (isImage) icon = <ImageIcon className={`w-4 h-4 ${isMine ? 'text-primary-foreground' : 'text-emerald-500'}`} />;
 
@@ -664,7 +665,7 @@ export function Comments({
                         href={fileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        download={att.name}
+                        download={att.type === 'link' ? undefined : att.name}
                         style={tailStyle}
                         title={att.name}
                         className={`

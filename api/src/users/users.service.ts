@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
 import { Membership } from '../companies/schemas/membership.schema';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class UsersService {
@@ -29,7 +30,7 @@ export class UsersService {
     if (!email || !email.trim()) return null;
     const cleanEmail = email.trim();
     return this.userModel.findOne({
-      email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+      email: { $regex: new RegExp(`^${escapeRegExp(cleanEmail)}$`, 'i') },
     }).exec();
   }
 

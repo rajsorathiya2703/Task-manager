@@ -9,6 +9,9 @@ import {
   UseGuards,
   UnauthorizedException,
   Logger,
+  Optional,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
@@ -18,6 +21,7 @@ import { Public } from './decorators/public.decorator';
 import { JwtService } from '@nestjs/jwt';
 import { AccessService } from '../access/access.service';
 import { NoTenant } from '../common/tenant.decorators';
+import { EmployeesService } from '../employees/employees.service';
 
 @NoTenant()
 @Controller('auth')
@@ -28,6 +32,9 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
     private readonly accessService: AccessService,
+    @Optional()
+    @Inject(forwardRef(() => EmployeesService))
+    private readonly employeesService?: EmployeesService,
   ) {}
 
   private setCookies(res: Response, accessToken: string, refreshToken: string) {
@@ -62,11 +69,16 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    let existingGuestId: string | undefined;
-    if (req.cookies?.access_token) {
+    let existingGuestId: string | undefined =
+      body.guestId || (req.cookies as any)?.guestId || (req.cookies as any)?.guest_id;
+    if (!existingGuestId && req.cookies?.access_token) {
       try {
         const payload = this.jwtService.decode(req.cookies.access_token) as any;
-        if (payload?.sub) existingGuestId = payload.sub;
+        if (payload?.guestId) {
+          existingGuestId = payload.guestId;
+        } else if (payload?.sub) {
+          existingGuestId = payload.sub;
+        }
       } catch (e) {}
     }
     
@@ -122,6 +134,10 @@ export class AuthController {
   ) {
     const user = (req as any).user;
     if (!user) return null;
+
+    if (user.email && this.employeesService) {
+      await this.employeesService.activateForUser(user);
+    }
 
     const userId = (user._id?.toString() || user.id || '').toString();
 

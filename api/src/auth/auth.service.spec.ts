@@ -200,4 +200,87 @@ describe('AuthService (MC-33 — Multi-company Auth Service)', () => {
       expect(res.tokens).toBeDefined();
     });
   });
+
+  describe('BUG-10: loginWithGoogle guest upgrade', () => {
+    beforeEach(() => {
+      (service as any).googleClient = {
+        verifyIdToken: jest.fn().mockResolvedValue({
+          getPayload: () => ({
+            sub: 'google-sub-123',
+            email: 'newuser@example.com',
+            name: 'New User',
+            picture: 'https://example.com/avatar.jpg',
+          }),
+        }),
+      };
+    });
+
+    it('upgrades existing guest user when existingGuestId is a user ObjectId (from JWT sub)', async () => {
+      const guestObjectId = new Types.ObjectId();
+      const guestUser: any = {
+        _id: guestObjectId,
+        authType: 'guest',
+        guestId: 'uuid-1234',
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      usersService.findByGoogleId.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue(null);
+      usersService.findByGuestId.mockResolvedValue(null);
+      usersService.findById.mockResolvedValue(guestUser);
+
+      const res = await service.loginWithGoogle('mock-id-token', guestObjectId.toString());
+
+      expect(guestUser.authType).toBe('google');
+      expect(guestUser.googleId).toBe('google-sub-123');
+      expect(guestUser.email).toBe('newuser@example.com');
+      expect(guestUser.save).toHaveBeenCalled();
+      expect(res.user._id).toEqual(guestObjectId);
+    });
+
+    it('upgrades existing guest user when existingGuestId is a guestId UUID', async () => {
+      const guestUser: any = {
+        _id: new Types.ObjectId(),
+        authType: 'guest',
+        guestId: 'uuid-1234',
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      usersService.findByGoogleId.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue(null);
+      usersService.findByGuestId.mockResolvedValue(guestUser);
+
+      const res = await service.loginWithGoogle('mock-id-token', 'uuid-1234');
+
+      expect(guestUser.authType).toBe('google');
+      expect(guestUser.googleId).toBe('google-sub-123');
+      expect(guestUser.save).toHaveBeenCalled();
+    });
+
+    it('does not upgrade user if candidate user is not a guest (authType !== guest)', async () => {
+      const nonGuestUser: any = {
+        _id: new Types.ObjectId(),
+        authType: 'google',
+        email: 'other@example.com',
+      };
+
+      usersService.findByGoogleId.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue(null);
+      usersService.findByGuestId.mockResolvedValue(null);
+      usersService.findById.mockResolvedValue(nonGuestUser);
+
+      const freshUser: any = {
+        _id: new Types.ObjectId(),
+        authType: 'google',
+        email: 'newuser@example.com',
+      };
+      usersService.createUser.mockResolvedValue(freshUser);
+
+      const res = await service.loginWithGoogle('mock-id-token', nonGuestUser._id.toString());
+
+      expect(usersService.createUser).toHaveBeenCalled();
+      expect(res.user._id).toEqual(freshUser._id);
+    });
+  });
 });
+

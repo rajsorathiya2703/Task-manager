@@ -6,6 +6,9 @@ import { EmployeesService } from './employees.service';
 import { Employee } from './schemas/employee.schema';
 import { Team } from '../teams/schemas/team.schema';
 import { UsersService } from '../users/users.service';
+import { Membership } from '../companies/schemas/membership.schema';
+import { Role } from '../access/schemas/role.schema';
+import { User } from '../users/schemas/user.schema';
 
 describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
   let service: EmployeesService;
@@ -97,6 +100,7 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
             exec: jest.fn().mockResolvedValue([]),
           }),
         }),
+        exec: jest.fn().mockResolvedValue([aliceEmployeeDoc, bobEmployeeDoc, charlieEmployeeDoc]),
       }),
       findById: findOneMock,
       findOne: findOneMock,
@@ -780,6 +784,279 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
       expect(created.status).toBe('Active');
       expect(created.companyId).toEqual(companyAId);
       expect(created.userId).toEqual(userDoc._id);
+    });
+  });
+
+  describe('activateForUser (BUG-02)', () => {
+    let empModel: any;
+    let membModel: any;
+    let rModel: any;
+    let uModel: any;
+    let uService: any;
+    let actService: EmployeesService;
+
+    const company1Id = new Types.ObjectId();
+    const company2Id = new Types.ObjectId();
+    const defaultRoleId = new Types.ObjectId();
+
+    beforeEach(async () => {
+      const employeesDb: any[] = [];
+      const membershipsDb: any[] = [];
+      const rolesDb: any[] = [
+        {
+          _id: defaultRoleId,
+          slug: 'employee',
+          name: 'Employee',
+          isActive: true,
+          members: [],
+        },
+      ];
+
+      function MockEmp(this: any, data: any) {
+        Object.assign(this, data);
+        if (!this._id) this._id = new Types.ObjectId();
+        this.save = jest.fn().mockImplementation(async () => {
+          const idx = employeesDb.findIndex((e) => String(e._id) === String(this._id));
+          if (idx >= 0) employeesDb[idx] = this;
+          else employeesDb.push(this);
+          return this;
+        });
+      }
+
+      empModel = MockEmp;
+      empModel.find = jest.fn().mockImplementation((query: any) => {
+        let results = [...employeesDb];
+        if (query?.email) {
+          const regex = query.email instanceof RegExp ? query.email : new RegExp(query.email, 'i');
+          results = results.filter((e) => regex.test(e.email));
+        }
+        return {
+          exec: jest.fn().mockResolvedValue(results),
+        };
+      });
+      empModel.findOne = jest.fn().mockImplementation((query: any) => ({
+        select: () => ({
+          lean: () => ({ exec: jest.fn().mockResolvedValue(null) }),
+        }),
+        lean: () => ({ exec: jest.fn().mockResolvedValue(null) }),
+        exec: jest.fn().mockResolvedValue(
+          employeesDb.find((e) => {
+            if (query.companyId && String(e.companyId) !== String(query.companyId)) return false;
+            if (query.email && !new RegExp(query.email.$regex || query.email, 'i').test(e.email)) return false;
+            return true;
+          }) || null,
+        ),
+      }));
+      empModel.updateOne = jest.fn().mockImplementation(async (query: any, update: any) => {
+        const item = employeesDb.find((e) => String(e._id) === String(query._id));
+        if (item && update.$set) {
+          Object.assign(item, update.$set);
+        }
+        return { modifiedCount: 1 };
+      });
+
+      membModel = {
+        findOne: jest.fn().mockImplementation((query: any) => ({
+          exec: jest.fn().mockResolvedValue(
+            membershipsDb.find((m) =>
+              String(m.companyId) === String(query.companyId) &&
+              String(m.userId) === String(query.userId)
+            ) || null,
+          ),
+        })),
+        create: jest.fn().mockImplementation(async (doc: any) => {
+          const created = { _id: new Types.ObjectId(), ...doc, save: jest.fn() };
+          membershipsDb.push(created);
+          return created;
+        }),
+        updateOne: jest.fn().mockImplementation(async (query: any, update: any) => {
+          let item = membershipsDb.find((m) =>
+            String(m.companyId) === String(query.companyId) &&
+            String(m.userId) === String(query.userId)
+          );
+          if (!item && query._id) {
+            item = membershipsDb.find((m) => String(m._id) === String(query._id));
+          }
+          if (item) {
+            if (update.$set) Object.assign(item, update.$set);
+            if (update.$addToSet?.roleIds) {
+              item.roleIds = item.roleIds || [];
+              if (!item.roleIds.some((r: any) => String(r) === String(update.$addToSet.roleIds))) {
+                item.roleIds.push(update.$addToSet.roleIds);
+              }
+            }
+          }
+          return { modifiedCount: 1 };
+        }),
+      };
+
+      rModel = {
+        findOne: jest.fn().mockImplementation((query: any) => ({
+          sort: () => ({
+            select: () => ({
+              lean: () => ({
+                exec: jest.fn().mockResolvedValue(
+                  rolesDb.find((r) => r.slug === query.slug && r.isActive) || null,
+                ),
+              }),
+            }),
+          }),
+        })),
+        updateOne: jest.fn().mockImplementation(async (query: any, update: any) => {
+          const role = rolesDb.find((r) => String(r._id) === String(query._id));
+          if (role && update.$addToSet?.members) {
+            role.members = role.members || [];
+            if (!role.members.some((m: any) => String(m) === String(update.$addToSet.members))) {
+              role.members.push(update.$addToSet.members);
+            }
+          }
+          return { modifiedCount: 1 };
+        }),
+      };
+
+      uModel = {
+        updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      };
+
+      uService = {
+        findByEmail: jest.fn(),
+        updateUser: jest.fn().mockResolvedValue({}),
+      };
+
+      const mod: TestingModule = await Test.createTestingModule({
+        providers: [
+          EmployeesService,
+          { provide: getModelToken(Employee.name), useValue: empModel },
+          { provide: getModelToken(Team.name), useValue: { find: jest.fn() } },
+          { provide: UsersService, useValue: uService },
+          { provide: getModelToken(Membership.name), useValue: membModel },
+          { provide: getModelToken(Role.name), useValue: rModel },
+          { provide: getModelToken(User.name), useValue: uModel },
+        ],
+      }).compile();
+
+      actService = mod.get<EmployeesService>(EmployeesService);
+
+      // Helper to seed unlinked employee
+      (actService as any)._seedEmployee = (data: any) => {
+        const emp = new MockEmp(data);
+        employeesDb.push(emp);
+        return emp;
+      };
+      (actService as any)._getMemberships = () => membershipsDb;
+      (actService as any)._getRoles = () => rolesDb;
+      (actService as any)._getEmployees = () => employeesDb;
+    });
+
+    it('(a) employee created first then login: links employee, creates membership with default role, sets is_employee', async () => {
+      const user = { _id: new Types.ObjectId(), email: 'precreated@example.com' };
+      const preEmployee = (actService as any)._seedEmployee({
+        _id: new Types.ObjectId(),
+        companyId: company1Id,
+        email: 'precreated@example.com',
+        userId: null,
+        role: 'Employee',
+      });
+
+      const count = await actService.activateForUser(user);
+      expect(count).toBe(1);
+
+      // Verify employee userId is linked
+      expect(String(preEmployee.userId)).toBe(String(user._id));
+
+      // Verify membership created with default role
+      const memberships = (actService as any)._getMemberships();
+      expect(memberships).toHaveLength(1);
+      expect(String(memberships[0].companyId)).toBe(String(company1Id));
+      expect(String(memberships[0].userId)).toBe(String(user._id));
+      expect(memberships[0].status).toBe('active');
+      expect(memberships[0].roleIds.map(String)).toContain(String(defaultRoleId));
+
+      // Verify role members updated
+      const roles = (actService as any)._getRoles();
+      expect(roles[0].members.map(String)).toContain(String(user._id));
+
+      // Verify user is_employee flag updated
+      expect(uModel.updateOne).toHaveBeenCalledWith(
+        { _id: user._id },
+        { $set: { is_employee: true } },
+      );
+    });
+
+    it('(b) login first then employee created: creates employee and immediately activates membership', async () => {
+      const existingUser = { _id: new Types.ObjectId(), email: 'existinguser@example.com' };
+      uService.findByEmail.mockResolvedValue(existingUser);
+
+      const created = await actService.create(company1Id, {
+        email: 'existinguser@example.com',
+        fullName: { firstName: 'Existing', lastName: 'User' },
+        role: 'Employee',
+        joiningDate: new Date(),
+      });
+
+      expect(created).toBeDefined();
+      expect(String(created.userId)).toBe(String(existingUser._id));
+
+      // Membership should be created for this user in company1Id
+      const memberships = (actService as any)._getMemberships();
+      expect(memberships).toHaveLength(1);
+      expect(String(memberships[0].companyId)).toBe(String(company1Id));
+      expect(String(memberships[0].userId)).toBe(String(existingUser._id));
+      expect(memberships[0].roleIds.map(String)).toContain(String(defaultRoleId));
+    });
+
+    it('(c) two companies same email: links both employee records and ensures memberships in both companies', async () => {
+      const sharedEmail = 'multicompany@example.com';
+      const user = { _id: new Types.ObjectId(), email: sharedEmail };
+
+      const emp1 = (actService as any)._seedEmployee({
+        _id: new Types.ObjectId(),
+        companyId: company1Id,
+        email: sharedEmail,
+        userId: null,
+      });
+      const emp2 = (actService as any)._seedEmployee({
+        _id: new Types.ObjectId(),
+        companyId: company2Id,
+        email: sharedEmail,
+        userId: null,
+      });
+
+      const count = await actService.activateForUser(user);
+      expect(count).toBe(2);
+
+      expect(String(emp1.userId)).toBe(String(user._id));
+      expect(String(emp2.userId)).toBe(String(user._id));
+
+      const memberships = (actService as any)._getMemberships();
+      expect(memberships).toHaveLength(2);
+      const companyIds = memberships.map((m: any) => String(m.companyId));
+      expect(companyIds).toContain(String(company1Id));
+      expect(companyIds).toContain(String(company2Id));
+    });
+
+    it('(d) second call is a no-op: does not duplicate memberships or overwrite data', async () => {
+      const user = { _id: new Types.ObjectId(), email: 'idempotent@example.com' };
+      (actService as any)._seedEmployee({
+        _id: new Types.ObjectId(),
+        companyId: company1Id,
+        email: 'idempotent@example.com',
+        userId: null,
+      });
+
+      const firstCount = await actService.activateForUser(user);
+      expect(firstCount).toBe(1);
+
+      const membershipsAfterFirst = [...(actService as any)._getMemberships()];
+      expect(membershipsAfterFirst).toHaveLength(1);
+
+      // Second call
+      const secondCount = await actService.activateForUser(user);
+      expect(secondCount).toBe(1);
+
+      const membershipsAfterSecond = (actService as any)._getMemberships();
+      expect(membershipsAfterSecond).toHaveLength(1);
+      expect(membershipsAfterSecond[0].roleIds).toHaveLength(1);
     });
   });
 });

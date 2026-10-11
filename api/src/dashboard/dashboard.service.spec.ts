@@ -157,9 +157,9 @@ describe('DashboardService (P1-19 & MC-24)', () => {
       expect(result.employeesList).toHaveLength(3);
     });
 
-    it('should fallback to first employee if user has no employee profile', async () => {
+    it('returns selectedEmployee as null if user has no employee profile (BUG-07)', async () => {
       employeeModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockMyEmployee),
+        exec: jest.fn().mockResolvedValue(null),
       });
 
       const result = await service.getEmployeeActivity(
@@ -170,7 +170,7 @@ describe('DashboardService (P1-19 & MC-24)', () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.selectedEmployee).toBeDefined();
+      expect(result.selectedEmployee).toBeNull();
     });
   });
 
@@ -363,25 +363,23 @@ describe('DashboardService (P1-19 & MC-24)', () => {
       expect(result.selectedEmployee?._id).toBe(membershipEmpId.toString());
     });
 
-    it('limits fallback employee lookup to this company when user has no matching employee profile', async () => {
+    it('does not fallback to an arbitrary employee when user has no matching employee profile (BUG-07)', async () => {
       employeeModel.findOne.mockImplementation((filter: any) => {
         if (filter.userId || filter.email || filter._id) {
           return { exec: jest.fn().mockResolvedValue(null) };
         }
-        if (filter.companyId?.toString() === mockCompanyId.toString()) {
-          return { exec: jest.fn().mockResolvedValue(mockMyEmployee) };
-        }
-        return { exec: jest.fn().mockResolvedValue(null) };
+        return { exec: jest.fn().mockResolvedValue(mockMyEmployee) };
       });
 
-      await service.getEmployeeActivity(
+      const result = await service.getEmployeeActivity(
         { range: 'weekly' } as any,
         mockMyUserId,
         'nomatch@example.com',
         mockCompanyId,
       );
 
-      expect(employeeModel.findOne).toHaveBeenCalledWith({ companyId: mockCompanyId });
+      expect(employeeModel.findOne).not.toHaveBeenCalledWith({ companyId: mockCompanyId });
+      expect(result.selectedEmployee).toBeNull();
     });
 
     it('filters allEmployees by companyId', async () => {

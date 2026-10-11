@@ -5,6 +5,8 @@ import { Task } from '../tasks/schemas/task.schema';
 import { Employee } from '../employees/schemas/employee.schema';
 import { Team } from '../teams/schemas/team.schema';
 import { EmployeeActivityQueryDto } from './dto/employee-activity-query.dto';
+import { COMPLETED_STATUSES } from '../tasks/constants/task.constants';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class DashboardService {
@@ -146,9 +148,9 @@ export class DashboardService {
 
     if (!callingUserEmployee && email) {
       const baseFilter: any = companyId ? { companyId } : {};
-      const escapedEmail = email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const cleanEmail = escapeRegExp(email.trim());
       callingUserEmployee = await this.employeeModel
-        .findOne({ ...baseFilter, email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') } })
+        .findOne({ ...baseFilter, email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } })
         .exec();
     }
 
@@ -173,11 +175,6 @@ export class DashboardService {
         }
       } else {
         selectedEmployee = callingUserEmployee;
-      }
-
-      if (!selectedEmployee) {
-        const fallbackFilter: any = companyId ? { companyId } : {};
-        selectedEmployee = await this.employeeModel.findOne(fallbackFilter).exec();
       }
 
       const empFilter: any = companyId ? { companyId } : {};
@@ -301,7 +298,7 @@ export class DashboardService {
         openTasks: [
           {
             $match: {
-              status: { $ne: 'Done' },
+              status: { $nin: COMPLETED_STATUSES },
             },
           },
           {
@@ -570,10 +567,10 @@ export class DashboardService {
       ]);
       userTasksCompleted = completedResult?.count || 0;
 
-      // Open tasks assigned to this employee (status != Done)
+      // Open tasks assigned to this employee (status not in COMPLETED_STATUSES)
       const openMatch: any = {
         assignee: empId,
-        status: { $ne: 'Done' },
+        status: { $nin: COMPLETED_STATUSES },
       };
       if (companyId) openMatch.companyId = companyId;
 
@@ -753,7 +750,7 @@ export class DashboardService {
       ];
       if (selectedEmail) {
         employeeMatchCondition.push({
-          'timeEntries.user.email': { $regex: new RegExp(`^${selectedEmail.trim()}$`, 'i') },
+          'timeEntries.user.email': { $regex: new RegExp(`^${escapeRegExp(selectedEmail.trim())}$`, 'i') },
         });
       }
 
@@ -926,10 +923,10 @@ export class DashboardService {
         { 'updates.assigneeId': empId },
       ];
       if (empEmail) {
-        orUserConditions.push({ 'updates.user.email': { $regex: new RegExp(`^${empEmail.trim()}$`, 'i') } });
+        orUserConditions.push({ 'updates.user.email': { $regex: new RegExp(`^${escapeRegExp(empEmail.trim())}$`, 'i') } });
       }
       if (empFirstName) {
-        orUserConditions.push({ 'updates.user.name': { $regex: new RegExp(`^${empFirstName}`, 'i') } });
+        orUserConditions.push({ 'updates.user.name': { $regex: new RegExp(`^${escapeRegExp(empFirstName)}`, 'i') } });
       }
 
       const matchQuery: any = {
