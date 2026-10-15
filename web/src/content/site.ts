@@ -91,12 +91,12 @@ export const siteConfig: SiteConfig = {
     },
   },
   contact: {
-    email: 'TODO_contact@owntechnology.com',
-    phone: 'TODO_+1 (555) 000-0000',
-    address: 'TODO_123 Business Avenue, Suite 400, Tech City',
-    hours: 'TODO_Mon - Fri: 9:00 AM - 6:00 PM EST',
-    linkedin: 'TODO_https://linkedin.com/company/owntechnology',
-    instagram: 'TODO_https://instagram.com/owntechnology',
+    email: 'raj2732005@gmail.com',
+    phone: '+91 72840 98574',
+    address: 'Surat, Gujarat, India',
+    hours: 'Mon - Sat: 9:00 AM - 7:00 PM IST',
+    linkedin: 'https://linkedin.com',
+    instagram: 'https://instagram.com',
   },
   // Replace these values with real business statistics
   stats: {

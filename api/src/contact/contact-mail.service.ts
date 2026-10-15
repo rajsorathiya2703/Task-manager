@@ -37,7 +37,7 @@ export class ContactMailService {
       process.env.CONTACT_RECEIVER_EMAIL ||
       process.env.BREVO_SENDER_EMAIL ||
       process.env.SMTP_USER ||
-      ''
+      'raj2732005@gmail.com'
     ).trim();
   }
 

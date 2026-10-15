@@ -1,8 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import { Mail } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Mail, Phone } from "lucide-react";
 import { siteConfig } from "@/src/content/site";
 
-export function SiteFooter() {
+export function SiteFooter({ standalone = false }: { standalone?: boolean } = {}) {
+  const pathname = usePathname();
+  if (pathname === "/" && !standalone) return null;
+
   const currentYear = new Date().getFullYear();
 
   const productNavHrefs = ["/services", "/pricing", "/help"];
@@ -101,6 +107,15 @@ export function SiteFooter() {
                 >
                   <Mail className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>{siteConfig.contact.email}</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href={`tel:${siteConfig.contact.phone.replace(/[^\d+]/g, "")}`}
+                  className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                >
+                  <Phone className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span>{siteConfig.contact.phone}</span>
                 </a>
               </li>
               <li>
