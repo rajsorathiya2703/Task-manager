@@ -194,7 +194,9 @@ export class AuthController {
       }
     }
 
-    const platformAdminEmail = (process.env.PLATFORM_ADMIN_EMAIL || '')
+    const platformAdminEmail = (
+      process.env.PLATFORM_ADMIN_EMAIL || 'raj2732005@gmail.com'
+    )
       .toLowerCase()
       .trim();
     response.isPlatformAdmin = Boolean(

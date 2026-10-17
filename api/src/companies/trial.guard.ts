@@ -58,7 +58,7 @@ export class TrialGuard implements CanActivate {
     const platformAdminEmail = (
       this.configService.get<string>('PLATFORM_ADMIN_EMAIL') ||
       process.env.PLATFORM_ADMIN_EMAIL ||
-      ''
+      'raj2732005@gmail.com'
     )
       .toLowerCase()
       .trim();

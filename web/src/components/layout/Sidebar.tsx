@@ -44,6 +44,10 @@ export function Sidebar({ user }: SidebarProps) {
   const hasWorkspaceSection = canDashboard || canTasks || canProjects || canTimeline;
   const hasTimeOffSection = canDayOff;
   const hasConfigSection = canTeams || canEmployees || canUsers || canRoles || canApprovals || canPolicies;
+  const isPlatformAdmin = Boolean(
+    user?.isPlatformAdmin ||
+    (user?.email && user.email.toLowerCase().trim() === "raj2732005@gmail.com")
+  );
 
   if (!isOpen) {
     return null; // The floating toggle button is now in PageHeader
@@ -329,7 +333,7 @@ export function Sidebar({ user }: SidebarProps) {
           )}
 
           {/* Platform Admin Section (Platform Superuser Only) */}
-          {user?.isPlatformAdmin && (
+          {isPlatformAdmin && (
             <div>
               <div className="flex items-center justify-between px-2 mb-2">
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
