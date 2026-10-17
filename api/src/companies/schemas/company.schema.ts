@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Company extends Document {
   @Prop({ required: true, trim: true })
   name: string;
@@ -33,13 +33,29 @@ export class Company extends Document {
 
   @Prop({
     type: String,
-    enum: ['trial', 'active', 'expired'],
+    enum: ['trial', 'active', 'expired', 'suspended'],
     default: 'trial',
+    index: true,
   })
   plan: string;
 
+  @Prop({ type: Date })
+  trialStartedAt?: Date;
+
   @Prop({ type: Date, required: true })
   trialEndsAt: Date;
+
+  @Prop({ type: Date })
+  convertedAt?: Date;
+
+  @Prop()
+  accessGrantedBy?: string;
+
+  @Prop({ type: Date })
+  accessGrantedAt?: Date;
+
+  @Prop({ index: true, lowercase: true, trim: true })
+  contactEmail?: string;
 
   // Compatibility fields for existing multi-company services
   @Prop({ select: false })
@@ -53,9 +69,6 @@ export class Company extends Document {
 
   @Prop()
   logoUrl?: string;
-
-  @Prop()
-  contactEmail?: string;
 
   @Prop()
   timezone?: string;
@@ -74,6 +87,25 @@ export class Company extends Document {
 
   @Prop({ type: Object })
   settings?: any;
+
+  // Virtual alias for plan
+  get subscriptionStatus(): string {
+    return this.plan;
+  }
+  set subscriptionStatus(val: string) {
+    this.plan = val;
+  }
 }
 
 export const CompanySchema = SchemaFactory.createForClass(Company);
+
+CompanySchema.virtual('subscriptionStatus')
+  .get(function () {
+    return this.plan;
+  })
+  .set(function (val: string) {
+    this.plan = val;
+  });
+
+CompanySchema.index({ plan: 1 });
+CompanySchema.index({ contactEmail: 1 });

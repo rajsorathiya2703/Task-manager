@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
-import { api, authEndpoints, fetchMembershipStatus } from "../../lib/api";
+import { api, authEndpoints, fetchMembershipStatus, fetchMe } from "../../lib/api";
 import { Building2, Loader2 } from "lucide-react";
 
 const GoogleIcon = () => (
@@ -64,7 +64,16 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
             router.push(`/${slug}/join`);
           }
         } else {
-          window.location.href = "/my-account";
+          try {
+            const user = await fetchMe(undefined, { fresh: true });
+            if (user?.subscription?.status === "no_company") {
+              window.location.href = "/register-company";
+            } else {
+              window.location.href = "/tasks";
+            }
+          } catch {
+            window.location.href = "/tasks";
+          }
         }
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to login with Google");

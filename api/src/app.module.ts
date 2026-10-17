@@ -21,6 +21,7 @@ import { RolesModule } from './roles/roles.module';
 import { CompaniesModule } from './companies/companies.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { TenantGuard } from './common/tenant.guard';
+import { TrialGuard } from './companies/trial.guard';
 import { AccessGuard } from './access/access.guard';
 import { TenantInterceptor } from './common/tenant.interceptor';
 import { FieldAccessInterceptor } from './access/field-access.interceptor';
@@ -68,6 +69,10 @@ import { FieldAccessInterceptor } from './access/field-access.interceptor';
     {
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TrialGuard,
     },
     {
       provide: APP_GUARD,

@@ -18,6 +18,8 @@ import { AuthService } from './auth.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
+import { SkipTrialCheck } from '../companies/skip-trial-check.decorator';
+import { CompaniesService } from '../companies/companies.service';
 import { JwtService } from '@nestjs/jwt';
 import { AccessService } from '../access/access.service';
 import { NoTenant } from '../common/tenant.decorators';
@@ -35,6 +37,9 @@ export class AuthController {
     @Optional()
     @Inject(forwardRef(() => EmployeesService))
     private readonly employeesService?: EmployeesService,
+    @Optional()
+    @Inject(forwardRef(() => CompaniesService))
+    private readonly companiesService?: CompaniesService,
   ) {}
 
   private setCookies(res: Response, accessToken: string, refreshToken: string) {
@@ -94,6 +99,7 @@ export class AuthController {
     };
   }
 
+  @SkipTrialCheck()
   @Public()
   @Post('refresh')
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
@@ -105,6 +111,7 @@ export class AuthController {
     return { success: true };
   }
 
+  @SkipTrialCheck()
   @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
@@ -126,6 +133,7 @@ export class AuthController {
    * If ?company=slug is provided and the caller is an active member, also includes
    * membership: { roleIds, isCompanyOwner, employeeId }.
    */
+  @SkipTrialCheck()
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getMe(
@@ -186,7 +194,27 @@ export class AuthController {
       }
     }
 
+    const platformAdminEmail = (process.env.PLATFORM_ADMIN_EMAIL || '')
+      .toLowerCase()
+      .trim();
+    response.isPlatformAdmin = Boolean(
+      user.email && user.email.toLowerCase().trim() === platformAdminEmail,
+    );
+
+    if (this.companiesService) {
+      try {
+        response.subscription =
+          await this.companiesService.getSubscriptionForUser(
+            userId,
+            companySlug || activeCompanyId,
+          );
+      } catch (subErr) {
+        // Fallback if subscription lookup encounters an error
+      }
+    }
+
     return response;
   }
 }
+
 

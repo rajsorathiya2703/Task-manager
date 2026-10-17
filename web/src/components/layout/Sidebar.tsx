@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders, History, Shield } from "lucide-react";
+import Link from "next/link";
+import { Bot, Calendar, CalendarCheck, ClipboardCheck, Sliders, History, Shield, Building2 } from "lucide-react";
 import { UserProfile } from "./UserProfile";
 import { useSidebar } from "./SidebarContext";
 import { useChatbot } from "../chatbot/ChatbotContext";
@@ -323,6 +324,31 @@ export function Sidebar({ user }: SidebarProps) {
                     Leave Policies
                   </CompanyLink>
                 )}
+              </nav>
+            </div>
+          )}
+
+          {/* Platform Admin Section (Platform Superuser Only) */}
+          {user?.isPlatformAdmin && (
+            <div>
+              <div className="flex items-center justify-between px-2 mb-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Platform
+                </h3>
+              </div>
+
+              <nav className="space-y-1">
+                <Link
+                  href="/platform-admin"
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    pathname.startsWith("/platform-admin")
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 shrink-0" />
+                  Platform Admin
+                </Link>
               </nav>
             </div>
           )}

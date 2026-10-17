@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
-import { Loader2, CheckCircle2, AlertCircle, ArrowRight, Building2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ArrowRight, Building2, ShieldCheck } from "lucide-react";
 import { fetchMe, api, authEndpoints } from "../../lib/api";
 import { createCompany, Company, setActiveCompany } from "../../lib/company-api";
 
@@ -48,6 +49,7 @@ const GoogleIcon = () => (
 );
 
 export function RegisterCompanyForm() {
+  const router = useRouter();
   const [checkingSession, setCheckingSession] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -176,15 +178,23 @@ export function RegisterCompanyForm() {
 
       if (created) {
         setActiveCompany(created);
+        router.replace("/dashboard");
+        return;
       }
       setSuccessCompany(created);
     } catch (err: any) {
-      const msg = err?.response?.data?.message;
-      setSubmitError(
-        Array.isArray(msg)
-          ? msg.join(", ")
-          : msg || "Failed to register company. Please try again.",
-      );
+      if (err?.response?.status === 409) {
+        setSubmitError(
+          "This email has already used its free trial. Contact our sales team.",
+        );
+      } else {
+        const msg = err?.response?.data?.message;
+        setSubmitError(
+          Array.isArray(msg)
+            ? msg.join(", ")
+            : msg || "Failed to register company. Please try again.",
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -202,16 +212,21 @@ export function RegisterCompanyForm() {
     );
   }
 
-  // Not signed in state
+  // Not signed in state or Guest user
   if (!user || user.authType !== "google") {
+    const isGuest = user?.authType === "guest";
     return (
       <div className="bg-card border border-border/80 rounded-2xl p-8 sm:p-10 text-center shadow-lg space-y-6 max-w-md mx-auto">
         <div className="space-y-2">
           <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Sign in with Google to start your 14-day trial
+            {isGuest
+              ? "Sign in with Google to start a free trial"
+              : "Sign in with Google to start your 14-day trial"}
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Company registration requires a verified Google account to establish workspace ownership.
+            {isGuest
+              ? "Guest accounts cannot start a free trial. Please sign in with Google to register a company."
+              : "Company registration requires a verified Google account to establish workspace ownership."}
           </p>
         </div>
 
@@ -240,6 +255,17 @@ export function RegisterCompanyForm() {
             </>
           )}
         </button>
+
+        {isGuest && (
+          <div className="pt-2 border-t border-border/60">
+            <Link
+              href="/login"
+              className="text-xs text-primary font-semibold hover:underline"
+            >
+              Sign in with Google to start a free trial
+            </Link>
+          </div>
+        )}
       </div>
     );
   }
@@ -326,6 +352,12 @@ export function RegisterCompanyForm() {
           <span>Go to account</span>
           <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
         </Link>
+      </div>
+
+      {/* 14-day trial notice */}
+      <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs font-medium text-foreground">
+        <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
+        <span>Starts your 14-day free trial. One trial per email.</span>
       </div>
 
       {submitError && (

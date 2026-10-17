@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AccessModule } from '../access/access.module';
 import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { Membership, MembershipSchema } from '../companies/schemas/membership.schema';
+import { CompaniesModule } from '../companies/companies.module';
 import { EmployeesModule } from '../employees/employees.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { EmployeesModule } from '../employees/employees.module';
     ]),
     UsersModule,
     forwardRef(() => EmployeesModule),
+    forwardRef(() => CompaniesModule),
     PassportModule,
     JwtModule.register({}),
     ConfigModule,

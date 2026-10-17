@@ -10,6 +10,7 @@ import { ChatbotTrigger } from "@/src/components/chatbot/ChatbotTrigger";
 import { fetchMe } from "@/src/lib/api";
 import { useCompany } from "@/src/contexts/CompanyContext";
 import { MobileRestrictionNotice } from "@/src/components/common/MobileRestrictionNotice";
+import { TrialBanner } from "@/src/components/common/TrialBanner";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -34,6 +35,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           router.replace(`/${slug}/join`);
           return;
         }
+
+        if (!data?.isPlatformAdmin) {
+          const status = data?.subscription?.status;
+          if (status === "trial_expired" || status === "suspended") {
+            router.replace("/trial-expired");
+            return;
+          }
+          if (status === "no_company") {
+            router.replace("/register-company");
+            return;
+          }
+        }
+
         setUser(data);
         setLoading(false);
       })
@@ -63,9 +77,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <div className="flex h-screen overflow-hidden bg-background">
           <MobileRestrictionNotice />
           <Sidebar user={user} />
-          <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
-            {children}
-          </main>
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+            <TrialBanner subscription={user?.subscription} />
+            <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
+              {children}
+            </main>
+          </div>
           <TaskChatbot />
           <ChatbotTrigger />
         </div>

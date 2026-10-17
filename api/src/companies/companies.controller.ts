@@ -12,26 +12,41 @@ import {
 } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
+import { SkipTrialCheck } from './skip-trial-check.decorator';
 import { NoTenant } from '../common/tenant.decorators';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
+import { RegisterCompanyDto } from './dto/register-company.dto';
 
 @NoTenant()
 @Controller('companies')
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
+  @SkipTrialCheck()
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @Post()
   async create(@Request() req: any, @Body() dto: CreateCompanyDto) {
-    if (req.user?.authType !== 'google') {
-      throw new ForbiddenException(
-        'Please sign in with Google to register a company',
-      );
-    }
+    return this.companiesService.registerCompany(req.user, dto);
+  }
+
+  @SkipTrialCheck()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
+  @Post('register')
+  async register(@Request() req: any, @Body() dto: RegisterCompanyDto) {
+    return this.companiesService.registerCompany(req.user, dto);
+  }
+
+  @SkipTrialCheck()
+  @Get('me/subscription')
+  async getMySubscription(
+    @Request() req: any,
+    @Query('company') companySlug?: string,
+  ) {
     const userId = req.user?.id || req.user?._id;
-    return this.companiesService.create(userId, dto);
+    return this.companiesService.getSubscriptionForUser(userId, companySlug);
   }
 
   @Get('mine')

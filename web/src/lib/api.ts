@@ -116,6 +116,15 @@ api.interceptors.response.use(
 
     // ─── 403 Forbidden Access Error Handling ─────────────────────────────
     if (error.response?.status === 403) {
+      if (
+        error.response?.data?.code === 'TRIAL_EXPIRED' &&
+        typeof window !== 'undefined' &&
+        window.location.pathname !== '/trial-expired'
+      ) {
+        window.location.href = '/trial-expired';
+        return Promise.reject(error);
+      }
+
       const data = error.response.data;
       const message =
         typeof data?.message === 'string'
@@ -196,6 +205,48 @@ export const companyEndpoints = {
 
 export const registerCompany = async (data: any) => {
   const res = await api.post(companyEndpoints.register, data);
+  return res.data;
+};
+
+export const fetchMySubscription = async (companySlug?: string) => {
+  const url = companySlug
+    ? `/companies/me/subscription?company=${encodeURIComponent(companySlug)}`
+    : '/companies/me/subscription';
+  const res = await api.get(url);
+  return res.data;
+};
+
+// ─── Platform Admin Endpoints ───────────────────────────────────────────────
+export const platformAdminEndpoints = {
+  stats: '/platform-admin/stats',
+  companies: '/platform-admin/companies',
+  activate: (id: string) => `/platform-admin/companies/${encodeURIComponent(id)}/activate`,
+  extendTrial: (id: string) => `/platform-admin/companies/${encodeURIComponent(id)}/extend-trial`,
+  suspend: (id: string) => `/platform-admin/companies/${encodeURIComponent(id)}/suspend`,
+};
+
+export const fetchPlatformStats = async () => {
+  const res = await api.get(platformAdminEndpoints.stats);
+  return res.data;
+};
+
+export const fetchPlatformCompanies = async () => {
+  const res = await api.get(platformAdminEndpoints.companies);
+  return res.data;
+};
+
+export const activateCompany = async (id: string) => {
+  const res = await api.post(platformAdminEndpoints.activate(id));
+  return res.data;
+};
+
+export const extendCompanyTrial = async (id: string, days: number) => {
+  const res = await api.post(platformAdminEndpoints.extendTrial(id), { days });
+  return res.data;
+};
+
+export const suspendCompany = async (id: string) => {
+  const res = await api.post(platformAdminEndpoints.suspend(id));
   return res.data;
 };
 
