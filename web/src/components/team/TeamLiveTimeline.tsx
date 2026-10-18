@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import { fetchTeamActiveTasks } from "../../lib/api";
 import { Clock, Play } from "lucide-react";
+import { useSocket } from "../../contexts/SocketContext";
 
 export function TeamLiveTimeline({ teamId }: { teamId: string }) {
   const [activeTasks, setActiveTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { socket, joinTeam, leaveTeam } = useSocket();
 
   useEffect(() => {
     const loadActiveTasks = async () => {
@@ -21,9 +23,25 @@ export function TeamLiveTimeline({ teamId }: { teamId: string }) {
     };
 
     loadActiveTasks();
-    const interval = setInterval(loadActiveTasks, 15000); // refresh every 15s
-    return () => clearInterval(interval);
-  }, [teamId]);
+
+    if (!teamId) return;
+    joinTeam(teamId);
+
+    if (!socket) return;
+
+    const handleUpdate = () => {
+      loadActiveTasks();
+    };
+
+    socket.on("team:comment:created", handleUpdate);
+    socket.on("task:comment:created", handleUpdate);
+
+    return () => {
+      leaveTeam(teamId);
+      socket.off("team:comment:created", handleUpdate);
+      socket.off("task:comment:created", handleUpdate);
+    };
+  }, [teamId, socket, joinTeam, leaveTeam]);
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden h-full flex flex-col">

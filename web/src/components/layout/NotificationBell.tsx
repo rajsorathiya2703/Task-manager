@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Bell, Check, CheckCheck, ExternalLink } from "lucide-react";
 import { CompanyLink } from "../../lib/useCompanyPath";
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from "../../lib/api";
+import { useSocket } from "../../contexts/SocketContext";
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -11,6 +12,7 @@ export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { socket } = useSocket();
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -27,13 +29,33 @@ export function NotificationBell() {
   useEffect(() => {
     loadNotifications();
 
-    // 1-hour polling interval (3,600,000 ms) as requested by user
-    const interval = setInterval(() => {
-      loadNotifications();
-    }, 60 * 60 * 1000);
+    if (!socket) return;
 
-    return () => clearInterval(interval);
-  }, [loadNotifications]);
+    const handleNew = (item: any) => {
+      setNotifications((prev) => [item, ...prev.filter((n) => (n._id || n.id) !== (item._id || item.id))]);
+      setUnreadCount((c) => c + 1);
+    };
+
+    const handleRead = ({ id }: { id: string }) => {
+      setNotifications((prev) => prev.map((n) => ((n._id || n.id) === id ? { ...n, isRead: true } : n)));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    };
+
+    const handleReadAll = () => {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    };
+
+    socket.on("notification:new", handleNew);
+    socket.on("notification:read", handleRead);
+    socket.on("notification:read_all", handleReadAll);
+
+    return () => {
+      socket.off("notification:new", handleNew);
+      socket.off("notification:read", handleRead);
+      socket.off("notification:read_all", handleReadAll);
+    };
+  }, [loadNotifications, socket]);
 
   // Close dropdown on outside click
   useEffect(() => {
