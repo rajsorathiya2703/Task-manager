@@ -1008,6 +1008,7 @@ export class TasksService {
       this.eventsGateway?.server?.emit('task:comment:created', commentPayload);
       if (resolvedCompanyId) {
         this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:created', commentPayload);
+        this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:changed', { taskId });
       }
 
       // Dispatch real-time mention notifications if users are tagged
@@ -1220,6 +1221,7 @@ export class TasksService {
       this.eventsGateway?.server?.emit('task:comment:deleted', commentPayload);
       if (resolvedCompanyId) {
         this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:deleted', commentPayload);
+        this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:changed', { taskId });
       }
     }
 

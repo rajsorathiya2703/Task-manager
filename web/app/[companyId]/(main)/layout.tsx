@@ -12,6 +12,7 @@ import { useCompany } from "@/src/contexts/CompanyContext";
 import { MobileRestrictionNotice } from "@/src/components/common/MobileRestrictionNotice";
 import { TrialBanner } from "@/src/components/common/TrialBanner";
 import { SocketProvider } from "@/src/contexts/SocketContext";
+import { RealtimeCacheBridge } from "@/src/components/realtime/RealtimeCacheBridge";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -76,6 +77,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <SocketProvider user={user}>
       <SidebarProvider>
         <ChatbotProvider>
+          <RealtimeCacheBridge />
           <div className="flex h-screen overflow-hidden bg-background">
             <MobileRestrictionNotice />
             <Sidebar user={user} />

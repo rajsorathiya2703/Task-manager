@@ -169,61 +169,32 @@ export default function TasksPage() {
     if (!isLoading) {
       processAndSetData(rawTasks, filters, searchQuery, searchContext, groupBy);
     }
-  }, [filters, searchQuery, searchContext, groupBy]);
+  }, [rawTasks, filters, searchQuery, searchContext, groupBy]);
 
   useEffect(() => {
     if (!socket) return;
+    let timer: ReturnType<typeof setTimeout>;
 
-    const handleTaskCreated = (payload: any) => {
-      const newTask = payload?.task || payload;
-      if (!newTask) return;
-      const newId = newTask._id || newTask.id;
-      setRawTasks((prev) => {
-        if (prev.some((t) => (t._id || t.id) === newId)) return prev;
-        const updated = [newTask, ...prev];
-        processAndSetData(updated, filters, searchQuery, searchContext, groupBy);
-        return updated;
-      });
-    };
-
-    const handleTaskUpdated = (payload: any) => {
-      const updatedTask = payload?.task || payload;
-      if (!updatedTask) return;
-      const targetId = payload?.taskId || updatedTask._id || updatedTask.id;
-      setRawTasks((prev) => {
-        const index = prev.findIndex((t) => (t._id || t.id) === targetId);
-        let updatedList: any[];
-        if (index !== -1) {
-          updatedList = [...prev];
-          updatedList[index] = { ...updatedList[index], ...updatedTask };
-        } else {
-          updatedList = [updatedTask, ...prev];
+    const refetch = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        try {
+          const fresh = await fetchTasks(undefined, { fresh: true, silent: true });
+          setRawTasks(fresh || []);
+        } catch (err) {
+          console.error("Failed to refetch tasks on real-time event", err);
         }
-        processAndSetData(updatedList, filters, searchQuery, searchContext, groupBy);
-        return updatedList;
-      });
+      }, 300);
     };
 
-    const handleTaskDeleted = (payload: any) => {
-      const deletedId = payload?.taskId || payload?.id || payload?._id;
-      if (!deletedId) return;
-      setRawTasks((prev) => {
-        const updated = prev.filter((t) => (t._id || t.id) !== deletedId);
-        processAndSetData(updated, filters, searchQuery, searchContext, groupBy);
-        return updated;
-      });
-    };
-
-    socket.on("task:created", handleTaskCreated);
-    socket.on("task:updated", handleTaskUpdated);
-    socket.on("task:deleted", handleTaskDeleted);
+    const events = ["task:created", "task:updated", "task:deleted"];
+    events.forEach((e) => socket.on(e, refetch));
 
     return () => {
-      socket.off("task:created", handleTaskCreated);
-      socket.off("task:updated", handleTaskUpdated);
-      socket.off("task:deleted", handleTaskDeleted);
+      clearTimeout(timer);
+      events.forEach((e) => socket.off(e, refetch));
     };
-  }, [socket, filters, searchQuery, searchContext, groupBy]);
+  }, [socket]);
 
   const handleTaskStatusChange = async (taskId: string, newGroupValue: string) => {
     // Optimistic UI update

@@ -59,6 +59,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
         : undefined);
 
     const userId = user?._id || user?.id;
+    const handshakeCompanyId = user?.membership?.companyId || user?.companyId;
 
     // Normalize API_URL (strip trailing slash)
     const baseUrl = (API_URL || "http://localhost:5000").replace(/\/+$/, "");
@@ -69,10 +70,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
       auth: {
         token: token || undefined,
         userId: userId || undefined,
+        companyId: handshakeCompanyId || undefined,
       },
       query: {
         token: token || undefined,
         userId: userId || undefined,
+        companyId: handshakeCompanyId || undefined,
       },
       reconnectionAttempts: 15,
       reconnectionDelay: 1500,
@@ -107,12 +110,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
 
     return () => {
       newSocket.disconnect();
-      activeRoomsRef.current.clear();
       socketRef.current = null;
       setSocket(null);
       setIsConnected(false);
     };
-  }, [user?._id, user?.id, user?.token]);
+  }, [user?._id, user?.id, user?.token, user?.membership?.companyId, user?.companyId]);
 
   const joinTask = useCallback((taskId: string) => {
     if (!taskId) return;

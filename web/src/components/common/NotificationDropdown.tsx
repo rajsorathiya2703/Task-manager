@@ -253,17 +253,23 @@ export function NotificationDropdown() {
     };
 
     socket.on("task:comment:created", handleCommentEvent);
+    socket.on("task:comment:updated", handleCommentEvent);
     socket.on("task:comment:deleted", handleCommentEvent);
+    socket.on("task:comment:changed", handleCommentEvent);
     socket.on("team:comment:created", handleCommentEvent);
+    socket.on("team:comment:updated", handleCommentEvent);
     socket.on("team:comment:deleted", handleCommentEvent);
 
     return () => {
       socket.off("task:comment:created", handleCommentEvent);
+      socket.off("task:comment:updated", handleCommentEvent);
       socket.off("task:comment:deleted", handleCommentEvent);
+      socket.off("task:comment:changed", handleCommentEvent);
       socket.off("team:comment:created", handleCommentEvent);
+      socket.off("team:comment:updated", handleCommentEvent);
       socket.off("team:comment:deleted", handleCommentEvent);
     };
-  }, [currentUser, socket]);
+  }, [currentUser, socket, accessLoading, can]);
 
   const unreadCount = allNotifications.length;
 

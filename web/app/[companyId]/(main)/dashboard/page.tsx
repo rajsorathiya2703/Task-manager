@@ -14,6 +14,7 @@ import { LiveActivityFeed } from "@/src/components/dashboard/LiveActivityFeed";
 import { fetchEmployeeActivity, fetchMe } from "@/src/lib/api";
 import { useAccess } from "@/src/contexts/AccessContext";
 import { useCompany } from "@/src/contexts/CompanyContext";
+import { useSocket } from "@/src/contexts/SocketContext";
 import {
   Loader2,
   RefreshCw,
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const accessContext = useAccess();
+  const { socket } = useSocket();
 
   useEffect(() => {
     if (!accessContext.loading) {
@@ -98,6 +100,33 @@ export default function DashboardPage() {
   useEffect(() => {
     loadDashboard(true);
   }, [range, slug]);
+
+  useEffect(() => {
+    if (!socket) return;
+    let t: ReturnType<typeof setTimeout>;
+
+    const refresh = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        loadDashboard(false);
+      }, 1000);
+    };
+
+    const events = [
+      "task:created",
+      "task:updated",
+      "task:deleted",
+      "team:created",
+      "team:updated",
+      "team:deleted",
+    ];
+    events.forEach((e) => socket.on(e, refresh));
+
+    return () => {
+      clearTimeout(t);
+      events.forEach((e) => socket.off(e, refresh));
+    };
+  }, [socket, range, slug]);
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
