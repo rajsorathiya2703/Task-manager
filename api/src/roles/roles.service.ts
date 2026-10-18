@@ -3,16 +3,19 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Membership } from '../companies/schemas/membership.schema';
+import { Employee } from '../employees/schemas/employee.schema';
 import { PolicyCompilerService } from '../access/policy-compiler.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { buildDefaultRoles } from '../access/access.seed';
+import { escapeRegExp } from '../common/utils/escape-regexp';
 
 @Injectable()
 export class RolesService {
@@ -24,6 +27,9 @@ export class RolesService {
     @InjectModel(Membership.name)
     private readonly membershipModel: Model<any>,
     private readonly policyCompilerService: PolicyCompilerService,
+    @Optional()
+    @InjectModel(Employee.name)
+    private readonly employeeModel?: Model<Employee>,
   ) {}
 
   /**
@@ -231,6 +237,11 @@ export class RolesService {
         },
         { $addToSet: { roleIds: saved._id } },
       );
+      await this.ensureEmployeesForUsers(
+        compObjectId,
+        saved,
+        validMemberObjectIds,
+      );
     }
 
     // Recompile policy document for this company
@@ -355,6 +366,14 @@ export class RolesService {
         );
       }
 
+      if (newValidUserIds.length > 0) {
+        await this.ensureEmployeesForUsers(
+          compObjectId,
+          role,
+          newValidUserIds.map((uid) => new Types.ObjectId(uid)),
+        );
+      }
+
       if (removedUserIds.length > 0) {
         await this.membershipModel.updateMany(
           {
@@ -449,5 +468,97 @@ export class RolesService {
     await this.policyCompilerService.compileAndPersist(compObjectId);
 
     return { message: `Role "${role.name}" deleted successfully.` };
+  }
+
+  /**
+   * Ensures that users assigned to a role have an active Employee record
+   * in the specified company, linked to both User and Membership.
+   */
+  private async ensureEmployeesForUsers(
+    companyId: Types.ObjectId,
+    role: RoleDocument | any,
+    userIds: Types.ObjectId[],
+  ): Promise<void> {
+    if (!this.employeeModel || !userIds || userIds.length === 0) return;
+
+    for (const userId of userIds) {
+      try {
+        const user = await this.userModel.findById(userId).exec();
+        if (!user) continue;
+
+        const orConditions: any[] = [
+          { userId },
+          { userId: userId.toString() },
+        ];
+        if (user.email && typeof user.email === 'string' && user.email.trim()) {
+          const cleanEmail = escapeRegExp(user.email.trim());
+          orConditions.push({
+            email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
+          });
+        }
+
+        let emp: any = await this.employeeModel
+          .findOne({
+            companyId,
+            $or: orConditions,
+          })
+          .exec();
+
+        if (emp) {
+          let updated = false;
+          if (!emp.userId || String(emp.userId) !== String(userId)) {
+            emp.userId = userId;
+            updated = true;
+          }
+          if (
+            !emp.role ||
+            emp.role.toLowerCase() === 'owner' ||
+            (role.slug === 'employee' && emp.role.toLowerCase() !== 'admin')
+          ) {
+            emp.role = role.name;
+            updated = true;
+          }
+          if (updated) {
+            await emp.save();
+          }
+
+          await this.membershipModel.updateOne(
+            { companyId, userId },
+            { $set: { employeeId: emp._id } },
+          );
+        } else {
+          const rawName = (user.name || '').trim();
+          const nameParts = rawName.split(/\s+/).filter(Boolean);
+          const firstName =
+            nameParts[0] ||
+            (user.email ? user.email.split('@')[0] : 'Workspace');
+          const lastName = nameParts.slice(1).join(' ') || '';
+
+          const newEmp = new this.employeeModel({
+            companyId,
+            userId,
+            fullName: { firstName, lastName },
+            role: role.name || 'Employee',
+            email: user.email ? user.email.trim().toLowerCase() : undefined,
+            department: 'General',
+            status: 'Active',
+            joiningDate: new Date(),
+          });
+          const savedEmp = await newEmp.save();
+
+          await this.membershipModel.updateOne(
+            { companyId, userId },
+            { $set: { employeeId: savedEmp._id } },
+          );
+        }
+
+        await this.userModel.updateOne(
+          { _id: userId },
+          { $set: { is_employee: true } },
+        );
+      } catch (err: any) {
+        // Individual user error should not block role update
+      }
+    }
   }
 }

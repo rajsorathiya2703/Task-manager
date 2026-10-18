@@ -331,6 +331,100 @@ export class EmployeesService implements OnModuleInit {
       }
     }
 
+    // 3b. Ensure active company memberships (owners / assigned roles) have Employee records
+    if (this.membershipModel) {
+      try {
+        const activeMemberships = await this.membershipModel
+          .find({
+            userId: userObjId,
+            status: 'active',
+            $or: [
+              { isCompanyOwner: true },
+              { roleIds: { $exists: true, $not: { $size: 0 } } },
+            ],
+          })
+          .exec();
+
+        for (const mem of activeMemberships) {
+          if (!mem.companyId) continue;
+          const alreadyLinked = employees.some(
+            (e: any) => String(e.companyId) === String(mem.companyId),
+          );
+          if (alreadyLinked) continue;
+
+          let emp: any = await this.employeeModel
+            .findOne({
+              companyId: mem.companyId,
+              $or: [{ userId: userObjId }, { email: emailRe }],
+            })
+            .exec();
+
+          if (!emp) {
+            let roleName = 'Employee';
+            if (mem.roleIds && mem.roleIds.length > 0 && this.roleModel) {
+              const assignedRole = await this.roleModel
+                .findOne({ _id: { $in: mem.roleIds }, companyId: mem.companyId })
+                .sort({ priority: -1 })
+                .select('name')
+                .lean()
+                .exec();
+              if (assignedRole?.name) {
+                roleName = assignedRole.name;
+              }
+            } else if (mem.isCompanyOwner) {
+              roleName = 'Owner';
+            }
+
+            const userDoc = this.userModel
+              ? await this.userModel.findById(userObjId).exec()
+              : null;
+            const rawName = userDoc?.name || (user as any)?.name || '';
+            const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
+            const firstName =
+              nameParts[0] ||
+              (user.email ? user.email.split('@')[0] : 'Member');
+            const lastName = nameParts.slice(1).join(' ') || '';
+
+            try {
+              emp = await this.employeeModel.create({
+                companyId: mem.companyId,
+                userId: userObjId,
+                fullName: { firstName, lastName },
+                role: roleName,
+                email: user.email ? user.email.trim().toLowerCase() : undefined,
+                department: 'General',
+                status: 'Active',
+                joiningDate: new Date(),
+              });
+            } catch {
+              emp = await this.employeeModel
+                .findOne({
+                  companyId: mem.companyId,
+                  $or: [{ userId: userObjId }, { email: emailRe }],
+                })
+                .exec();
+            }
+          }
+
+          if (emp) {
+            if (!emp.userId) {
+              emp.userId = userObjId;
+              await emp.save().catch(() => {});
+            }
+            if (String(mem.employeeId) !== String(emp._id)) {
+              await this.membershipModel.updateOne(
+                { _id: mem._id },
+                { $set: { employeeId: emp._id } },
+              );
+            }
+            employees.push(emp);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Failed to sync active memberships in activateForUser: ${err?.message}`);
+      }
+    }
+
     // 4. Global flag on User
     if (employees.length > 0) {
       if (this.userModel) {
@@ -622,6 +716,9 @@ export class EmployeesService implements OnModuleInit {
       return [];
     }
 
+    // Ensure company owners and members assigned roles have linked Employee records
+    await this.syncMembersWithoutEmployees(companyId);
+
     const scopeFilter = await this.buildEmployeeScopeFilter(
       companyId,
       userId,
@@ -634,6 +731,124 @@ export class EmployeesService implements OnModuleInit {
     }
 
     return this.employeeModel.find(scopeFilter).populate('userId').exec();
+  }
+
+  /**
+   * Ensures that active members of a company (such as the company owner or users
+   * with assigned roles like "Employee") have a corresponding Employee record
+   * created and linked to their Membership and User account.
+   */
+  private async syncMembersWithoutEmployees(companyId: Types.ObjectId): Promise<void> {
+    if (!this.membershipModel) return;
+
+    try {
+      const activeMemberships = await this.membershipModel
+        .find({
+          companyId,
+          status: 'active',
+          $or: [
+            { isCompanyOwner: true },
+            { roleIds: { $exists: true, $not: { $size: 0 } } },
+          ],
+        })
+        .exec();
+
+      for (const mem of activeMemberships) {
+        if (!mem.userId) continue;
+
+        let emp: any = null;
+        if (mem.employeeId) {
+          emp = await this.employeeModel
+            .findOne({ _id: mem.employeeId, companyId })
+            .exec();
+        }
+
+        if (!emp) {
+          const userDoc = this.userModel
+            ? await this.userModel.findById(mem.userId).exec()
+            : null;
+
+          const orConditions: any[] = [
+            { userId: mem.userId },
+            { userId: mem.userId.toString() },
+          ];
+          if (userDoc?.email) {
+            const clean = escapeRegex(userDoc.email.trim());
+            orConditions.push({ email: { $regex: new RegExp(`^${clean}$`, 'i') } });
+          }
+
+          emp = await this.employeeModel.findOne({ companyId, $or: orConditions }).exec();
+
+          if (emp) {
+            if (!emp.userId) {
+              emp.userId = mem.userId;
+              await emp.save().catch(() => {});
+            }
+            if (String(mem.employeeId) !== String(emp._id)) {
+              await this.membershipModel.updateOne(
+                { _id: mem._id },
+                { $set: { employeeId: emp._id } },
+              );
+            }
+          } else if (userDoc) {
+            let roleName = 'Employee';
+            if (mem.roleIds && mem.roleIds.length > 0 && this.roleModel) {
+              const assignedRole = await this.roleModel
+                .findOne({ _id: { $in: mem.roleIds }, companyId })
+                .sort({ priority: -1 })
+                .select('name')
+                .lean()
+                .exec();
+              if (assignedRole?.name) {
+                roleName = assignedRole.name;
+              }
+            } else if (mem.isCompanyOwner) {
+              roleName = 'Owner';
+            }
+
+            const rawName = userDoc.name || '';
+            const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
+            const firstName =
+              nameParts[0] ||
+              (userDoc.email ? userDoc.email.split('@')[0] : 'Member');
+            const lastName = nameParts.slice(1).join(' ') || '';
+
+            try {
+              const created = await this.employeeModel.create({
+                companyId,
+                userId: mem.userId,
+                fullName: { firstName, lastName },
+                role: roleName,
+                email: userDoc.email ? userDoc.email.trim().toLowerCase() : undefined,
+                department: 'General',
+                status: 'Active',
+                joiningDate: new Date(),
+              });
+
+              await this.membershipModel.updateOne(
+                { _id: mem._id },
+                { $set: { employeeId: created._id } },
+              );
+
+              if (this.userModel) {
+                await this.userModel.updateOne(
+                  { _id: mem.userId },
+                  { $set: { is_employee: true } },
+                );
+              }
+            } catch (createErr: any) {
+              this.logger.warn(
+                `Failed to auto-create employee for user ${mem.userId}: ${createErr?.message}`,
+              );
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `syncMembersWithoutEmployees failed for company ${companyId}: ${err?.message}`,
+      );
+    }
   }
 
   async findOne(

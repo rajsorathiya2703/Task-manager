@@ -169,10 +169,41 @@ export class CompaniesService {
         userId: userObjectId,
         role: 'owner',
       });
+      let ownerEmpId: Types.ObjectId | undefined = undefined;
+      if (this.employeeModel) {
+        try {
+          const userName = user?.name || '';
+          const nameParts = userName.trim().split(/\s+/).filter(Boolean);
+          const firstName = nameParts[0] || (userEmail ? userEmail.split('@')[0] : 'Owner');
+          const lastName = nameParts.slice(1).join(' ') || '';
+
+          const newEmp = await this.employeeModel.create({
+            companyId: company._id,
+            userId: userObjectId,
+            fullName: { firstName, lastName },
+            role: 'Owner',
+            email: userEmail ? userEmail.trim().toLowerCase() : undefined,
+            department: 'Executive',
+            status: 'Active',
+            joiningDate: now,
+          });
+          ownerEmpId = newEmp._id as Types.ObjectId;
+
+          if (this.userModel) {
+            await this.userModel.updateOne(
+              { _id: userObjectId },
+              { $set: { is_employee: true } },
+            );
+          }
+        } catch {
+          // Employee creation fallback if duplicate or already exists
+        }
+      }
       if (this.membershipModel) {
         await this.membershipModel.create({
           companyId: company._id,
           userId: userObjectId,
+          employeeId: ownerEmpId,
           isCompanyOwner: true,
           isSystemAdmin: true,
           status: 'active',
@@ -256,10 +287,45 @@ export class CompaniesService {
         userId: userObjectId,
         role: 'owner',
       });
+      let ownerEmpId: Types.ObjectId | undefined = undefined;
+      if (this.employeeModel) {
+        try {
+          const userDoc = this.userModel
+            ? await this.userModel.findById(userObjectId).exec()
+            : null;
+          const userEmail = userDoc?.email || (typeof userIdOrUser === 'object' ? userIdOrUser?.email : undefined);
+          const userName = userDoc?.name || (typeof userIdOrUser === 'object' ? userIdOrUser?.name : '');
+          const nameParts = (userName || '').trim().split(/\s+/).filter(Boolean);
+          const firstName = nameParts[0] || (userEmail ? userEmail.split('@')[0] : 'Owner');
+          const lastName = nameParts.slice(1).join(' ') || '';
+
+          const newEmp = await this.employeeModel.create({
+            companyId: company._id,
+            userId: userObjectId,
+            fullName: { firstName, lastName },
+            role: 'Owner',
+            email: userEmail ? userEmail.trim().toLowerCase() : undefined,
+            department: 'Executive',
+            status: 'Active',
+            joiningDate: now,
+          });
+          ownerEmpId = newEmp._id as Types.ObjectId;
+
+          if (this.userModel) {
+            await this.userModel.updateOne(
+              { _id: userObjectId },
+              { $set: { is_employee: true } },
+            );
+          }
+        } catch {
+          // Fallback
+        }
+      }
       if (this.membershipModel) {
         await this.membershipModel.create({
           companyId: company._id,
           userId: userObjectId,
+          employeeId: ownerEmpId,
           isCompanyOwner: true,
           isSystemAdmin: true,
           status: 'active',
