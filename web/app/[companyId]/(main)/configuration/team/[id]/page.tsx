@@ -222,7 +222,8 @@ export default function TeamDetailPage({
     try {
       setIsSaving(true);
       const payload = {
-        ...teamData,
+        name: teamData.name?.trim(),
+        description: teamData.description || "",
         members: teamData.members.map((m: any) => m._id || m),
         teamLead: teamData.teamLead?._id || teamData.teamLead || null,
       };

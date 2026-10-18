@@ -117,7 +117,25 @@ export class FieldAccessInterceptor implements NestInterceptor {
     }
 
     const updatableSet = new Set<string>(decision.updatableFields || []);
-    const forbidden = bodyKeys.filter((key) => !updatableSet.has(key));
+    const ignoredMetadataKeys = new Set<string>([
+      '_id',
+      'id',
+      'companyId',
+      'createdAt',
+      'updatedAt',
+      '__v',
+      'comments',
+    ]);
+
+    // Strip metadata keys from body to prevent accidental mutation of immutable document properties
+    for (const key of ignoredMetadataKeys) {
+      if (key in body && !updatableSet.has(key)) {
+        delete body[key];
+      }
+    }
+
+    const remainingKeys = Object.keys(body);
+    const forbidden = remainingKeys.filter((key) => !updatableSet.has(key));
 
     if (forbidden.length > 0) {
       this.logger.warn(
