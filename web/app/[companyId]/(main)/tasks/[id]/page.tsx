@@ -11,6 +11,7 @@ import { use, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createTask, fetchTaskById, fetchTasks, updateTask, fetchProjectById, startTaskTimer, stopTaskTimer } from "@/src/lib/api";
 import { useTimer } from "@/src/contexts/TimerContext";
+import { useSocket } from "@/src/contexts/SocketContext";
 import { getUserDisplayName } from "@/src/components/common/Comments";
 import { RecordNavigator } from "@/src/components/common/RecordNavigator";
 import { useAccessControl } from "@/src/contexts/AccessContext";
@@ -22,6 +23,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const cp = useCompanyPath();
   const isNew = id === 'new';
   const router = useRouter();
+  const { socket, joinTask, leaveTask } = useSocket();
   const searchParams = useSearchParams();
   const projectId = searchParams.get('projectId');
   const statusParam = searchParams.get('status');
@@ -152,33 +154,49 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   }, [id, isNew, projectId, router]);
 
   useEffect(() => {
-    if (isNew) return;
-    const interval = setInterval(async () => {
-      try {
-        const latestData = await fetchTaskById(id);
-        if (latestData) {
-          setTaskData((prev: any) => ({
-            ...prev,
-            comments: latestData.comments || prev.comments,
-            updates: latestData.updates || prev.updates,
-            members: latestData.members || prev.members,
-            isTimerRunning: !!latestData.isTimerRunning,
-            timerStartedAt: latestData.timerStartedAt || null,
-            timerUser: latestData.timerUser || null,
-            timeEntries: latestData.timeEntries || prev.timeEntries,
-          }));
-        }
-      } catch (error: any) {
-        if (error?.response?.status === 401) {
-          clearInterval(interval);
-          router.push(cp('/login'));
-          return;
-        }
-        console.error("Failed to poll updates", error);
+    if (isNew || !id) return;
+    joinTask(id);
+
+    if (!socket) return;
+
+    const handleCommentCreated = (payload: any) => {
+      if (payload?.taskId === id && payload?.comments) {
+        setTaskData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
       }
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [id, isNew]);
+    };
+
+    const handleCommentUpdated = (payload: any) => {
+      if (payload?.taskId === id && payload?.comments) {
+        setTaskData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
+      }
+    };
+
+    const handleCommentDeleted = (payload: any) => {
+      if (payload?.taskId === id && payload?.comments) {
+        setTaskData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
+      }
+    };
+
+    socket.on("task:comment:created", handleCommentCreated);
+    socket.on("task:comment:updated", handleCommentUpdated);
+    socket.on("task:comment:deleted", handleCommentDeleted);
+
+    return () => {
+      leaveTask(id);
+      socket.off("task:comment:created", handleCommentCreated);
+      socket.off("task:comment:updated", handleCommentUpdated);
+      socket.off("task:comment:deleted", handleCommentDeleted);
+    };
+  }, [id, isNew, socket, joinTask, leaveTask]);
 
   const handleStartTimer = async () => {
     if (isNew || isTimerLoading) return;

@@ -15,6 +15,7 @@ import { NotificationController } from './notification.controller';
 import { EmployeesModule } from '../employees/employees.module';
 import { UsersModule } from '../users/users.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CompaniesModule } from '../companies/companies.module';
       { name: Team.name, schema: TeamSchema },
       { name: Company.name, schema: CompanySchema },
     ]),
+    EventsModule,
     forwardRef(() => EmployeesModule),
     forwardRef(() => UsersModule),
     forwardRef(() => CompaniesModule),

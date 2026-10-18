@@ -26,6 +26,7 @@ import {
 } from '../access/resolvers/tasks.resolver';
 import { COMPLETED_STATUSES } from './constants/task.constants';
 import { escapeRegExp } from '../common/utils/escape-regexp';
+import { EventsGateway } from '../events/events.gateway';
 
 export { COMPLETED_STATUSES };
 
@@ -39,6 +40,7 @@ export class TasksService {
     @Optional() @InjectModel(Company.name) private companyModel: Model<Company>,
     private emailService: EmailService,
     private commentsService: CommentsService,
+    @Optional() private eventsGateway?: EventsGateway,
   ) {}
 
   private async getCompanySlug(companyId?: Types.ObjectId | string): Promise<string | undefined> {
@@ -965,11 +967,39 @@ export class TasksService {
     if (resolvedCompanyId) {
       updateFilter.companyId = resolvedCompanyId;
     }
-    return this.taskModel.findOneAndUpdate(
+    const updatedTask = await this.taskModel.findOneAndUpdate(
       updateFilter,
       { $push: { comments: commentData } },
       { new: true }
     ).exec();
+
+    if (updatedTask) {
+      const createdComment = updatedTask.comments?.[updatedTask.comments.length - 1];
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:created', {
+        taskId,
+        comment: createdComment,
+        comments: updatedTask.comments,
+      });
+
+      // Dispatch real-time mention notifications if users are tagged
+      if (Array.isArray(commentData?.mentions) && commentData.mentions.length > 0) {
+        commentData.mentions.forEach((mentionedUser: any) => {
+          const mentionedId = typeof mentionedUser === 'string' ? mentionedUser : mentionedUser?.id || mentionedUser?._id;
+          if (mentionedId) {
+            this.eventsGateway?.emitToUser(mentionedId.toString(), 'notification:new', {
+              type: 'mention',
+              title: `Mentioned in ${updatedTask.title || 'Task'}`,
+              message: commentData.content || '',
+              taskId,
+              comment: createdComment,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        });
+      }
+    }
+
+    return updatedTask;
   }
 
   async updateComment(
@@ -1052,11 +1082,23 @@ export class TasksService {
       updateFilter.companyId = resolvedCompanyId;
     }
 
-    return this.taskModel.findOneAndUpdate(
+    const updated = await this.taskModel.findOneAndUpdate(
       updateFilter,
       { $set: updateFields },
       { new: true }
     ).exec();
+
+    if (updated) {
+      const updatedComment = updated.comments?.find((c: any) => c._id?.toString() === commentId || c.id === commentId);
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:updated', {
+        taskId,
+        commentId,
+        comment: updatedComment,
+        comments: updated.comments,
+      });
+    }
+
+    return updated;
   }
 
   async deleteComment(
@@ -1128,11 +1170,21 @@ export class TasksService {
       deleteFilter.companyId = resolvedCompanyId;
     }
 
-    return this.taskModel.findOneAndUpdate(
+    const updated = await this.taskModel.findOneAndUpdate(
       deleteFilter,
       { $pull: { comments: { _id: commentId } } },
       { new: true }
     ).exec();
+
+    if (updated) {
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:deleted', {
+        taskId,
+        commentId,
+        comments: updated.comments,
+      });
+    }
+
+    return updated;
   }
 
   async inviteMember(

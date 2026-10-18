@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { Comments } from "../common/Comments";
 import { addTeamComment, updateTeamComment, deleteTeamComment } from "../../lib/api";
+import { useSocket } from "../../contexts/SocketContext";
 
 interface TeamCommentsProps {
   teamId: string;
@@ -20,6 +22,52 @@ export function TeamComments({
   mentionMembers = [],
   isMember = true,
 }: TeamCommentsProps) {
+  const { socket, joinTeam, leaveTeam } = useSocket();
+
+  useEffect(() => {
+    if (!teamId) return;
+    joinTeam(teamId);
+
+    if (!socket) return;
+
+    const handleCommentCreated = (payload: any) => {
+      if (payload?.teamId === teamId && payload?.comments) {
+        setTeamData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
+      }
+    };
+
+    const handleCommentUpdated = (payload: any) => {
+      if (payload?.teamId === teamId && payload?.comments) {
+        setTeamData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
+      }
+    };
+
+    const handleCommentDeleted = (payload: any) => {
+      if (payload?.teamId === teamId && payload?.comments) {
+        setTeamData((prev: any) => ({
+          ...prev,
+          comments: payload.comments,
+        }));
+      }
+    };
+
+    socket.on("team:comment:created", handleCommentCreated);
+    socket.on("team:comment:updated", handleCommentUpdated);
+    socket.on("team:comment:deleted", handleCommentDeleted);
+
+    return () => {
+      leaveTeam(teamId);
+      socket.off("team:comment:created", handleCommentCreated);
+      socket.off("team:comment:updated", handleCommentUpdated);
+      socket.off("team:comment:deleted", handleCommentDeleted);
+    };
+  }, [teamId, socket, joinTeam, leaveTeam, setTeamData]);
   const handleAdd = async (data: { content: string; attachments?: any[]; mentions?: string[] }) => {
     const updatedTeam = await addTeamComment(teamId, data);
     if (updatedTeam) {

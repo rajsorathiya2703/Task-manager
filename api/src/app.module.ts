@@ -19,6 +19,7 @@ import { ContactModule } from './contact/contact.module';
 import { AccessModule } from './access/access.module';
 import { RolesModule } from './roles/roles.module';
 import { CompaniesModule } from './companies/companies.module';
+import { EventsModule } from './events/events.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { TenantGuard } from './common/tenant.guard';
 import { TrialGuard } from './companies/trial.guard';
@@ -54,6 +55,7 @@ import { FieldAccessInterceptor } from './access/field-access.interceptor';
     CompaniesModule,
     AccessModule,
     RolesModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [

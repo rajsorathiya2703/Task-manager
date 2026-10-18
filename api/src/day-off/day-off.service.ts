@@ -20,6 +20,7 @@ import { Company } from '../companies/schemas/company.schema';
 import { DayOffMailService } from './day-off-mail.service';
 import { ScopeType } from '../access/policy.engine';
 import { escapeRegExp } from '../common/utils/escape-regexp';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class DayOffService {
@@ -35,6 +36,7 @@ export class DayOffService {
     @InjectModel(Team.name) private teamModel: Model<Team>,
     @Optional() @InjectModel(Company.name) private companyModel?: Model<Company>,
     private mailService?: DayOffMailService,
+    @Optional() private eventsGateway?: EventsGateway,
   ) {}
 
   /**
@@ -1130,7 +1132,11 @@ export class DayOffService {
       ...(companyId ? { companyId } : {}),
       isRead: false,
     });
-    return notification.save();
+    const saved = await notification.save();
+    if (saved?.userId) {
+      this.eventsGateway?.emitToUser(saved.userId.toString(), 'notification:new', saved);
+    }
+    return saved;
   }
 
   async getUserNotifications(
@@ -1191,6 +1197,12 @@ export class DayOffService {
     ).exec();
 
     if (!notification) throw new NotFoundException('Notification not found');
+
+    this.eventsGateway?.emitToUser(userId, 'notification:read', {
+      id: notification._id?.toString() || id,
+      isRead: true,
+    });
+
     return notification;
   }
 
@@ -1215,6 +1227,11 @@ export class DayOffService {
       filter,
       { $set: { isRead: true } },
     ).exec();
+
+    this.eventsGateway?.emitToUser(userId, 'notification:read_all', {
+      isRead: true,
+    });
+
     return { success: true };
   }
 }

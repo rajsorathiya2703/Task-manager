@@ -7,6 +7,7 @@ import { Task, TaskSchema } from '../tasks/schemas/task.schema';
 import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import { CommentsModule } from '../comments/comments.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CompaniesModule } from '../companies/companies.module';
     ]),
     CommentsModule,
     CompaniesModule,
+    EventsModule,
   ],
   controllers: [TeamsController],
   providers: [TeamsService],

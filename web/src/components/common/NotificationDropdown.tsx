@@ -6,6 +6,7 @@ import { Bell, MessageSquare, AtSign, Calendar } from "lucide-react";
 import { useCompanyPath, CompanyLink } from "../../lib/useCompanyPath";
 import { fetchMe, fetchTasks, fetchTeams, fetchNotifications, markNotificationRead, getCompanySlug } from "../../lib/api";
 import { useAccessControl } from "../../contexts/AccessContext";
+import { useSocket } from "../../contexts/SocketContext";
 import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
 import { getUserDisplayName } from "./Comments";
 
@@ -24,6 +25,7 @@ export interface NotificationItem {
 export function NotificationDropdown() {
   const cp = useCompanyPath();
   const { can, loading: accessLoading } = useAccessControl();
+  const { socket } = useSocket();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -40,7 +42,7 @@ export function NotificationDropdown() {
     init();
   }, []);
 
-  // Poll system notifications (leave approvals, applications, etc.) every 1 hour as requested
+  // Real-time system notifications (leave approvals, applications, etc.) via WebSocket
   useEffect(() => {
     if (!currentUser || !isDayOffModuleEnabled()) return;
 
@@ -56,9 +58,38 @@ export function NotificationDropdown() {
     };
 
     loadSystemNotifs();
-    const interval = setInterval(loadSystemNotifs, 60 * 60 * 1000); // 1 hour polling
-    return () => clearInterval(interval);
-  }, [currentUser]);
+
+    if (!socket) return;
+
+    const handleNewNotification = (notif: any) => {
+      if (!notif) return;
+      setSystemNotifications((prev) => [
+        notif,
+        ...prev.filter((item) => (item._id || item.id) !== (notif._id || notif.id)),
+      ]);
+    };
+
+    const handleNotificationRead = (data: { id: string }) => {
+      if (!data?.id) return;
+      setSystemNotifications((prev) =>
+        prev.map((item) => ((item._id || item.id) === data.id ? { ...item, isRead: true } : item))
+      );
+    };
+
+    const handleNotificationReadAll = () => {
+      setSystemNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    };
+
+    socket.on("notification:new", handleNewNotification);
+    socket.on("notification:read", handleNotificationRead);
+    socket.on("notification:read_all", handleNotificationReadAll);
+
+    return () => {
+      socket.off("notification:new", handleNewNotification);
+      socket.off("notification:read", handleNotificationRead);
+      socket.off("notification:read_all", handleNotificationReadAll);
+    };
+  }, [currentUser, socket]);
 
   // Merge thread notifications with system leave notifications
   const allNotifications = useMemo(() => {
@@ -214,9 +245,25 @@ export function NotificationDropdown() {
     };
 
     syncNotifications();
-    const interval = setInterval(syncNotifications, 10000); // 10s sync
-    return () => clearInterval(interval);
-  }, [currentUser]);
+
+    if (!socket) return;
+
+    const handleCommentEvent = () => {
+      syncNotifications();
+    };
+
+    socket.on("task:comment:created", handleCommentEvent);
+    socket.on("task:comment:deleted", handleCommentEvent);
+    socket.on("team:comment:created", handleCommentEvent);
+    socket.on("team:comment:deleted", handleCommentEvent);
+
+    return () => {
+      socket.off("task:comment:created", handleCommentEvent);
+      socket.off("task:comment:deleted", handleCommentEvent);
+      socket.off("team:comment:created", handleCommentEvent);
+      socket.off("team:comment:deleted", handleCommentEvent);
+    };
+  }, [currentUser, socket]);
 
   const unreadCount = allNotifications.length;
 

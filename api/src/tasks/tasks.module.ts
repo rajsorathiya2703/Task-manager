@@ -11,6 +11,7 @@ import { Employee, EmployeeSchema } from '../employees/schemas/employee.schema';
 import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { CommentsModule } from '../comments/comments.module';
 import { CompaniesModule } from '../companies/companies.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CompaniesModule } from '../companies/companies.module';
     ]),
     CloudinaryModule,
     CommentsModule,
+    EventsModule,
     forwardRef(() => CompaniesModule),
   ],
   controllers: [TasksController],

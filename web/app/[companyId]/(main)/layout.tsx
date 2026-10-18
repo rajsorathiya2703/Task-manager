@@ -11,6 +11,7 @@ import { fetchMe } from "@/src/lib/api";
 import { useCompany } from "@/src/contexts/CompanyContext";
 import { MobileRestrictionNotice } from "@/src/components/common/MobileRestrictionNotice";
 import { TrialBanner } from "@/src/components/common/TrialBanner";
+import { SocketProvider } from "@/src/contexts/SocketContext";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -72,22 +73,24 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <SidebarProvider>
-      <ChatbotProvider>
-        <div className="flex h-screen overflow-hidden bg-background">
-          <MobileRestrictionNotice />
-          <Sidebar user={user} />
-          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-            <TrialBanner subscription={user?.subscription} />
-            <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
-              {children}
-            </main>
+    <SocketProvider user={user}>
+      <SidebarProvider>
+        <ChatbotProvider>
+          <div className="flex h-screen overflow-hidden bg-background">
+            <MobileRestrictionNotice />
+            <Sidebar user={user} />
+            <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+              <TrialBanner subscription={user?.subscription} />
+              <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
+                {children}
+              </main>
+            </div>
+            <TaskChatbot />
+            <ChatbotTrigger />
           </div>
-          <TaskChatbot />
-          <ChatbotTrigger />
-        </div>
-      </ChatbotProvider>
-    </SidebarProvider>
+        </ChatbotProvider>
+      </SidebarProvider>
+    </SocketProvider>
   );
 }
 

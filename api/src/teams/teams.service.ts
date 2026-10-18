@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -17,6 +18,7 @@ import {
   ScopeType,
 } from '../access/resolvers/teams.resolver';
 import { escapeRegExp } from '../common/utils/escape-regexp';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class TeamsService {
@@ -25,6 +27,7 @@ export class TeamsService {
     @InjectModel(Task.name) private taskModel: Model<Task>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     private commentsService: CommentsService,
+    @Optional() private eventsGateway?: EventsGateway,
   ) {}
 
   /**
@@ -375,6 +378,31 @@ export class TeamsService {
       .exec();
     
     if (!team) throw new NotFoundException(`Team #${id} not found`);
+
+    const createdComment = team.comments?.[team.comments.length - 1];
+    this.eventsGateway?.emitToTeam(id, 'team:comment:created', {
+      teamId: id,
+      comment: createdComment,
+      comments: team.comments,
+    });
+
+    // Dispatch real-time mention notifications if users are tagged
+    if (Array.isArray(commentData?.mentions) && commentData.mentions.length > 0) {
+      commentData.mentions.forEach((mentionedUser: any) => {
+        const mentionedId = typeof mentionedUser === 'string' ? mentionedUser : mentionedUser?.id || mentionedUser?._id;
+        if (mentionedId) {
+          this.eventsGateway?.emitToUser(mentionedId.toString(), 'notification:new', {
+            type: 'mention',
+            title: `Mentioned in ${team.name || 'Team discussion'}`,
+            message: commentData.content || '',
+            teamId: id,
+            comment: createdComment,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      });
+    }
+
     return team;
   }
 
@@ -418,6 +446,17 @@ export class TeamsService {
       .exec();
 
     if (!updated) throw new NotFoundException(`Team #${id} or Comment #${commentId} not found`);
+
+    const updatedComment = (updated as any).comments?.find(
+      (c: any) => c._id?.toString() === commentId || c.id === commentId,
+    );
+    this.eventsGateway?.emitToTeam(id, 'team:comment:updated', {
+      teamId: id,
+      commentId,
+      comment: updatedComment,
+      comments: (updated as any).comments,
+    });
+
     return updated;
   }
 
@@ -455,6 +494,13 @@ export class TeamsService {
       .exec();
 
     if (!updated) throw new NotFoundException(`Team #${id} not found`);
+
+    this.eventsGateway?.emitToTeam(id, 'team:comment:deleted', {
+      teamId: id,
+      commentId,
+      comments: (updated as any).comments,
+    });
+
     return updated;
   }
 }
