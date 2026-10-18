@@ -109,9 +109,10 @@ export default function EmployeeDetailPage({
       alert("First Name and Role are required.");
       return;
     }
+    const { _id, id: _uid, userId, companyId, createdAt, updatedAt, __v, ...cleanData } = employeeData;
     const payload = {
-      ...employeeData,
-      email: employeeData.email ? employeeData.email.trim().toLowerCase() : "",
+      ...cleanData,
+      email: cleanData.email ? cleanData.email.trim().toLowerCase() : "",
     };
     try {
       setIsSaving(true);

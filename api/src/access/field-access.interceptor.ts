@@ -121,6 +121,7 @@ export class FieldAccessInterceptor implements NestInterceptor {
       '_id',
       'id',
       'companyId',
+      'userId',
       'createdAt',
       'updatedAt',
       '__v',
