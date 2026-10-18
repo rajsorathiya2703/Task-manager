@@ -8,6 +8,7 @@ import { fetchTeams } from "@/src/lib/api";
 import { Users, Shield, Type, AlignLeft } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "@/src/components/common/FilterDropdown";
 import { GroupByOption } from "@/src/components/common/GroupByDropdown";
+import { useAccessControl } from "@/src/contexts/AccessContext";
 
 const searchContexts: SearchContextItem[] = [
   { key: "name", label: "Team Name", icon: Type },
@@ -23,6 +24,8 @@ const groupByOptions: GroupByOption[] = [
 export default function TeamsConfigurationPage() {
   const router = useRouter();
   const cp = useCompanyPath();
+  const { can } = useAccessControl();
+  const canCreateTeam = can("teams", "create");
   const [rawTeams, setRawTeams] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,7 +198,7 @@ export default function TeamsConfigurationPage() {
       <PageHeader
         title="Teams"
         breadcrumbs={[{ label: "Configuration" }, { label: "Teams" }]}
-        showAdd={true}
+        showAdd={canCreateTeam}
         addText="New Team"
         addHref="/configuration/team/new"
         filters={filters}
@@ -273,7 +276,9 @@ export default function TeamsConfigurationPage() {
                             <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                               {filters.length > 0 || searchQuery
                                 ? "No teams match the current filters or search query."
-                                : "No teams found. Click \"New Team\" to create one."}
+                                : canCreateTeam
+                                ? "No teams found. Click \"New Team\" to create one."
+                                : "No teams found."}
                             </td>
                           </tr>
                         )}

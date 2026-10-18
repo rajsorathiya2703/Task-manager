@@ -76,12 +76,20 @@ export function PageHeader({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { can } = useAccessControl();
 
-  const isTaskCreate = Boolean(
-    addHref?.includes("/tasks/new") ||
-    (typeof addText === "string" && addText.toLowerCase().includes("task") && (!addHref || addHref.includes("/tasks/new")))
-  );
-  const isPermitted = isTaskCreate ? can("tasks", "create") : true;
-  const shouldShowAdd = showAdd && isPermitted;
+  const targetModule = useMemo(() => {
+    const href = (addHref || "").toLowerCase();
+    const text = (typeof addText === "string" ? addText : "").toLowerCase();
+    if (href.includes("/tasks") || text.includes("task")) return "tasks";
+    if (href.includes("/team") || text.includes("team")) return "teams";
+    if (href.includes("/employee") || text.includes("employee")) return "employees";
+    if (href.includes("/project") || text.includes("project")) return "projects";
+    if (href.includes("/role") || text.includes("role")) return "roles";
+    if (href.includes("/dayoff") || text.includes("leave")) return "dayoff";
+    return null;
+  }, [addHref, addText]);
+
+  const isPermitted = targetModule ? can(targetModule, "create") : true;
+  const shouldShowAdd = Boolean(showAdd && isPermitted);
 
   const defaultContexts: SearchContextItem[] = useMemo(() => [
     { key: 'title', label: 'Title', icon: Type },

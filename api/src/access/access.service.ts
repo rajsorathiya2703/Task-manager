@@ -108,21 +108,21 @@ export class AccessService {
       membershipPromise,
     ]);
 
-    let userRoles = initialUserRoles;
-    // If no roles found directly via role.members, check membership.roleIds
-    if (
-      userRoles.length === 0 &&
-      membership &&
-      membership.roleIds &&
-      membership.roleIds.length > 0
-    ) {
-      const roleObjIds = membership.roleIds
-        .filter((r: any) => Types.ObjectId.isValid(r))
+    let userRoles = [...initialUserRoles];
+    // Ensure company-specific roles from membership.roleIds are merged into userRoles
+    if (membership && membership.roleIds && membership.roleIds.length > 0) {
+      const existingIds = new Set(userRoles.map((r) => r._id.toString()));
+      const additionalRoleObjIds = membership.roleIds
+        .filter((r: any) => Types.ObjectId.isValid(r) && !existingIds.has(r.toString()))
         .map((r: any) => new Types.ObjectId(r));
-      userRoles = await this.roleModel
-        .find({ _id: { $in: roleObjIds }, isActive: true })
-        .lean()
-        .exec();
+
+      if (additionalRoleObjIds.length > 0) {
+        const additionalRoles = await this.roleModel
+          .find({ _id: { $in: additionalRoleObjIds }, isActive: true })
+          .lean()
+          .exec();
+        userRoles = [...userRoles, ...additionalRoles];
+      }
     }
 
     const plainPolicy = policyDoc

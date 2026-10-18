@@ -120,17 +120,21 @@ export class AccessGuard implements CanActivate {
       .lean()
       .exec();
 
-    // If no roles matched directly by members array, check membership.roleIds
-    if (userRoles.length === 0 && request.membership?.roleIds?.length > 0) {
+    // Merge roles from membership.roleIds
+    if (request.membership?.roleIds?.length > 0) {
+      const existingIds = new Set(userRoles.map((r: any) => r._id.toString()));
       const membershipRoleObjectIds = request.membership.roleIds
-        .filter((r: any) => Types.ObjectId.isValid(r))
+        .filter((r: any) => Types.ObjectId.isValid(r) && !existingIds.has(r.toString()))
         .map((r: any) => new Types.ObjectId(r));
 
-      userRoles = await this.roleModel
-        .find({ _id: { $in: membershipRoleObjectIds }, isActive: true })
-        .select('_id slug')
-        .lean()
-        .exec();
+      if (membershipRoleObjectIds.length > 0) {
+        const additionalRoles = await this.roleModel
+          .find({ _id: { $in: membershipRoleObjectIds }, isActive: true })
+          .select('_id slug')
+          .lean()
+          .exec();
+        userRoles = [...userRoles, ...additionalRoles];
+      }
     }
 
     const isCompanyAdmin =

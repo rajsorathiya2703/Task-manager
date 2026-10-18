@@ -145,20 +145,28 @@ api.interceptors.response.use(
         }
       }
 
-      const detail = {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        message,
-        module: data?.module,
-        action: data?.action,
-        code: data?.code,
-        fields: data?.fields,
-        url: originalRequest?.url,
-        method: originalRequest?.method?.toUpperCase(),
-        timestamp: Date.now(),
-      };
+      const isSilent = Boolean(
+        originalRequest?.silent ||
+        (originalRequest as any)?.silent ||
+        originalRequest?.headers?.['x-silent']
+      );
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('app:access-denied', { detail }));
+      if (!isSilent) {
+        const detail = {
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          message,
+          module: data?.module,
+          action: data?.action,
+          code: data?.code,
+          fields: data?.fields,
+          url: originalRequest?.url,
+          method: originalRequest?.method?.toUpperCase(),
+          timestamp: Date.now(),
+        };
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('app:access-denied', { detail }));
+        }
       }
     }
 
@@ -311,7 +319,7 @@ export const taskEndpoints = {
 
 export const fetchTasks = async (
   projectId?: any,
-  opts?: { fresh?: boolean },
+  opts?: { fresh?: boolean; silent?: boolean },
 ): Promise<any[]> => {
   const slug = currentCompanySlug;
   const pid = projectId
@@ -323,7 +331,7 @@ export const fetchTasks = async (
 
   return cached(
     key,
-    () => api.get(taskEndpoints.getAll(projectId)).then((r) => r.data),
+    () => api.get(taskEndpoints.getAll(projectId), { silent: opts?.silent } as any).then((r) => r.data),
     {
       ttl: 20 * 1000, // 20 s — tasks change often
       tags: ['tasks'],
@@ -615,11 +623,11 @@ export const teamEndpoints = {
   delete: (id: any) => cp(`/teams/${toId(id)}`),
 };
 
-export const fetchTeams = async (opts?: { fresh?: boolean }): Promise<any[]> => {
+export const fetchTeams = async (opts?: { fresh?: boolean; silent?: boolean }): Promise<any[]> => {
   const slug = currentCompanySlug;
   const key = `teams:${slug}`;
 
-  return cached(key, () => api.get(teamEndpoints.getAll).then((r) => r.data), {
+  return cached(key, () => api.get(teamEndpoints.getAll, { silent: opts?.silent } as any).then((r) => r.data), {
     ttl: 60 * 1000, // 1 min
     tags: ['teams'],
     fresh: opts?.fresh,

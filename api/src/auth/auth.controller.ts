@@ -168,11 +168,16 @@ export class AuthController {
       memberships,
     };
 
+    const resolvedCompanySlug =
+      (companySlug && companySlug.trim()) ||
+      ((req.headers['x-company-slug'] || req.headers['x-company-id']) as string) ||
+      undefined;
+
     let activeCompanyId: string | undefined = undefined;
-    if (companySlug && companySlug.trim()) {
+    if (resolvedCompanySlug && resolvedCompanySlug.trim()) {
       const activeMembership = await this.authService.getCompanyMembership(
         userId,
-        companySlug.trim(),
+        resolvedCompanySlug.trim(),
       );
       if (activeMembership) {
         response.membership = activeMembership;

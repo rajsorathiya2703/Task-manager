@@ -74,6 +74,12 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   }, [isNew]);
 
   useEffect(() => {
+    if (!accessLoading && isNew && !canCreateTask) {
+      router.replace(cp('/tasks'));
+    }
+  }, [accessLoading, isNew, canCreateTask, router, cp]);
+
+  useEffect(() => {
     if (!isNew) {
       const loadTask = async () => {
         try {

@@ -5,6 +5,7 @@ import { Popover } from "@headlessui/react";
 import { Bell, MessageSquare, AtSign, Calendar } from "lucide-react";
 import { useCompanyPath, CompanyLink } from "../../lib/useCompanyPath";
 import { fetchMe, fetchTasks, fetchTeams, fetchNotifications, markNotificationRead, getCompanySlug } from "../../lib/api";
+import { useAccessControl } from "../../contexts/AccessContext";
 import { isDayOffModuleEnabled } from "../../lib/dayoff-feature";
 import { getUserDisplayName } from "./Comments";
 
@@ -22,6 +23,7 @@ export interface NotificationItem {
 
 export function NotificationDropdown() {
   const cp = useCompanyPath();
+  const { can, loading: accessLoading } = useAccessControl();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -75,20 +77,21 @@ export function NotificationDropdown() {
     return [...sysItems, ...notifications].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [systemNotifications, notifications]);
+  }, [systemNotifications, notifications, cp]);
 
-  // TODO: The 10s polling of ALL tasks and teams is heavy. Replace with a dedicated notification/unread endpoint in the backend.
   // Poll tasks & teams every 10s to detect unread comments & mentions globally (grouped by thread)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || accessLoading) return;
 
     const syncNotifications = async () => {
       try {
-        // Use { fresh: true } so the 10-second poll always hits the network
-        // and detects new comments exactly as before the cache was introduced.
+        const canReadTasks = can("tasks", "read");
+        const canReadTeams = can("teams", "read");
+
+        // Use { fresh: true, silent: true } and only fetch modules the user has permission to read
         const [tasks, teams] = await Promise.all([
-          fetchTasks(undefined, { fresh: true }).catch(() => []),
-          fetchTeams({ fresh: true }).catch(() => []),
+          canReadTasks ? fetchTasks(undefined, { fresh: true, silent: true }).catch(() => []) : Promise.resolve([]),
+          canReadTeams ? fetchTeams({ fresh: true, silent: true }).catch(() => []) : Promise.resolve([]),
         ]);
 
         const currentUserId = (currentUser.id || currentUser._id)?.toString();

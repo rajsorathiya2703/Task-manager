@@ -15,6 +15,8 @@ import { TeamComments } from "@/src/components/team/TeamComments";
 import { getUserDisplayName } from "@/src/components/common/Comments";
 import { TeamLiveTimeline } from "@/src/components/team/TeamLiveTimeline";
 import { useCompanyPath, CompanyLink } from "@/src/lib/useCompanyPath";
+import { useAccessControl } from "@/src/contexts/AccessContext";
+import { AccessDenied } from "@/src/components/access";
 
 const EMPTY_TEAM = {
   name: "",
@@ -40,6 +42,7 @@ export default function TeamDetailPage({
   const isNew = id === "new";
   const router = useRouter();
   const cp = useCompanyPath();
+  const { can, loading: accessLoading } = useAccessControl();
   const { isOpen, toggleSidebar } = useSidebar();
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
@@ -78,6 +81,12 @@ export default function TeamDetailPage({
     };
     init();
   }, [id, isNew]);
+
+  useEffect(() => {
+    if (!accessLoading && isNew && !can("teams", "create")) {
+      router.replace(cp("/configuration/team"));
+    }
+  }, [accessLoading, isNew, can, router, cp]);
 
   // Check if current logged-in user is a member or team lead of this team
   const isMember = (() => {
@@ -197,6 +206,10 @@ export default function TeamDetailPage({
   );
 
   const handleSave = async () => {
+    if (isNew && !can("teams", "create")) {
+      alert("You do not have permission to create teams.");
+      return;
+    }
     if (!teamData.name?.trim()) {
       alert("Team Name is required.");
       return;
@@ -235,10 +248,22 @@ export default function TeamDetailPage({
 
   const displayName = teamData.name || (isNew ? "New Team" : "Team");
 
-  if (isLoading) {
+  if (isLoading || accessLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isNew && !can("teams", "create")) {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden items-center justify-center">
+        <AccessDenied
+          module="teams"
+          action="create"
+          message="You do not have permission to create teams. Direct URL access is restricted."
+        />
       </div>
     );
   }
@@ -282,18 +307,20 @@ export default function TeamDetailPage({
             />
           )}
           {isNew ? (
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !teamData.name?.trim()}
-              className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50"
-            >
-              {isSaving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5" />
-              )}
-              {isSaving ? "Saving..." : "Save Team"}
-            </button>
+            can("teams", "create") && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !teamData.name?.trim()}
+                className="flex items-center gap-1.5 h-7 px-3 border border-border rounded-md transition-colors bg-primary text-primary-foreground shadow-sm text-xs font-medium disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                {isSaving ? "Saving..." : "Save Team"}
+              </button>
+            )
           ) : hasChanges ? (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <button

@@ -9,7 +9,7 @@ import React, {
   useMemo,
 } from "react";
 import { usePathname } from "next/navigation";
-import { fetchMe } from "../lib/api";
+import { fetchMe, getCompanySlug, setCompanySlug } from "../lib/api";
 
 export type ActionType = "create" | "read" | "update" | "delete" | string;
 export type ScopeType = "own" | "team" | "all" | "none";
@@ -91,6 +91,20 @@ const defaultContextValue: AccessContextValue = {
 
 export const AccessContext = createContext<AccessContextValue>(defaultContextValue);
 
+const extractSlugFromPath = (path: string | null): string => {
+  if (!path) return "";
+  const segments = path.split("/").filter(Boolean);
+  const first = segments[0] || "";
+  if (
+    PUBLIC_ROUTES.includes(`/${first}`) ||
+    first === "trial-expired" ||
+    first === "register-company"
+  ) {
+    return "";
+  }
+  return first;
+};
+
 export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any | null>(null);
   const [access, setAccess] = useState<Record<string, EffectiveModuleAccess>>({});
@@ -108,7 +122,13 @@ export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
   const refreshAccess = useCallback(async () => {
     try {
       setError(null);
-      const data = await fetchMe();
+      const slugFromPath = extractSlugFromPath(pathname);
+      const activeSlug = slugFromPath || getCompanySlug();
+      if (activeSlug && !getCompanySlug()) {
+        setCompanySlug(activeSlug);
+      }
+
+      const data = await fetchMe(activeSlug || undefined);
       if (!data) {
         setUser(null);
         setAccess({});
@@ -144,11 +164,21 @@ export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [isPublicRoute]);
+  }, [isPublicRoute, pathname]);
 
   useEffect(() => {
     refreshAccess();
   }, [pathname, refreshAccess]);
+
+  useEffect(() => {
+    const handleSlugChanged = () => {
+      refreshAccess();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("companySlugChanged", handleSlugChanged);
+      return () => window.removeEventListener("companySlugChanged", handleSlugChanged);
+    }
+  }, [refreshAccess]);
 
   const can = useCallback(
     (module: string, action: ActionType = "read"): boolean => {
