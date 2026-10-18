@@ -157,7 +157,18 @@ export class TeamsService {
       ...createTeamDto,
       companyId,
     });
-    return newTeam.save();
+    const saved = await newTeam.save();
+    const populated = await this.teamModel
+      .findById(saved._id)
+      .populate('members')
+      .populate('teamLead')
+      .exec();
+    const result = populated || saved;
+
+    this.eventsGateway?.emitToCompany(companyId.toString(), 'team:created', { team: result, teamId: result._id });
+    this.eventsGateway?.server?.emit('team:created', { team: result, teamId: result._id, companyId: companyId.toString() });
+
+    return result;
   }
 
   async findAll(
@@ -300,6 +311,10 @@ export class TeamsService {
       throw new NotFoundException(`Team #${id} not found`);
     }
 
+    this.eventsGateway?.emitToCompany(companyId.toString(), 'team:updated', { team: updatedTeam, teamId: id });
+    this.eventsGateway?.emitToTeam(id, 'team:updated', { team: updatedTeam, teamId: id });
+    this.eventsGateway?.server?.emit('team:updated', { team: updatedTeam, teamId: id, companyId: companyId.toString() });
+
     return updatedTeam;
   }
 
@@ -323,6 +338,11 @@ export class TeamsService {
     if (!deletedTeam) {
       throw new NotFoundException(`Team #${id} not found`);
     }
+
+    this.eventsGateway?.emitToCompany(companyId.toString(), 'team:deleted', { teamId: id, team: deletedTeam });
+    this.eventsGateway?.emitToTeam(id, 'team:deleted', { teamId: id, team: deletedTeam });
+    this.eventsGateway?.server?.emit('team:deleted', { teamId: id, team: deletedTeam, companyId: companyId.toString() });
+
     return deletedTeam;
   }
 
@@ -381,6 +401,11 @@ export class TeamsService {
 
     const createdComment = team.comments?.[team.comments.length - 1];
     this.eventsGateway?.emitToTeam(id, 'team:comment:created', {
+      teamId: id,
+      comment: createdComment,
+      comments: team.comments,
+    });
+    this.eventsGateway?.server?.emit('team:comment:created', {
       teamId: id,
       comment: createdComment,
       comments: team.comments,
@@ -456,6 +481,12 @@ export class TeamsService {
       comment: updatedComment,
       comments: (updated as any).comments,
     });
+    this.eventsGateway?.server?.emit('team:comment:updated', {
+      teamId: id,
+      commentId,
+      comment: updatedComment,
+      comments: (updated as any).comments,
+    });
 
     return updated;
   }
@@ -496,6 +527,11 @@ export class TeamsService {
     if (!updated) throw new NotFoundException(`Team #${id} not found`);
 
     this.eventsGateway?.emitToTeam(id, 'team:comment:deleted', {
+      teamId: id,
+      commentId,
+      comments: (updated as any).comments,
+    });
+    this.eventsGateway?.server?.emit('team:comment:deleted', {
       teamId: id,
       commentId,
       comments: (updated as any).comments,

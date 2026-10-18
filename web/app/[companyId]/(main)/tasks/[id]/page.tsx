@@ -159,29 +159,80 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
     if (!socket) return;
 
+    const matchesTask = (payload: any) => {
+      const pid = payload?.taskId || payload?.task?._id || payload?.task?.id || payload?._id || payload?.id;
+      return String(pid) === String(id);
+    };
+
     const handleCommentCreated = (payload: any) => {
-      if (payload?.taskId === id && payload?.comments) {
-        setTaskData((prev: any) => ({
-          ...prev,
-          comments: payload.comments,
-        }));
+      if (matchesTask(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTaskData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.comment) {
+          setTaskData((prev: any) => {
+            const currentComments = prev?.comments || [];
+            const commentId = payload.comment._id || payload.comment.id;
+            if (currentComments.some((c: any) => (c._id || c.id) === commentId)) {
+              return prev;
+            }
+            return {
+              ...prev,
+              comments: [...currentComments, payload.comment],
+            };
+          });
+        }
       }
     };
 
     const handleCommentUpdated = (payload: any) => {
-      if (payload?.taskId === id && payload?.comments) {
-        setTaskData((prev: any) => ({
-          ...prev,
-          comments: payload.comments,
-        }));
+      if (matchesTask(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTaskData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.comment) {
+          const targetCommentId = payload?.commentId || payload.comment._id || payload.comment.id;
+          setTaskData((prev: any) => ({
+            ...prev,
+            comments: (prev?.comments || []).map((c: any) =>
+              (c._id || c.id) === targetCommentId ? payload.comment : c
+            ),
+          }));
+        }
       }
     };
 
     const handleCommentDeleted = (payload: any) => {
-      if (payload?.taskId === id && payload?.comments) {
+      if (matchesTask(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTaskData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.commentId) {
+          setTaskData((prev: any) => ({
+            ...prev,
+            comments: (prev?.comments || []).filter(
+              (c: any) => (c._id || c.id) !== payload.commentId
+            ),
+          }));
+        }
+      }
+    };
+
+    const handleTaskUpdated = (payload: any) => {
+      if (matchesTask(payload)) {
+        const updated = payload?.task || payload;
         setTaskData((prev: any) => ({
           ...prev,
-          comments: payload.comments,
+          ...updated,
+          comments: updated.comments || prev.comments,
+          timeEntries: updated.timeEntries || prev.timeEntries,
+          updates: updated.updates || prev.updates,
         }));
       }
     };
@@ -189,12 +240,14 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     socket.on("task:comment:created", handleCommentCreated);
     socket.on("task:comment:updated", handleCommentUpdated);
     socket.on("task:comment:deleted", handleCommentDeleted);
+    socket.on("task:updated", handleTaskUpdated);
 
     return () => {
       leaveTask(id);
       socket.off("task:comment:created", handleCommentCreated);
       socket.off("task:comment:updated", handleCommentUpdated);
       socket.off("task:comment:deleted", handleCommentDeleted);
+      socket.off("task:updated", handleTaskUpdated);
     };
   }, [id, isNew, socket, joinTask, leaveTask]);
 

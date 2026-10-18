@@ -378,6 +378,12 @@ export class TasksService {
       }
     }
 
+    if (savedTask) {
+      const companyIdStr = companyId.toString();
+      this.eventsGateway?.emitToCompany(companyIdStr, 'task:created', savedTask);
+      this.eventsGateway?.broadcast('task:created', savedTask);
+    }
+
     return savedTask;
   }
 
@@ -855,10 +861,20 @@ export class TasksService {
         taskObj.assignedBy = creatorEmployee.toObject ? creatorEmployee.toObject() : creatorEmployee;
       }
     }
-    return {
+    const result = {
       ...taskObj,
       isOwner: Boolean(isSystemAdmin || (userId && updatedTask.userId?.toString() === userId)),
     } as any;
+
+    if (result) {
+      const taskIdStr = id.toString();
+      const companyIdStr = companyId.toString();
+      this.eventsGateway?.emitToTask(taskIdStr, 'task:updated', result);
+      this.eventsGateway?.emitToCompany(companyIdStr, 'task:updated', result);
+      this.eventsGateway?.broadcast('task:updated', result);
+    }
+
+    return result;
   }
 
   async remove(
@@ -872,7 +888,15 @@ export class TasksService {
     if (!isSystemAdmin && scope !== 'all') {
       await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
     }
-    return this.taskModel.findOneAndDelete({ _id: id, companyId }).exec();
+    const deleted = await this.taskModel.findOneAndDelete({ _id: id, companyId }).exec();
+    if (deleted) {
+      const taskIdStr = id.toString();
+      const companyIdStr = companyId.toString();
+      this.eventsGateway?.emitToTask(taskIdStr, 'task:deleted', { taskId: taskIdStr });
+      this.eventsGateway?.emitToCompany(companyIdStr, 'task:deleted', { taskId: taskIdStr });
+      this.eventsGateway?.broadcast('task:deleted', { taskId: taskIdStr });
+    }
+    return deleted;
   }
 
   async duplicate(companyId: Types.ObjectId, id: string, userId: string, email?: string): Promise<Task> {
@@ -975,11 +999,16 @@ export class TasksService {
 
     if (updatedTask) {
       const createdComment = updatedTask.comments?.[updatedTask.comments.length - 1];
-      this.eventsGateway?.emitToTask(taskId, 'task:comment:created', {
+      const commentPayload = {
         taskId,
         comment: createdComment,
         comments: updatedTask.comments,
-      });
+      };
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:created', commentPayload);
+      this.eventsGateway?.server?.emit('task:comment:created', commentPayload);
+      if (resolvedCompanyId) {
+        this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:created', commentPayload);
+      }
 
       // Dispatch real-time mention notifications if users are tagged
       if (Array.isArray(commentData?.mentions) && commentData.mentions.length > 0) {
@@ -1090,12 +1119,17 @@ export class TasksService {
 
     if (updated) {
       const updatedComment = updated.comments?.find((c: any) => c._id?.toString() === commentId || c.id === commentId);
-      this.eventsGateway?.emitToTask(taskId, 'task:comment:updated', {
+      const commentPayload = {
         taskId,
         commentId,
         comment: updatedComment,
         comments: updated.comments,
-      });
+      };
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:updated', commentPayload);
+      this.eventsGateway?.server?.emit('task:comment:updated', commentPayload);
+      if (resolvedCompanyId) {
+        this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:updated', commentPayload);
+      }
     }
 
     return updated;
@@ -1177,11 +1211,16 @@ export class TasksService {
     ).exec();
 
     if (updated) {
-      this.eventsGateway?.emitToTask(taskId, 'task:comment:deleted', {
+      const commentPayload = {
         taskId,
         commentId,
         comments: updated.comments,
-      });
+      };
+      this.eventsGateway?.emitToTask(taskId, 'task:comment:deleted', commentPayload);
+      this.eventsGateway?.server?.emit('task:comment:deleted', commentPayload);
+      if (resolvedCompanyId) {
+        this.eventsGateway?.emitToCompany(resolvedCompanyId.toString(), 'task:comment:deleted', commentPayload);
+      }
     }
 
     return updated;

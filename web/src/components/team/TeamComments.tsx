@@ -30,29 +30,73 @@ export function TeamComments({
 
     if (!socket) return;
 
+    const matchesTeam = (payload: any) => {
+      const tid = payload?.teamId || payload?.team?._id || payload?.team?.id || payload?._id || payload?.id;
+      return String(tid) === String(teamId);
+    };
+
     const handleCommentCreated = (payload: any) => {
-      if (payload?.teamId === teamId && payload?.comments) {
-        setTeamData((prev: any) => ({
-          ...prev,
-          comments: payload.comments,
-        }));
+      if (matchesTeam(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTeamData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.comment) {
+          setTeamData((prev: any) => {
+            const current = prev?.comments || [];
+            const commentId = payload.comment._id || payload.comment.id;
+            if (current.some((c: any) => (c._id || c.id) === commentId)) return prev;
+            return { ...prev, comments: [...current, payload.comment] };
+          });
+        }
       }
     };
 
     const handleCommentUpdated = (payload: any) => {
-      if (payload?.teamId === teamId && payload?.comments) {
-        setTeamData((prev: any) => ({
-          ...prev,
-          comments: payload.comments,
-        }));
+      if (matchesTeam(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTeamData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.comment) {
+          const targetId = payload?.commentId || payload.comment._id || payload.comment.id;
+          setTeamData((prev: any) => ({
+            ...prev,
+            comments: (prev?.comments || []).map((c: any) =>
+              (c._id || c.id) === targetId ? payload.comment : c
+            ),
+          }));
+        }
       }
     };
 
     const handleCommentDeleted = (payload: any) => {
-      if (payload?.teamId === teamId && payload?.comments) {
+      if (matchesTeam(payload)) {
+        if (Array.isArray(payload?.comments)) {
+          setTeamData((prev: any) => ({
+            ...prev,
+            comments: payload.comments,
+          }));
+        } else if (payload?.commentId) {
+          setTeamData((prev: any) => ({
+            ...prev,
+            comments: (prev?.comments || []).filter(
+              (c: any) => (c._id || c.id) !== payload.commentId
+            ),
+          }));
+        }
+      }
+    };
+
+    const handleTeamUpdated = (payload: any) => {
+      if (matchesTeam(payload)) {
+        const updated = payload?.team || payload;
         setTeamData((prev: any) => ({
           ...prev,
-          comments: payload.comments,
+          ...updated,
+          comments: updated.comments || prev.comments,
         }));
       }
     };
@@ -60,12 +104,14 @@ export function TeamComments({
     socket.on("team:comment:created", handleCommentCreated);
     socket.on("team:comment:updated", handleCommentUpdated);
     socket.on("team:comment:deleted", handleCommentDeleted);
+    socket.on("team:updated", handleTeamUpdated);
 
     return () => {
       leaveTeam(teamId);
       socket.off("team:comment:created", handleCommentCreated);
       socket.off("team:comment:updated", handleCommentUpdated);
       socket.off("team:comment:deleted", handleCommentDeleted);
+      socket.off("team:updated", handleTeamUpdated);
     };
   }, [teamId, socket, joinTeam, leaveTeam, setTeamData]);
   const handleAdd = async (data: { content: string; attachments?: any[]; mentions?: string[] }) => {

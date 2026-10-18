@@ -9,6 +9,7 @@ import { Users, Shield, Type, AlignLeft } from "lucide-react";
 import { FilterRule, FilterFieldDefinition } from "@/src/components/common/FilterDropdown";
 import { GroupByOption } from "@/src/components/common/GroupByDropdown";
 import { useAccessControl } from "@/src/contexts/AccessContext";
+import { useSocket } from "@/src/contexts/SocketContext";
 
 const searchContexts: SearchContextItem[] = [
   { key: "name", label: "Team Name", icon: Type },
@@ -25,6 +26,7 @@ export default function TeamsConfigurationPage() {
   const router = useRouter();
   const cp = useCompanyPath();
   const { can } = useAccessControl();
+  const { socket } = useSocket();
   const canCreateTeam = can("teams", "create");
   const [rawTeams, setRawTeams] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterRule[]>([]);
@@ -46,6 +48,51 @@ export default function TeamsConfigurationPage() {
     };
     loadTeams();
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTeamCreated = (payload: any) => {
+      const newTeam = payload?.team || payload;
+      if (!newTeam) return;
+      const newId = newTeam._id || newTeam.id;
+      setRawTeams((prev) => {
+        if (prev.some((t) => (t._id || t.id) === newId)) return prev;
+        return [newTeam, ...prev];
+      });
+    };
+
+    const handleTeamUpdated = (payload: any) => {
+      const updated = payload?.team || payload;
+      if (!updated) return;
+      const targetId = payload?.teamId || updated._id || updated.id;
+      setRawTeams((prev) => {
+        const index = prev.findIndex((t) => (t._id || t.id) === targetId);
+        if (index !== -1) {
+          const next = [...prev];
+          next[index] = { ...next[index], ...updated };
+          return next;
+        }
+        return [updated, ...prev];
+      });
+    };
+
+    const handleTeamDeleted = (payload: any) => {
+      const deletedId = payload?.teamId || payload?._id || payload?.id;
+      if (!deletedId) return;
+      setRawTeams((prev) => prev.filter((t) => (t._id || t.id) !== deletedId));
+    };
+
+    socket.on("team:created", handleTeamCreated);
+    socket.on("team:updated", handleTeamUpdated);
+    socket.on("team:deleted", handleTeamDeleted);
+
+    return () => {
+      socket.off("team:created", handleTeamCreated);
+      socket.off("team:updated", handleTeamUpdated);
+      socket.off("team:deleted", handleTeamDeleted);
+    };
+  }, [socket]);
 
   // Compute dynamic filter fields
   const filterFields = useMemo<FilterFieldDefinition[]>(() => {

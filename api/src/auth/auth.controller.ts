@@ -163,9 +163,18 @@ export class AuthController {
 
     const memberships = await this.authService.getUserMemberships(userId);
 
+    let token = req.cookies?.access_token;
+    if (!token && userId) {
+      try {
+        const tokens = await this.authService.issueTokens(userId);
+        token = tokens.accessToken;
+      } catch (e) {}
+    }
+
     const response: any = {
       ...safeUser,
       memberships,
+      token,
     };
 
     const resolvedCompanySlug =

@@ -35,11 +35,19 @@ export function TeamLiveTimeline({ teamId }: { teamId: string }) {
 
     socket.on("team:comment:created", handleUpdate);
     socket.on("task:comment:created", handleUpdate);
+    socket.on("task:updated", handleUpdate);
+    socket.on("team:updated", handleUpdate);
+    socket.on("task:created", handleUpdate);
+    socket.on("task:deleted", handleUpdate);
 
     return () => {
       leaveTeam(teamId);
       socket.off("team:comment:created", handleUpdate);
       socket.off("task:comment:created", handleUpdate);
+      socket.off("task:updated", handleUpdate);
+      socket.off("team:updated", handleUpdate);
+      socket.off("task:created", handleUpdate);
+      socket.off("task:deleted", handleUpdate);
     };
   }, [teamId, socket, joinTeam, leaveTeam]);
 

@@ -11,6 +11,7 @@ import { GroupByOption } from "@/src/components/common/GroupByDropdown";
 import { ModuleGate, AccessDenied } from "@/src/components/access";
 import { useAccessControl } from "@/src/contexts/AccessContext";
 import { useCompanyPath } from "@/src/lib/useCompanyPath";
+import { useSocket } from "@/src/contexts/SocketContext";
 
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
 const defaultPriorities = ["High", "Medium", "Low", "No Priority"];
@@ -24,6 +25,7 @@ const groupByOptions: GroupByOption[] = [
 export default function TasksPage() {
   const cp = useCompanyPath();
   const { can } = useAccessControl();
+  const { socket } = useSocket();
   const canCreateTask = can("tasks", "create");
   const [view, setView] = useState<'board' | 'list'>('board');
   const [data, setData] = useState<Record<string, Task[]>>({
@@ -168,6 +170,60 @@ export default function TasksPage() {
       processAndSetData(rawTasks, filters, searchQuery, searchContext, groupBy);
     }
   }, [filters, searchQuery, searchContext, groupBy]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTaskCreated = (payload: any) => {
+      const newTask = payload?.task || payload;
+      if (!newTask) return;
+      const newId = newTask._id || newTask.id;
+      setRawTasks((prev) => {
+        if (prev.some((t) => (t._id || t.id) === newId)) return prev;
+        const updated = [newTask, ...prev];
+        processAndSetData(updated, filters, searchQuery, searchContext, groupBy);
+        return updated;
+      });
+    };
+
+    const handleTaskUpdated = (payload: any) => {
+      const updatedTask = payload?.task || payload;
+      if (!updatedTask) return;
+      const targetId = payload?.taskId || updatedTask._id || updatedTask.id;
+      setRawTasks((prev) => {
+        const index = prev.findIndex((t) => (t._id || t.id) === targetId);
+        let updatedList: any[];
+        if (index !== -1) {
+          updatedList = [...prev];
+          updatedList[index] = { ...updatedList[index], ...updatedTask };
+        } else {
+          updatedList = [updatedTask, ...prev];
+        }
+        processAndSetData(updatedList, filters, searchQuery, searchContext, groupBy);
+        return updatedList;
+      });
+    };
+
+    const handleTaskDeleted = (payload: any) => {
+      const deletedId = payload?.taskId || payload?.id || payload?._id;
+      if (!deletedId) return;
+      setRawTasks((prev) => {
+        const updated = prev.filter((t) => (t._id || t.id) !== deletedId);
+        processAndSetData(updated, filters, searchQuery, searchContext, groupBy);
+        return updated;
+      });
+    };
+
+    socket.on("task:created", handleTaskCreated);
+    socket.on("task:updated", handleTaskUpdated);
+    socket.on("task:deleted", handleTaskDeleted);
+
+    return () => {
+      socket.off("task:created", handleTaskCreated);
+      socket.off("task:updated", handleTaskUpdated);
+      socket.off("task:deleted", handleTaskDeleted);
+    };
+  }, [socket, filters, searchQuery, searchContext, groupBy]);
 
   const handleTaskStatusChange = async (taskId: string, newGroupValue: string) => {
     // Optimistic UI update

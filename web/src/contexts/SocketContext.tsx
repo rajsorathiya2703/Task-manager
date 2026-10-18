@@ -11,6 +11,8 @@ interface SocketContextType {
   leaveTask: (taskId: string) => void;
   joinTeam: (teamId: string) => void;
   leaveTeam: (teamId: string) => void;
+  joinCompany: (companyId: string) => void;
+  leaveCompany: (companyId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType>({
@@ -20,6 +22,8 @@ const SocketContext = createContext<SocketContextType>({
   leaveTask: () => {},
   joinTeam: () => {},
   leaveTeam: () => {},
+  joinCompany: () => {},
+  leaveCompany: () => {},
 });
 
 export const useSocket = () => useContext(SocketContext);
@@ -32,13 +36,15 @@ interface SocketProviderProps {
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
   const activeRoomsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // Only connect if user is authenticated
     if (!user) {
-      if (socket) {
-        socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
         setSocket(null);
         setIsConnected(false);
       }
@@ -46,29 +52,45 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
     }
 
     const token =
-      typeof window !== "undefined"
+      user?.token ||
+      user?.accessToken ||
+      (typeof window !== "undefined"
         ? localStorage.getItem("token") || localStorage.getItem("access_token")
-        : undefined;
+        : undefined);
 
-    const newSocket = io(API_URL, {
+    const userId = user?._id || user?.id;
+
+    // Normalize API_URL (strip trailing slash)
+    const baseUrl = (API_URL || "http://localhost:5000").replace(/\/+$/, "");
+
+    const newSocket = io(baseUrl, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       auth: {
         token: token || undefined,
+        userId: userId || undefined,
       },
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
+      query: {
+        token: token || undefined,
+        userId: userId || undefined,
+      },
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1500,
     });
+
+    socketRef.current = newSocket;
 
     newSocket.on("connect", () => {
       setIsConnected(true);
 
-      // Re-join active rooms on reconnect
+      // Re-join active rooms on connect/reconnect
       activeRoomsRef.current.forEach((room) => {
         if (room.startsWith("task:")) {
           newSocket.emit("task:join", { taskId: room.replace("task:", "") });
         } else if (room.startsWith("team:")) {
           newSocket.emit("team:join", { teamId: room.replace("team:", "") });
+        } else if (room.startsWith("company:")) {
+          newSocket.emit("company:join", { companyId: room.replace("company:", "") });
         }
       });
     });
@@ -86,54 +108,73 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
     return () => {
       newSocket.disconnect();
       activeRoomsRef.current.clear();
+      socketRef.current = null;
       setSocket(null);
       setIsConnected(false);
     };
-  }, [user?.id, user?._id]);
+  }, [user?._id, user?.id, user?.token]);
 
-  const joinTask = useCallback(
-    (taskId: string) => {
-      if (!taskId) return;
-      activeRoomsRef.current.add(`task:${taskId}`);
-      if (socket && isConnected) {
-        socket.emit("task:join", { taskId });
-      }
-    },
-    [socket, isConnected]
-  );
+  const joinTask = useCallback((taskId: string) => {
+    if (!taskId) return;
+    const room = `task:${taskId}`;
+    activeRoomsRef.current.add(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("task:join", { taskId });
+    }
+  }, []);
 
-  const leaveTask = useCallback(
-    (taskId: string) => {
-      if (!taskId) return;
-      activeRoomsRef.current.delete(`task:${taskId}`);
-      if (socket && isConnected) {
-        socket.emit("task:leave", { taskId });
-      }
-    },
-    [socket, isConnected]
-  );
+  const leaveTask = useCallback((taskId: string) => {
+    if (!taskId) return;
+    const room = `task:${taskId}`;
+    activeRoomsRef.current.delete(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("task:leave", { taskId });
+    }
+  }, []);
 
-  const joinTeam = useCallback(
-    (teamId: string) => {
-      if (!teamId) return;
-      activeRoomsRef.current.add(`team:${teamId}`);
-      if (socket && isConnected) {
-        socket.emit("team:join", { teamId });
-      }
-    },
-    [socket, isConnected]
-  );
+  const joinTeam = useCallback((teamId: string) => {
+    if (!teamId) return;
+    const room = `team:${teamId}`;
+    activeRoomsRef.current.add(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("team:join", { teamId });
+    }
+  }, []);
 
-  const leaveTeam = useCallback(
-    (teamId: string) => {
-      if (!teamId) return;
-      activeRoomsRef.current.delete(`team:${teamId}`);
-      if (socket && isConnected) {
-        socket.emit("team:leave", { teamId });
-      }
-    },
-    [socket, isConnected]
-  );
+  const leaveTeam = useCallback((teamId: string) => {
+    if (!teamId) return;
+    const room = `team:${teamId}`;
+    activeRoomsRef.current.delete(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("team:leave", { teamId });
+    }
+  }, []);
+
+  const joinCompany = useCallback((companyId: string) => {
+    if (!companyId) return;
+    const room = `company:${companyId}`;
+    activeRoomsRef.current.add(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("company:join", { companyId });
+    }
+  }, []);
+
+  const leaveCompany = useCallback((companyId: string) => {
+    if (!companyId) return;
+    const room = `company:${companyId}`;
+    activeRoomsRef.current.delete(room);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit("company:leave", { companyId });
+    }
+  }, []);
+
+  const companyId = user?.membership?.companyId || user?.companyId;
+
+  useEffect(() => {
+    if (companyId) {
+      joinCompany(String(companyId));
+    }
+  }, [companyId, joinCompany]);
 
   return (
     <SocketContext.Provider
@@ -144,6 +185,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, user }
         leaveTask,
         joinTeam,
         leaveTeam,
+        joinCompany,
+        leaveCompany,
       }}
     >
       {children}
