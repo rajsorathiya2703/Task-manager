@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Popover } from "@headlessui/react";
 import { useSidebar } from "@/src/components/layout/SidebarContext";
-import { fetchTeamById, fetchTeams, createTeam, fetchEmployees, fetchMe, api } from "@/src/lib/api";
+import { fetchTeamById, fetchTeams, createTeam, updateTeam, fetchEmployees, fetchMe } from "@/src/lib/api";
 import { RecordNavigator } from "@/src/components/common/RecordNavigator";
 import { TeamComments } from "@/src/components/team/TeamComments";
 import { getUserDisplayName } from "@/src/components/common/Comments";
@@ -232,8 +232,7 @@ export default function TeamDetailPage({
         setToastMessage("Team created!");
         setTimeout(() => router.push(cp("/configuration/team")), 1000);
       } else {
-        const res = await api.patch(`/teams/${id}`, payload);
-        const updated = res.data;
+        const updated = await updateTeam(id, payload);
         setTeamData({ ...updated, comments: teamData.comments });
         setOriginalData({ ...updated, comments: teamData.comments });
         setToastMessage("Team updated!");

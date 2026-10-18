@@ -647,6 +647,19 @@ export const fetchTeamById = async (id: string, opts?: { fresh?: boolean }): Pro
 
 export const createTeam = async (data: any) => {
   const res = await api.post(teamEndpoints.create, data);
+  invalidateTags(['teams']);
+  return res.data;
+};
+
+export const updateTeam = async (id: string, data: any) => {
+  const res = await api.patch(teamEndpoints.update(id), data);
+  invalidateTags(['teams']);
+  return res.data;
+};
+
+export const deleteTeam = async (id: string) => {
+  const res = await api.delete(teamEndpoints.delete(id));
+  invalidateTags(['teams']);
   return res.data;
 };
 
