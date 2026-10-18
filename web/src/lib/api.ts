@@ -717,6 +717,16 @@ export const createEmployee = async (data: any) => {
   return res.data;
 };
 
+export const updateEmployee = async (id: string, data: any) => {
+  const res = await api.patch(employeeEndpoints.update(id), data);
+  return res.data;
+};
+
+export const deleteEmployee = async (id: string) => {
+  const res = await api.delete(employeeEndpoints.delete(id));
+  return res.data;
+};
+
 // ─── Tenant-Scoped: Users (Company Members) ──────────────────────────────────
 export const userEndpoints = {
   get getAll() {

@@ -8,7 +8,7 @@ import {
   Calendar, Hash, ArrowLeft
 } from "lucide-react";
 import { useSidebar } from "@/src/components/layout/SidebarContext";
-import { fetchEmployeeById, fetchEmployees, createEmployee, api } from "@/src/lib/api";
+import { fetchEmployeeById, fetchEmployees, createEmployee, updateEmployee, api } from "@/src/lib/api";
 import { RecordNavigator } from "@/src/components/common/RecordNavigator";
 import { useAccess } from "@/src/contexts/AccessContext";
 import { BoundField } from "@/src/components/access";
@@ -120,8 +120,7 @@ export default function EmployeeDetailPage({
         setToastMessage("Employee created successfully!");
         setTimeout(() => router.push(cp("/configuration/employees")), 1000);
       } else {
-        const updated = await api.patch(`/employees/${id}`, payload);
-        const d = updated.data;
+        const d = await updateEmployee(id, payload);
         const mapped = {
           ...EMPTY_EMPLOYEE,
           ...d,
