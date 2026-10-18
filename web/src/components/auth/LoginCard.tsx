@@ -66,7 +66,10 @@ export function LoginCard({ companyName, logoUrl, slug }: LoginCardProps) {
         } else {
           try {
             const user = await fetchMe(undefined, { fresh: true });
-            if (user?.subscription?.status === "no_company") {
+            if (
+              user?.subscription?.status === "no_company" &&
+              (!user?.memberships || user.memberships.length === 0)
+            ) {
               window.location.href = "/register-company";
             } else {
               window.location.href = "/tasks";

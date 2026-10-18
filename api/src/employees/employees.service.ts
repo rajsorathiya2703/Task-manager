@@ -15,6 +15,7 @@ import { Team } from '../teams/schemas/team.schema';
 import { UsersService } from '../users/users.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Membership } from '../companies/schemas/membership.schema';
+import { CompanyMember } from '../companies/schemas/company-member.schema';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
 import { Company } from '../companies/schemas/company.schema';
 import { EmailService } from '../tasks/email.service';
@@ -40,6 +41,9 @@ export class EmployeesService implements OnModuleInit {
     @Optional()
     @InjectModel(Membership.name)
     private membershipModel?: Model<Membership>,
+    @Optional()
+    @InjectModel(CompanyMember.name)
+    private companyMemberModel?: Model<CompanyMember>,
     @Optional()
     @InjectModel(Role.name)
     private roleModel?: Model<RoleDocument>,
@@ -94,9 +98,16 @@ export class EmployeesService implements OnModuleInit {
       // 2. Link only if unlinked, or already linked to this user. Never overwrite another user's link.
       if (!emp.userId) {
         emp.userId = userObjId;
-        if (typeof emp.save === 'function') {
-          await emp.save();
-        } else {
+        try {
+          if (typeof emp.save === 'function') {
+            await emp.save();
+          } else {
+            await this.employeeModel.updateOne(
+              { _id: emp._id },
+              { $set: { userId: userObjId } },
+            );
+          }
+        } catch {
           await this.employeeModel.updateOne(
             { _id: emp._id },
             { $set: { userId: userObjId } },
@@ -109,77 +120,213 @@ export class EmployeesService implements OnModuleInit {
       }
       activatedCount++;
 
-      // 3. Ensure membership for that company with the employee's default role
-      if (this.membershipModel && emp.companyId) {
+      // 3. Ensure membership for that company with the employee's role
+      if (emp.companyId) {
         const compId = emp.companyId;
 
-        // Look up default employee role in this company, fallback to global role
-        let defaultRoleId: Types.ObjectId | undefined;
-        if (this.roleModel) {
-          const roleDoc = await this.roleModel
-            .findOne({
-              $or: [{ companyId: compId }, { companyId: null }, { companyId: { $exists: false } }],
-              slug: 'employee',
-              isActive: true,
-            })
-            .sort({ companyId: -1 })
-            .select('_id')
-            .lean()
-            .exec();
+        // Ensure default roles exist for this company if none exist yet
+        if (this.roleModel && typeof this.roleModel.countDocuments === 'function') {
+          try {
+            const roleCount = await this.roleModel.countDocuments({ companyId: compId });
+            if (roleCount === 0) {
+              const defaultRoles = [
+                {
+                  name: 'System Admin',
+                  slug: 'system-admin',
+                  description: 'Full workspace administrator access',
+                  color: '#ef4444',
+                  priority: 1000,
+                  isSystem: true,
+                  isActive: true,
+                  companyId: compId,
+                  members: [],
+                  moduleGrants: [],
+                  fieldGrants: [],
+                },
+                {
+                  name: 'Admin',
+                  slug: 'admin',
+                  description: 'Workspace administration and resource management',
+                  color: '#f97316',
+                  priority: 100,
+                  isSystem: true,
+                  isActive: true,
+                  companyId: compId,
+                  members: [],
+                  moduleGrants: [],
+                  fieldGrants: [],
+                },
+                {
+                  name: 'Manager',
+                  slug: 'manager',
+                  description: 'Team management and project oversight',
+                  color: '#3b82f6',
+                  priority: 50,
+                  isSystem: true,
+                  isActive: true,
+                  companyId: compId,
+                  members: [],
+                  moduleGrants: [],
+                  fieldGrants: [],
+                },
+                {
+                  name: 'Team Leader',
+                  slug: 'team-leader',
+                  description: 'Team coordination and task management',
+                  color: '#8b5cf6',
+                  priority: 25,
+                  isSystem: true,
+                  isActive: true,
+                  companyId: compId,
+                  members: [],
+                  moduleGrants: [],
+                  fieldGrants: [],
+                },
+                {
+                  name: 'Employee',
+                  slug: 'employee',
+                  description: 'Standard workspace collaborator',
+                  color: '#10b981',
+                  priority: 10,
+                  isSystem: true,
+                  isActive: true,
+                  companyId: compId,
+                  members: [],
+                  moduleGrants: [],
+                  fieldGrants: [],
+                },
+              ];
+              await this.roleModel.insertMany(defaultRoles, { ordered: false }).catch(() => {});
+            }
+          } catch {}
+        }
 
-          if (roleDoc) {
-            defaultRoleId = roleDoc._id as Types.ObjectId;
+        // Look up role in this company matching emp.role (slug or name), fallback to 'employee'
+        let matchedRole: any = null;
+        if (this.roleModel) {
+          const rawRole = (emp.role || '').trim();
+          const targetSlug = rawRole.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+          // Try 1: Match role by slug in company
+          if (targetSlug) {
+            matchedRole = await this.roleModel
+              .findOne({
+                companyId: compId,
+                slug: targetSlug,
+                isActive: true,
+              })
+              .select('_id slug priority name')
+              .lean()
+              .exec();
+          }
+
+          // Try 2: Match role by case-insensitive name in company
+          if (!matchedRole && rawRole) {
+            matchedRole = await this.roleModel
+              .findOne({
+                companyId: compId,
+                name: { $regex: new RegExp(`^${escapeRegex(rawRole)}$`, 'i') },
+                isActive: true,
+              })
+              .select('_id slug priority name')
+              .lean()
+              .exec();
+          }
+
+          // Try 3: Fallback to 'employee' role in company or global
+          if (!matchedRole) {
+            matchedRole = await this.roleModel
+              .findOne({
+                $or: [{ companyId: compId }, { companyId: null }, { companyId: { $exists: false } }],
+                slug: 'employee',
+                isActive: true,
+              })
+              .sort({ companyId: -1 })
+              .select('_id slug priority name')
+              .lean()
+              .exec();
+          }
+
+          if (matchedRole) {
             // Add user to role.members array
             await this.roleModel.updateOne(
-              { _id: roleDoc._id },
+              { _id: matchedRole._id },
               { $addToSet: { members: userObjId } },
             );
           }
         }
 
-        const roleIdsToAdd = defaultRoleId ? [defaultRoleId] : [];
+        const roleIdsToAdd = matchedRole?._id ? [matchedRole._id] : [];
+        const isRoleAdmin =
+          matchedRole?.slug === 'admin' ||
+          matchedRole?.slug === 'system-admin' ||
+          (emp.role && emp.role.toLowerCase() === 'admin');
 
-        const existingMembership = await this.membershipModel
-          .findOne({ companyId: compId, userId: userObjId })
-          .exec();
+        // Update / create Membership
+        if (this.membershipModel) {
+          const existingMembership = await this.membershipModel
+            .findOne({ companyId: compId, userId: userObjId })
+            .exec();
 
-        if (existingMembership) {
-          existingMembership.employeeId = emp._id as Types.ObjectId;
-          existingMembership.status = 'active';
-          if (
-            defaultRoleId &&
-            !existingMembership.roleIds?.some((r: any) => String(r) === String(defaultRoleId))
-          ) {
-            existingMembership.roleIds = [
-              ...(existingMembership.roleIds || []),
-              defaultRoleId,
-            ];
-          }
-          if (typeof existingMembership.save === 'function') {
-            await existingMembership.save();
+          if (existingMembership) {
+            existingMembership.employeeId = emp._id as Types.ObjectId;
+            existingMembership.status = 'active';
+            if (isRoleAdmin) {
+              existingMembership.isSystemAdmin = true;
+            }
+            if (
+              matchedRole?._id &&
+              !existingMembership.roleIds?.some((r: any) => String(r) === String(matchedRole._id))
+            ) {
+              existingMembership.roleIds = [
+                ...(existingMembership.roleIds || []),
+                matchedRole._id,
+              ];
+            }
+            if (typeof existingMembership.save === 'function') {
+              await existingMembership.save();
+            } else {
+              await this.membershipModel.updateOne(
+                { _id: existingMembership._id },
+                {
+                  $set: {
+                    employeeId: emp._id,
+                    status: 'active',
+                    isSystemAdmin: existingMembership.isSystemAdmin || isRoleAdmin,
+                    roleIds: existingMembership.roleIds,
+                  },
+                },
+              );
+            }
           } else {
-            await this.membershipModel.updateOne(
-              { _id: existingMembership._id },
+            await this.membershipModel.create({
+              companyId: compId,
+              userId: userObjId,
+              employeeId: emp._id,
+              roleIds: roleIdsToAdd,
+              isCompanyOwner: false,
+              isSystemAdmin: isRoleAdmin,
+              status: 'active',
+              joinedAt: new Date(),
+            });
+          }
+        }
+
+        // Also ensure CompanyMember record is created / updated
+        if (this.companyMemberModel) {
+          try {
+            await this.companyMemberModel.updateOne(
+              { companyId: compId, userId: userObjId },
               {
                 $set: {
-                  employeeId: emp._id,
-                  status: 'active',
-                  roleIds: existingMembership.roleIds,
+                  companyId: compId,
+                  userId: userObjId,
+                  role: isRoleAdmin ? 'admin' : 'member',
                 },
               },
+              { upsert: true },
             );
-          }
-        } else {
-          await this.membershipModel.create({
-            companyId: compId,
-            userId: userObjId,
-            employeeId: emp._id,
-            roleIds: roleIdsToAdd,
-            isCompanyOwner: false,
-            isSystemAdmin: false,
-            status: 'active',
-            joinedAt: new Date(),
-          });
+          } catch {}
         }
       }
     }

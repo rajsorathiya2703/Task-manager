@@ -345,6 +345,19 @@ export class CompaniesService {
     }
 
     if (!company) {
+      if (this.membershipModel && typeof this.membershipModel.findOne === 'function') {
+        const mem = await this.membershipModel
+          .findOne({ userId: userObjectId, status: 'active' })
+          .populate('companyId')
+          .exec();
+
+        if (mem && mem.companyId) {
+          company = mem.companyId;
+        }
+      }
+    }
+
+    if (!company) {
       const member = await this.companyMemberModel
         .findOne({ userId: userObjectId })
         .populate('companyId')
@@ -377,12 +390,14 @@ export class CompaniesService {
       .exec();
 
     const results: any[] = [];
+    const seenCompanyIds = new Set<string>();
 
     for (const member of memberships) {
       const comp = member.companyId as any;
       if (!comp || !comp._id) {
         continue;
       }
+      seenCompanyIds.add(comp._id.toString());
 
       if (this.membershipModel && comp._id) {
         try {
@@ -422,6 +437,55 @@ export class CompaniesService {
       });
     }
 
+    // Also include companies from modern Membership records that might not be in CompanyMember yet
+    if (this.membershipModel && typeof this.membershipModel.find === 'function') {
+      try {
+        const modernMemberships = await this.membershipModel
+          .find({ userId: userObjectId, status: 'active' })
+          .populate('companyId')
+          .exec();
+
+        for (const m of modernMemberships) {
+          const comp = m.companyId as any;
+          if (!comp || !comp._id) continue;
+          const compIdStr = comp._id.toString();
+          if (seenCompanyIds.has(compIdStr)) continue;
+          seenCompanyIds.add(compIdStr);
+
+          const role = m.isCompanyOwner ? 'owner' : (m.isSystemAdmin ? 'admin' : 'member');
+
+          // Sync into companyMemberModel for legacy query support
+          if (this.companyMemberModel) {
+            try {
+              await this.companyMemberModel.updateOne(
+                { companyId: comp._id, userId: userObjectId },
+                {
+                  $setOnInsert: {
+                    companyId: comp._id,
+                    userId: userObjectId,
+                    role,
+                  },
+                },
+                { upsert: true },
+              );
+            } catch {}
+          }
+
+          results.push({
+            _id: comp._id,
+            name: comp.name,
+            slug: comp.slug,
+            industry: comp.industry,
+            employeeCount: comp.employeeCount,
+            role,
+            plan: comp.plan,
+            trialEndsAt: comp.trialEndsAt,
+            createdAt: comp.createdAt,
+          });
+        }
+      } catch {}
+    }
+
     results.sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -449,11 +513,71 @@ export class CompaniesService {
     return this.companyModel.findOne({ slug: slug.toLowerCase() }).select('name slug industry').exec();
   }
 
-  async join(_userId: any, _slug: string, _secretCode: string) {
+  async join(userId: any, slug: string, _secretCode?: string) {
+    const company = await this.findBySlug(slug);
+    if (!company) {
+      return { success: false, message: 'Company not found' };
+    }
+    const userObjectId = new Types.ObjectId(userId.toString());
+    if (this.companyMemberModel) {
+      await this.companyMemberModel.updateOne(
+        { companyId: company._id, userId: userObjectId },
+        { $setOnInsert: { companyId: company._id, userId: userObjectId, role: 'member' } },
+        { upsert: true },
+      );
+    }
+    if (this.membershipModel) {
+      await this.membershipModel.updateOne(
+        { companyId: company._id, userId: userObjectId },
+        {
+          $setOnInsert: {
+            companyId: company._id,
+            userId: userObjectId,
+            isCompanyOwner: false,
+            isSystemAdmin: false,
+            status: 'active',
+            roleIds: [],
+            joinedAt: new Date(),
+          },
+        },
+        { upsert: true },
+      );
+    }
     return { success: true };
   }
 
-  async getMembershipStatus(_userId: any, _slug: string) {
+  async getMembershipStatus(userId: any, slug: string) {
+    if (!userId || !slug) return { isMember: false };
+    const company = await this.companyModel.findOne({ slug: slug.toLowerCase() }).exec();
+    if (!company) return { isMember: false };
+    const userObjectId = new Types.ObjectId(userId.toString());
+
+    if (this.membershipModel && typeof this.membershipModel.findOne === 'function') {
+      const mem = await this.membershipModel.findOne({
+        companyId: company._id,
+        userId: userObjectId,
+        status: 'active',
+      }).exec();
+
+      if (mem) {
+        return {
+          isMember: true,
+          role: mem.isCompanyOwner ? 'owner' : (mem.isSystemAdmin ? 'admin' : 'member'),
+        };
+      }
+    }
+
+    if (this.companyMemberModel && typeof this.companyMemberModel.findOne === 'function') {
+      const member = await this.companyMemberModel.findOne({
+        companyId: company._id,
+        userId: userObjectId,
+      }).exec();
+
+      if (member) {
+        return { isMember: true, role: member.role || 'member' };
+      }
+    }
+
     return { isMember: false };
   }
 
