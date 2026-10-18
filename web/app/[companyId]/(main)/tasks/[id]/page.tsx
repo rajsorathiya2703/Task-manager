@@ -59,7 +59,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     isOwner: true,
   });
 
-  const canUpdateTask = true;
+  const canUpdateTask = can("tasks", "update");
 
   const [allTaskIds, setAllTaskIds] = useState<string[]>([]);
 
@@ -230,7 +230,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  const hasChanges = !isNew && originalData && (() => {
+  const hasChanges = !isNew && canUpdateTask && originalData && (() => {
     const { comments: c1, updates: u1, timeEntries: te1, ...t1 } = taskData;
     const { comments: c2, updates: u2, timeEntries: te2, ...t2 } = originalData;
     return JSON.stringify(t1) !== JSON.stringify(t2);
@@ -263,7 +263,6 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleSave = async () => {
     if (isNew && !canCreateTask) {
-      alert("You do not have permission to create tasks.");
       return;
     }
     try {

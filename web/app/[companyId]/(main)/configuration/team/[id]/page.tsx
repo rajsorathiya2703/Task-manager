@@ -43,6 +43,7 @@ export default function TeamDetailPage({
   const router = useRouter();
   const cp = useCompanyPath();
   const { can, loading: accessLoading } = useAccessControl();
+  const canUpdateTeam = isNew ? can("teams", "create") : can("teams", "update");
   const { isOpen, toggleSidebar } = useSidebar();
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
@@ -130,6 +131,7 @@ export default function TeamDetailPage({
   // Detect changes (ignore comments — they save inline)
   const hasChanges =
     !isNew &&
+    canUpdateTeam &&
     originalData &&
     (() => {
       const { comments: c1, ...t1 } = teamData;
@@ -207,11 +209,14 @@ export default function TeamDetailPage({
 
   const handleSave = async () => {
     if (isNew && !can("teams", "create")) {
-      alert("You do not have permission to create teams.");
+      return;
+    }
+    if (!isNew && !can("teams", "update")) {
       return;
     }
     if (!teamData.name?.trim()) {
-      alert("Team Name is required.");
+      setToastMessage("Team Name is required.");
+      setTimeout(() => setToastMessage(null), 3000);
       return;
     }
     try {
@@ -234,9 +239,12 @@ export default function TeamDetailPage({
         setToastMessage("Team updated!");
         setTimeout(() => setToastMessage(null), 3000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save team", err);
-      alert("Failed to save team.");
+      if (err?.response?.status !== 403) {
+        setToastMessage(err?.response?.data?.message || "Failed to save team.");
+        setTimeout(() => setToastMessage(null), 3000);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -321,7 +329,7 @@ export default function TeamDetailPage({
                 {isSaving ? "Saving..." : "Save Team"}
               </button>
             )
-          ) : hasChanges ? (
+          ) : hasChanges && canUpdateTeam ? (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
               <button
                 onClick={handleDiscard}
@@ -381,62 +389,84 @@ export default function TeamDetailPage({
                   <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center text-primary-foreground shadow-md border-4 border-card shrink-0">
                     <Shield className="w-7 h-7" />
                   </div>
-                  {/* Status — custom popover */}
-                  <Popover className="relative">
-                    <Popover.Button
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border outline-none transition-colors ${
+                  {/* Status — custom popover or static badge */}
+                  {canUpdateTeam ? (
+                    <Popover className="relative">
+                      <Popover.Button
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border outline-none transition-colors ${
+                          STATUS_STYLES[teamData.status || "Active"]
+                        }`}
+                      >
+                        {teamData.status || "Active"}
+                        <ChevronDown className="w-3 h-3" />
+                      </Popover.Button>
+                      <Popover.Panel className="absolute right-0 top-full mt-1.5 w-36 bg-card border border-border rounded-xl shadow-lg z-50 p-1.5 outline-none">
+                        {({ close }) => (
+                          <>
+                            {["Active", "Inactive"].map((s) => (
+                              <button
+                                key={s}
+                                onClick={() => { set("status", s); close(); }}
+                                className={`w-full text-left flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                                  (teamData.status || "Active") === s
+                                    ? "bg-primary/10 text-primary"
+                                    : "hover:bg-muted text-foreground"
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full mr-2 inline-block ${
+                                  s === "Active" ? "bg-emerald-500" : "bg-muted-foreground"
+                                }`} />
+                                {s}
+                                {(teamData.status || "Active") === s && <Check className="w-3 h-3" />}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </Popover.Panel>
+                    </Popover>
+                  ) : (
+                    <span
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${
                         STATUS_STYLES[teamData.status || "Active"]
                       }`}
                     >
                       {teamData.status || "Active"}
-                      <ChevronDown className="w-3 h-3" />
-                    </Popover.Button>
-                    <Popover.Panel className="absolute right-0 top-full mt-1.5 w-36 bg-card border border-border rounded-xl shadow-lg z-50 p-1.5 outline-none">
-                      {({ close }) => (
-                        <>
-                          {["Active", "Inactive"].map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => { set("status", s); close(); }}
-                              className={`w-full text-left flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
-                                (teamData.status || "Active") === s
-                                  ? "bg-primary/10 text-primary"
-                                  : "hover:bg-muted text-foreground"
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full mr-2 inline-block ${
-                                s === "Active" ? "bg-emerald-500" : "bg-muted-foreground"
-                              }`} />
-                              {s}
-                              {(teamData.status || "Active") === s && <Check className="w-3 h-3" />}
-                            </button>
-                          ))}
-                        </>
-                      )}
-                    </Popover.Panel>
-                  </Popover>
+                    </span>
+                  )}
                 </div>
 
                 {/* Team Name */}
                 <div className="mt-4">
-                  <input
-                    type="text"
-                    value={teamData.name || ""}
-                    onChange={(e) => set("name", e.target.value)}
-                    placeholder="Team name *"
-                    className="w-full text-xl font-bold text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none transition-colors py-1"
-                  />
+                  {canUpdateTeam ? (
+                    <input
+                      type="text"
+                      value={teamData.name || ""}
+                      onChange={(e) => set("name", e.target.value)}
+                      placeholder="Team name *"
+                      className="w-full text-xl font-bold text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none transition-colors py-1"
+                    />
+                  ) : (
+                    <h1 className="w-full text-xl font-bold text-foreground py-1">
+                      {teamData.name || "Untitled Team"}
+                    </h1>
+                  )}
                 </div>
 
                 {/* Description */}
                 <div className="mt-3">
-                  <textarea
-                    value={teamData.description || ""}
-                    onChange={(e) => set("description", e.target.value)}
-                    placeholder="Add a description for this team..."
-                    rows={2}
-                    className="w-full text-sm text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none transition-colors py-1 resize-none leading-relaxed"
-                  />
+                  {canUpdateTeam ? (
+                    <textarea
+                      value={teamData.description || ""}
+                      onChange={(e) => set("description", e.target.value)}
+                      placeholder="Add a description for this team..."
+                      rows={2}
+                      className="w-full text-sm text-muted-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none transition-colors py-1 resize-none leading-relaxed"
+                    />
+                  ) : (
+                    <p className="w-full text-sm text-muted-foreground py-1 leading-relaxed">
+                      {teamData.description || <span className="italic opacity-50">No description</span>}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -452,8 +482,8 @@ export default function TeamDetailPage({
                   </span>
                 </div>
 
-                {/* Add Member — custom popover */}
-                {availableToAdd.length > 0 && (
+                {/* Add Member — custom popover (only if user has update permission) */}
+                {canUpdateTeam && availableToAdd.length > 0 && (
                   <Popover className="relative">
                     <Popover.Button className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-primary/5 border border-primary/20 text-primary rounded-lg hover:bg-primary/10 transition-colors outline-none">
                       <Plus className="w-3.5 h-3.5" />
@@ -545,7 +575,7 @@ export default function TeamDetailPage({
                         <th className="px-5 py-3">Department</th>
                         <th className="px-5 py-3">Status</th>
                         <th className="px-5 py-3">Team Lead</th>
-                        <th className="px-5 py-3 text-right">Action</th>
+                        {canUpdateTeam && <th className="px-5 py-3 text-right">Action</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
@@ -599,31 +629,46 @@ export default function TeamDetailPage({
                             </td>
                             {/* Team Lead toggle */}
                             <td className="px-5 py-3.5">
-                              <button
-                                onClick={() =>
-                                  set("teamLead", isLead ? null : memberId)
-                                }
-                                title={isLead ? "Remove as lead" : "Set as team lead"}
-                                className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
-                                  isLead
-                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
-                                    : "bg-muted text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/20"
-                                }`}
-                              >
-                                <Shield className="w-3 h-3" />
-                                {isLead ? "Lead" : "Set Lead"}
-                              </button>
+                              {canUpdateTeam ? (
+                                <button
+                                  onClick={() =>
+                                    set("teamLead", isLead ? null : memberId)
+                                  }
+                                  title={isLead ? "Remove as lead" : "Set as team lead"}
+                                  className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                                    isLead
+                                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20"
+                                      : "bg-muted text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/20"
+                                  }`}
+                                >
+                                  <Shield className="w-3 h-3" />
+                                  {isLead ? "Lead" : "Set Lead"}
+                                </button>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+                                    isLead
+                                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                      : "bg-muted text-muted-foreground border-border"
+                                  }`}
+                                >
+                                  <Shield className="w-3 h-3" />
+                                  {isLead ? "Lead" : "Member"}
+                                </span>
+                              )}
                             </td>
                             {/* Remove */}
-                            <td className="px-5 py-3.5 text-right">
-                              <button
-                                onClick={() => removeMember(memberId)}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
-                                title="Remove member"
-                              >
-                                <Trash className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
+                            {canUpdateTeam && (
+                              <td className="px-5 py-3.5 text-right">
+                                <button
+                                  onClick={() => removeMember(memberId)}
+                                  className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md transition-all"
+                                  title="Remove member"
+                                >
+                                  <Trash className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
