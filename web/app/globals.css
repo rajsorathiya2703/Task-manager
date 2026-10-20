@@ -1,6 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
-
-@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: #f9fafb;
@@ -82,4 +82,85 @@ body {
     cursor: not-allowed;
   }
 }
+
+/* ==========================================================================
+   Home Page Exclusive Theme Palette
+   - Light Mode: Warm Organic Editorial (DESIGN (1).md)
+   - Dark Mode: Cybernetic Pine (DESIGN (2).md)
+   Strictly scoped under .home-theme-scope to guarantee zero side-effects
+   on task boards, dashboard, company workspaces, login, or other pages.
+   ========================================================================== */
+.marketing-theme-scope,
+.home-theme-scope {
+  --home-bg: #f3fde8;
+  --home-surface: #f3fde8;
+  --home-surface-container: #e8f1dd;
+  --home-surface-high: #e2ebd7;
+  --home-surface-card: #ffffff;
+  --home-headline: #161e12;
+  --home-text-body: #161e12;
+  --home-text-muted: #45483e;
+  --home-border: rgba(156, 171, 132, 0.5);
+  --home-border-subtle: #c6c8bb;
+  --home-primary: #55633d;
+  --home-primary-container: #89986d;
+  --home-primary-hover: #434f2f;
+  --home-on-primary: #ffffff;
+  --home-secondary: #556341;
+  --home-secondary-container: #d6e5bb;
+  --home-accent: #C5D89D;
+  --home-on-accent: #232B1E;
+  --home-pill-bg: #e2ebd7;
+  --home-pill-text: #232f0e;
+  --home-pill-border: #89986d;
+  --home-glow-1: rgba(85, 99, 61, 0.18);
+  --home-glow-2: rgba(197, 216, 157, 0.3);
+  --home-font-heading: 'Newsreader', Georgia, serif;
+  --home-font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --home-font-mono: 'JetBrains Mono', monospace;
+}
+
+.dark .marketing-theme-scope,
+.dark .home-theme-scope {
+  --home-bg: #0a1514;
+  --home-surface: #0a1514;
+  --home-surface-container: #12211E;
+  --home-surface-high: #1B332B;
+  --home-surface-card: #12211E;
+  --home-headline: #B0E4CC;
+  --home-text-body: #E3F5EC;
+  --home-text-muted: #86A99A;
+  --home-border: #285A48;
+  --home-border-subtle: rgba(40, 90, 72, 0.65);
+  --home-primary: #408A71;
+  --home-primary-container: #1f5240;
+  --home-primary-hover: #4fa689;
+  --home-on-primary: #091413;
+  --home-secondary: #9dd2bb;
+  --home-secondary-container: #1B332B;
+  --home-accent: #1B332B;
+  --home-on-accent: #B0E4CC;
+  --home-pill-bg: #1B332B;
+  --home-pill-text: #B0E4CC;
+  --home-pill-border: #285A48;
+  --home-glow-1: rgba(176, 228, 204, 0.16);
+  --home-glow-2: rgba(64, 138, 113, 0.28);
+  --home-font-heading: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --home-font-body: var(--font-geist-sans), 'Geist', 'Manrope', sans-serif;
+  --home-font-mono: 'JetBrains Mono', monospace;
+}
+
+.font-home-heading {
+  font-family: var(--home-font-heading);
+}
+
+.font-home-body {
+  font-family: var(--home-font-body);
+}
+
+.font-home-mono {
+  font-family: var(--home-font-mono);
+}
+
+
 

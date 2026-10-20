@@ -93,7 +93,7 @@ export const siteConfig: SiteConfig = {
   contact: {
     email: 'raj2732005@gmail.com',
     phone: '+91 72840 98574',
-    address: 'Surat, Gujarat, India',
+    address: 'Ahemdabad, Gujrat, India',
     hours: 'Mon - Sat: 9:00 AM - 7:00 PM IST',
     linkedin: 'https://linkedin.com',
     instagram: 'https://instagram.com',

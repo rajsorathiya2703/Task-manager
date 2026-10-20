@@ -423,7 +423,7 @@ export function MarketingHomeClient({ yearsInIndustry }: MarketingHomeClientProp
 
           {/* Official SiteFooter Component */}
           <div className="w-full flex-1 flex flex-col justify-center">
-            <SiteFooter standalone />
+            <SiteFooter />
           </div>
         </section>
       </div>
