@@ -176,13 +176,19 @@ export class ContactMailService {
         const isSecure = port === 465;
         const user = process.env.SMTP_USER?.trim();
         const pass = process.env.SMTP_PASS?.replace(/\s+/g, '');
+        const isGmail = host.includes('gmail') || (user && user.endsWith('@gmail.com'));
 
-        const transporter = nodemailer.createTransport({
-          host,
-          port,
-          secure: isSecure,
-          auth: user && pass ? { user, pass } : undefined,
-        });
+        const transporter = isGmail
+          ? nodemailer.createTransport({
+              service: 'gmail',
+              auth: user && pass ? { user, pass } : undefined,
+            })
+          : nodemailer.createTransport({
+              host,
+              port,
+              secure: isSecure,
+              auth: user && pass ? { user, pass } : undefined,
+            });
 
         const fromAddress = `"${this.getSenderName()}" <${this.getSenderEmail()}>`;
         const info = await transporter.sendMail({
