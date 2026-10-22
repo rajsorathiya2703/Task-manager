@@ -15,19 +15,46 @@ const PUBLIC_ROUTES = [
   '/help',
   '/register-company',
   '/select-company',
+  '/my-account',
+  '/trial-expired',
+  '/dashboard',
 ];
+
+const NON_TENANT_SEGMENTS = new Set([
+  '',
+  'login',
+  'register',
+  'about',
+  'services',
+  'pricing',
+  'contact',
+  'help',
+  'register-company',
+  'select-company',
+  'my-account',
+  'trial-expired',
+  'dashboard',
+  'api',
+]);
 
 /**
  * Public routes that don't require authentication or tenant timer tracking.
- * Treats marketing routes, auth routes, and '/{slug}/login', '/{slug}/join' as public.
+ * Treats marketing routes, auth routes, non-tenant pages, and '/{slug}/login', '/{slug}/join' as public.
  */
 const checkIsPublicRoute = (pathname: string | null): boolean => {
   if (!pathname) return true;
-  if (PUBLIC_ROUTES.includes(pathname)) {
+  if (PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'))) {
     return true;
   }
 
   const segments = pathname.split('/').filter(Boolean);
+  if (segments.length === 0) return true;
+
+  const first = (segments[0] || '').toLowerCase();
+  if (NON_TENANT_SEGMENTS.has(first)) {
+    return true;
+  }
+
   if (segments.length >= 2 && (segments[1] === 'login' || segments[1] === 'join')) {
     return true;
   }
@@ -100,8 +127,9 @@ export const TimerProvider = ({ children }: { children: React.ReactNode }) => {
       const task = await getActiveTimer();
       setActiveTask(task || null);
     } catch (error: any) {
-      // Silently ignore network errors (e.g. backend not running, no session)
-      if (error?.code !== 'ERR_NETWORK' && error?.response?.status !== 401) {
+      // Silently ignore network errors (e.g. backend not running, no session), 401 (unauthorized), and 404 (tenant not found/no active timer route)
+      const status = error?.response?.status;
+      if (error?.code !== 'ERR_NETWORK' && status !== 401 && status !== 404) {
         console.error("Failed to fetch active timer:", error);
       }
       setActiveTask(null);

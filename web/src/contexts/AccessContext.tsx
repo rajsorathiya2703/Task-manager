@@ -73,7 +73,38 @@ export interface AccessContextValue {
   refreshAccess: () => Promise<void>;
 }
 
-const PUBLIC_ROUTES = ["/login", "/register", "/"];
+const NON_TENANT_ROUTES = [
+  "/",
+  "/login",
+  "/register",
+  "/about",
+  "/services",
+  "/pricing",
+  "/contact",
+  "/help",
+  "/register-company",
+  "/select-company",
+  "/my-account",
+  "/trial-expired",
+  "/dashboard",
+];
+
+const NON_TENANT_SEGMENTS = new Set([
+  "",
+  "login",
+  "register",
+  "about",
+  "services",
+  "pricing",
+  "contact",
+  "help",
+  "register-company",
+  "select-company",
+  "my-account",
+  "trial-expired",
+  "dashboard",
+  "api",
+]);
 
 const defaultContextValue: AccessContextValue = {
   access: {},
@@ -94,12 +125,8 @@ export const AccessContext = createContext<AccessContextValue>(defaultContextVal
 const extractSlugFromPath = (path: string | null): string => {
   if (!path) return "";
   const segments = path.split("/").filter(Boolean);
-  const first = segments[0] || "";
-  if (
-    PUBLIC_ROUTES.includes(`/${first}`) ||
-    first === "trial-expired" ||
-    first === "register-company"
-  ) {
+  const first = (segments[0] || "").toLowerCase();
+  if (NON_TENANT_SEGMENTS.has(first)) {
     return "";
   }
   return first;
@@ -115,7 +142,7 @@ export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError] = useState<Error | null>(null);
 
   const pathname = usePathname();
-  const isPublicRoute = PUBLIC_ROUTES.some(
+  const isPublicRoute = NON_TENANT_ROUTES.some(
     (route) => pathname === route || pathname?.startsWith(route + "/")
   );
 
@@ -123,9 +150,13 @@ export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       setError(null);
       const slugFromPath = extractSlugFromPath(pathname);
-      const activeSlug = slugFromPath || getCompanySlug();
-      if (activeSlug && !getCompanySlug()) {
+      const activeSlug = slugFromPath;
+      if (activeSlug && activeSlug !== getCompanySlug()) {
         setCompanySlug(activeSlug);
+      } else if (!activeSlug && NON_TENANT_SEGMENTS.has((pathname?.split("/").filter(Boolean)[0] || "").toLowerCase())) {
+        if (getCompanySlug()) {
+          setCompanySlug("");
+        }
       }
 
       const data = await fetchMe(activeSlug || undefined);

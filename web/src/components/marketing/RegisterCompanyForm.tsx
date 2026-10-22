@@ -4,7 +4,21 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
-import { Loader2, CheckCircle2, AlertCircle, ArrowRight, Building2, ShieldCheck } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  Building2,
+  ShieldCheck,
+  Globe,
+  Phone,
+  MapPin,
+  ChevronDown,
+  Briefcase,
+  Users,
+  Check,
+} from "lucide-react";
 import { fetchMe, api, authEndpoints } from "../../lib/api";
 import { createCompany, Company, setActiveCompany } from "../../lib/company-api";
 
@@ -22,9 +36,16 @@ const INDUSTRIES = [
 
 const EMPLOYEE_RANGES = ["1-10", "11-50", "51-200", "201-500", "500+"];
 
-const GoogleIcon = () => (
+const FEATURE_TAGS = [
+  "Task boards",
+  "Time tracking",
+  "AI Copilot",
+  "Leave management",
+];
+
+const GoogleIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg
-    className="w-5 h-5 mr-2 shrink-0"
+    className={className}
     viewBox="0 0 24 24"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
@@ -203,64 +224,92 @@ export function RegisterCompanyForm() {
   // Initial loading state
   if (checkingSession) {
     return (
-      <div className="bg-card border border-border/80 rounded-2xl p-12 text-center shadow-lg flex flex-col items-center justify-center min-h-[300px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
-        <p className="text-sm text-muted-foreground font-medium">
+      <div className="bg-white dark:bg-[#12211E] border border-black/8 dark:border-[#285A48] rounded-[32px] sm:rounded-[36px] p-12 text-center shadow-xl dark:shadow-[0_8px_32px_-4px_rgba(4,9,8,0.7)] flex flex-col items-center justify-center min-h-[360px] transition-colors duration-300">
+        <div className="w-12 h-12 rounded-2xl bg-[#e6f4ed] dark:bg-[#1B332B] text-[#086948] dark:text-[#8bd5b9] flex items-center justify-center mb-4 border border-[#cbe8d8] dark:border-[#285A48] transition-colors">
+          <Loader2 className="w-6 h-6 animate-spin text-[#086948] dark:text-[#8bd5b9]" />
+        </div>
+        <p className="font-home-body text-sm text-[#4B5750] dark:text-[#86A99A] font-medium">
           Checking your session...
         </p>
       </div>
     );
   }
 
-  // Not signed in state or Guest user
+  // Not signed in state or Guest user (Matching DESIGN (1) & DESIGN (2))
   if (!user || user.authType !== "google") {
     const isGuest = user?.authType === "guest";
     return (
-      <div className="bg-card border border-border/80 rounded-2xl p-8 sm:p-10 text-center shadow-lg space-y-6 max-w-md mx-auto">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            {isGuest
-              ? "Sign in with Google to start a free trial"
-              : "Sign in with Google to start your 14-day trial"}
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {isGuest
-              ? "Guest accounts cannot start a free trial. Please sign in with Google to register a company."
-              : "Company registration requires a verified Google account to establish workspace ownership."}
-          </p>
+      <div className="bg-white dark:bg-[#12211E] border border-black/8 dark:border-[#285A48] rounded-[32px] sm:rounded-[36px] p-8 sm:p-11 text-center shadow-xl dark:shadow-[0_8px_32px_-4px_rgba(4,9,8,0.7)] max-w-md w-full mx-auto transition-colors duration-300">
+        {/* Shield icon badge */}
+        <div className="w-12 h-12 rounded-2xl bg-[#e6f4ed] dark:bg-[#1B332B] text-[#086948] dark:text-[#8bd5b9] flex items-center justify-center mx-auto mb-6 border border-[#cbe8d8] dark:border-[#285A48] shadow-2xs transition-colors">
+          <ShieldCheck className="w-6 h-6 stroke-[2]" />
         </div>
 
+        {/* Title */}
+        <h2 className="font-home-heading text-2xl sm:text-[26px] font-bold tracking-tight text-[#161e12] dark:text-[#F3FDF8] text-center leading-snug">
+          {isGuest
+            ? "Sign in with Google to start a free trial"
+            : "Sign in with Google to start your 14-day trial"}
+        </h2>
+
+        {/* Subtitle */}
+        <p className="font-home-body text-xs sm:text-[13px] text-[#4B5750] dark:text-[#86A99A] leading-relaxed text-center max-w-xs mx-auto mt-2.5">
+          {isGuest
+            ? "Guest accounts cannot start a free trial. Please sign in with Google to register a company."
+            : "Company registration requires a verified Google account to establish workspace ownership."}
+        </p>
+
+        {/* Auth Error Banner */}
         {authError && (
           <div
             role="alert"
-            className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-start gap-2.5 text-left"
+            className="mt-5 p-3.5 rounded-2xl bg-[#ffdad6] dark:bg-[#1C1214] border border-[#ba1a1a]/20 dark:border-[#57252A] text-[#93000a] dark:text-[#ffb4ab] text-xs flex items-start gap-2.5 text-left font-home-body"
           >
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <div className="flex-1 font-medium">{authError}</div>
           </div>
         )}
 
-        <button
-          type="button"
-          disabled={isLoggingInGoogle}
-          onClick={() => loginGoogle()}
-          className="w-full bg-card hover:bg-muted/80 text-foreground border border-border rounded-xl h-12 inline-flex items-center justify-center font-medium shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {isLoggingInGoogle ? (
-            <Loader2 className="w-5 h-5 animate-spin text-foreground" />
-          ) : (
-            <>
-              <GoogleIcon />
-              <span>Sign in with Google</span>
-            </>
-          )}
-        </button>
+        {/* Google Sign In Button */}
+        <div className="mt-7">
+          <button
+            type="button"
+            disabled={isLoggingInGoogle}
+            onClick={() => loginGoogle()}
+            className="w-full bg-[#161e12] hover:bg-[#2b3325] dark:bg-[#8bd5b9] dark:hover:bg-[#a6f2d4] text-white dark:text-[#091413] active:scale-[0.99] rounded-full h-13 px-6 inline-flex items-center justify-center font-semibold shadow-md dark:shadow-[0_0_24px_rgba(139,213,185,0.25)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086948] dark:focus-visible:ring-[#8bd5b9] cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed gap-3"
+          >
+            {isLoggingInGoogle ? (
+              <Loader2 className="w-5 h-5 animate-spin text-white dark:text-[#091413]" />
+            ) : (
+              <>
+                <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <GoogleIcon className="w-3.5 h-3.5" />
+                </span>
+                <span className="text-sm font-semibold tracking-wide">
+                  Sign in with Google
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Feature Pills */}
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-7 pt-1">
+          {FEATURE_TAGS.map((tag) => (
+            <span
+              key={tag}
+              className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#e6f4ed] dark:bg-[#1B332B] text-[#086948] dark:text-[#8bd5b9] border border-[#cbe8d8] dark:border-[#285A48] transition-colors"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
 
         {isGuest && (
-          <div className="pt-2 border-t border-border/60">
+          <div className="mt-6 pt-4 border-t border-black/8 dark:border-[#285A48]">
             <Link
               href="/login"
-              className="text-xs text-primary font-semibold hover:underline"
+              className="text-xs text-[#086948] dark:text-[#8bd5b9] font-semibold hover:underline"
             >
               Sign in with Google to start a free trial
             </Link>
@@ -281,23 +330,23 @@ export function RegisterCompanyForm() {
     });
 
     return (
-      <div className="bg-card border border-border/80 rounded-2xl p-8 sm:p-12 text-center shadow-lg space-y-6 max-w-lg mx-auto">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto shadow-xs">
+      <div className="bg-white dark:bg-[#12211E] border border-black/8 dark:border-[#285A48] rounded-[32px] sm:rounded-[36px] p-8 sm:p-11 text-center shadow-xl dark:shadow-[0_8px_32px_-4px_rgba(4,9,8,0.7)] space-y-6 max-w-md w-full mx-auto transition-colors duration-300">
+        <div className="w-16 h-16 rounded-2xl bg-[#e6f4ed] dark:bg-[#1B332B] border border-[#cbe8d8] dark:border-[#285A48] text-[#086948] dark:text-[#8bd5b9] flex items-center justify-center mx-auto shadow-xs">
           <CheckCircle2 className="w-8 h-8" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-2xl font-bold tracking-tight text-foreground">
+          <h3 className="font-home-heading text-2xl font-bold tracking-tight text-[#161e12] dark:text-[#F3FDF8]">
             Your company {successCompany.name} is ready
           </h3>
-          <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
+          <p className="font-home-body text-[#4B5750] dark:text-[#86A99A] text-sm max-w-xs mx-auto leading-relaxed">
             Your free trial ends on{" "}
-            <strong className="text-foreground">{formattedDate}</strong>.
+            <strong className="text-[#161e12] dark:text-[#F3FDF8]">{formattedDate}</strong>.
           </p>
         </div>
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             href="/my-account"
-            className="w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-7 h-11 inline-flex items-center justify-center text-sm font-semibold transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 gap-1.5"
+            className="w-full sm:w-auto bg-[#161e12] hover:bg-[#2b3325] dark:bg-[#8bd5b9] dark:hover:bg-[#a6f2d4] text-white dark:text-[#091413] rounded-full px-6 h-11 inline-flex items-center justify-center text-sm font-semibold transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086948] dark:focus-visible:ring-[#8bd5b9] gap-1.5"
           >
             <span>Go to account</span>
             <ArrowRight className="w-4 h-4" />
@@ -305,9 +354,9 @@ export function RegisterCompanyForm() {
           {successCompany.slug && (
             <Link
               href={`/${successCompany.slug}/dashboard`}
-              className="w-full sm:w-auto border border-border bg-card hover:bg-muted text-foreground rounded-full px-7 h-11 inline-flex items-center justify-center text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring gap-1.5"
+              className="w-full sm:w-auto border border-black/10 dark:border-[#285A48] bg-white dark:bg-[#12211E] hover:bg-[#e6f4ed] dark:hover:bg-[#1B332B] text-[#161e12] dark:text-[#E3F5EC] rounded-full px-6 h-11 inline-flex items-center justify-center text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086948] dark:focus-visible:ring-[#8bd5b9] gap-1.5"
             >
-              <Building2 className="w-4 h-4 text-primary" />
+              <Building2 className="w-4 h-4 text-[#086948] dark:text-[#8bd5b9]" />
               <span>Open workspace</span>
             </Link>
           )}
@@ -316,30 +365,36 @@ export function RegisterCompanyForm() {
     );
   }
 
-  // Signed in: Form
+  // Signed in: Form (Matching the user's design reference)
   const userInitial = user.name ? user.name.charAt(0).toUpperCase() : "U";
 
   return (
-    <div className="bg-card border border-border/80 rounded-2xl p-6 sm:p-8 shadow-lg max-w-xl mx-auto space-y-6">
-      {/* User Chip with Go to Account Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-muted/40 border border-border/60">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="bg-white dark:bg-[#12211E] border border-black/8 dark:border-[#285A48] rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 shadow-xl dark:shadow-[0_8px_32px_-4px_rgba(4,9,8,0.7)] max-w-xl w-full mx-auto space-y-5 transition-colors duration-300">
+      {/* 1. User Profile Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-[22px] bg-[#e8f3ed] dark:bg-[#1B332B] border border-[#d2e8dc] dark:border-[#285A48]">
+        <div className="flex items-center gap-3.5 min-w-0">
           {user.avatar ? (
             <img
               src={user.avatar}
               alt={user.name}
-              className="w-10 h-10 rounded-full object-cover shrink-0"
+              className="w-12 h-12 rounded-full object-cover shrink-0 ring-2 ring-[#086948]/20 dark:ring-[#8bd5b9]/30"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-sm shrink-0">
+            <div className="w-12 h-12 rounded-full bg-[#086948] dark:bg-[#8bd5b9] text-white dark:text-[#091413] font-bold text-lg flex items-center justify-center shrink-0 shadow-2xs">
               {userInitial}
             </div>
           )}
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground truncate">
-              {user.name}
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm sm:text-base font-bold text-[#161e12] dark:text-[#F3FDF8] truncate">
+                {user.name}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white dark:bg-[#12211E] text-[#086948] dark:text-[#8bd5b9] border border-black/5 dark:border-[#285A48] shadow-2xs">
+                <Check className="w-3 h-3 stroke-[3]" />
+                <span>Verified</span>
+              </span>
             </div>
-            <div className="text-xs text-muted-foreground truncate">
+            <div className="text-xs sm:text-[13px] text-[#555e58] dark:text-[#86A99A] font-medium truncate">
               {user.email}
             </div>
           </div>
@@ -347,163 +402,203 @@ export function RegisterCompanyForm() {
 
         <Link
           href="/my-account"
-          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors shrink-0 shadow-2xs"
+          className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full border border-black/8 dark:border-[#285A48] bg-white dark:bg-[#12211E] hover:bg-[#f7faf8] dark:hover:bg-[#1B332B] text-xs sm:text-sm font-semibold text-[#161e12] dark:text-[#E3F5EC] transition-all shrink-0 shadow-2xs"
         >
           <span>Go to account</span>
-          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <ArrowRight className="w-3.5 h-3.5 text-[#161e12] dark:text-[#E3F5EC]" />
         </Link>
       </div>
 
-      {/* 14-day trial notice */}
-      <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs font-medium text-foreground">
-        <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-        <span>Starts your 14-day free trial. One trial per email.</span>
+      {/* 2. 14-day trial notice banner */}
+      <div className="flex items-center gap-2.5 p-3 sm:px-4 rounded-2xl bg-[#0C1511] dark:bg-[#06100f] text-white border border-black/5 dark:border-[#285A48] shadow-xs">
+        <ShieldCheck className="w-4 h-4 text-[#8bd5b9] shrink-0" />
+        <span className="text-xs sm:text-[13px] text-white/90">
+          Starts your <strong className="font-bold text-white">14-day free trial</strong>. One trial per Google account.
+        </span>
       </div>
 
       {submitError && (
         <div
           role="alert"
-          className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-start gap-3"
+          className="p-3.5 rounded-2xl bg-[#ffdad6] dark:bg-[#1C1214] border border-[#ba1a1a]/20 dark:border-[#57252A] text-[#93000a] dark:text-[#ffb4ab] text-xs flex items-start gap-2.5 font-home-body"
         >
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div className="flex-1 font-medium">{submitError}</div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+      {/* 3. The Form */}
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {/* Company Name */}
         <div className="space-y-1.5">
           <label
             htmlFor="company-name"
-            className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
+            className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
           >
-            Company Name <span className="text-destructive">*</span>
+            COMPANY NAME <span className="text-[#ba1a1a] dark:text-[#ffb4ab]">*</span>
           </label>
-          <input
-            id="company-name"
-            name="name"
-            type="text"
-            required
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
-            }}
-            placeholder="e.g. Acme Corporation"
-            className={`w-full bg-muted/30 border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:ring-1 focus:ring-primary/20 ${
-              errors.name
-                ? "border-destructive focus:border-destructive"
-                : "border-border focus:border-primary"
-            }`}
-          />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <input
+              id="company-name"
+              name="name"
+              type="text"
+              required
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
+              }}
+              placeholder="e.g. Acme Corporation"
+              className={`w-full bg-[#f7faf8] dark:bg-[#091413] border rounded-[14px] pl-10 pr-4 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] placeholder:text-[#8e9892] dark:placeholder:text-[#86A99A] outline-none transition-all focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 font-home-body ${
+                errors.name
+                  ? "border-[#ba1a1a] dark:border-[#ffb4ab] focus:border-[#ba1a1a]"
+                  : "border-black/[0.08] dark:border-[#285A48] focus:border-[#086948] dark:focus:border-[#8bd5b9]"
+              }`}
+            />
+          </div>
           {errors.name && (
-            <p className="text-xs text-destructive font-medium mt-1">
+            <p className="text-xs text-[#ba1a1a] dark:text-[#ffb4ab] font-medium mt-1 font-home-body">
               {errors.name}
             </p>
           )}
         </div>
 
-        {/* Industry */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="company-industry"
-            className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
-          >
-            Industry <span className="text-destructive">*</span>
-          </label>
-          <select
-            id="company-industry"
-            name="industry"
-            value={industry}
-            onChange={(e) => setIndustry(e.target.value)}
-            className="w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20"
-          >
-            {INDUSTRIES.map((ind) => (
-              <option key={ind} value={ind}>
-                {ind}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Number of Employees */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="company-size"
-            className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
-          >
-            Number of Employees <span className="text-destructive">*</span>
-          </label>
-          <select
-            id="company-size"
-            name="employeeCount"
-            value={employeeCount}
-            onChange={(e) => setEmployeeCount(e.target.value)}
-            className="w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20"
-          >
-            {EMPLOYEE_RANGES.map((range) => (
-              <option key={range} value={range}>
-                {range} employees
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Website (Optional) */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
+        {/* Industry & Employees (2-Column Grid) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+          {/* Industry */}
+          <div className="space-y-1.5">
             <label
-              htmlFor="company-website"
-              className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
+              htmlFor="company-industry"
+              className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
             >
-              Website
+              INDUSTRY <span className="text-[#ba1a1a] dark:text-[#ffb4ab]">*</span>
             </label>
-            <span className="text-xs text-muted-foreground">Optional</span>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <Briefcase className="w-4 h-4" />
+              </div>
+              <select
+                id="company-industry"
+                name="industry"
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="w-full bg-[#f7faf8] dark:bg-[#091413] border border-black/[0.08] dark:border-[#285A48] rounded-[14px] pl-10 pr-10 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] outline-none transition-all focus:border-[#086948] dark:focus:border-[#8bd5b9] focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 appearance-none cursor-pointer font-home-body"
+              >
+                {INDUSTRIES.map((ind) => (
+                  <option key={ind} value={ind} className="bg-white dark:bg-[#12211E] text-[#161e12] dark:text-[#F3FDF8]">
+                    {ind}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
           </div>
-          <input
-            id="company-website"
-            name="website"
-            type="text"
-            value={website}
-            onChange={(e) => {
-              setWebsite(e.target.value);
-              if (errors.website)
-                setErrors((prev) => ({ ...prev, website: "" }));
-            }}
-            placeholder="https://acme.com"
-            className={`w-full bg-muted/30 border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:ring-1 focus:ring-primary/20 ${
-              errors.website
-                ? "border-destructive focus:border-destructive"
-                : "border-border focus:border-primary"
-            }`}
-          />
-          {errors.website && (
-            <p className="text-xs text-destructive font-medium mt-1">
-              {errors.website}
-            </p>
-          )}
+
+          {/* Number of Employees */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="company-size"
+              className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
+            >
+              EMPLOYEES <span className="text-[#ba1a1a] dark:text-[#ffb4ab]">*</span>
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <Users className="w-4 h-4" />
+              </div>
+              <select
+                id="company-size"
+                name="employeeCount"
+                value={employeeCount}
+                onChange={(e) => setEmployeeCount(e.target.value)}
+                className="w-full bg-[#f7faf8] dark:bg-[#091413] border border-black/[0.08] dark:border-[#285A48] rounded-[14px] pl-10 pr-10 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] outline-none transition-all focus:border-[#086948] dark:focus:border-[#8bd5b9] focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 appearance-none cursor-pointer font-home-body"
+              >
+                {EMPLOYEE_RANGES.map((range) => (
+                  <option key={range} value={range} className="bg-white dark:bg-[#12211E] text-[#161e12] dark:text-[#F3FDF8]">
+                    {range} employees
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Phone (Optional) */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label
-              htmlFor="company-phone"
-              className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
-            >
-              Phone Number
-            </label>
-            <span className="text-xs text-muted-foreground">Optional</span>
+        {/* Website & Phone (2-Column Grid) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+          {/* Website (Optional) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="company-website"
+                className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
+              >
+                WEBSITE
+              </label>
+              <span className="text-xs text-[#8e9892] dark:text-[#86A99A] font-home-body">Optional</span>
+            </div>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <Globe className="w-4 h-4" />
+              </div>
+              <input
+                id="company-website"
+                name="website"
+                type="text"
+                value={website}
+                onChange={(e) => {
+                  setWebsite(e.target.value);
+                  if (errors.website)
+                    setErrors((prev) => ({ ...prev, website: "" }));
+                }}
+                placeholder="https://acme.com"
+                className={`w-full bg-[#f7faf8] dark:bg-[#091413] border rounded-[14px] pl-10 pr-4 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] placeholder:text-[#8e9892] dark:placeholder:text-[#86A99A] outline-none transition-all focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 font-home-body ${
+                  errors.website
+                    ? "border-[#ba1a1a] dark:border-[#ffb4ab] focus:border-[#ba1a1a]"
+                    : "border-black/[0.08] dark:border-[#285A48] focus:border-[#086948] dark:focus:border-[#8bd5b9]"
+                }`}
+              />
+            </div>
+            {errors.website && (
+              <p className="text-xs text-[#ba1a1a] dark:text-[#ffb4ab] font-medium mt-1 font-home-body">
+                {errors.website}
+              </p>
+            )}
           </div>
-          <input
-            id="company-phone"
-            name="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+1 (555) 000-0000"
-            className="w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20"
-          />
+
+          {/* Phone (Optional) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="company-phone"
+                className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
+              >
+                PHONE NUMBER
+              </label>
+              <span className="text-xs text-[#8e9892] dark:text-[#86A99A] font-home-body">Optional</span>
+            </div>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+                <Phone className="w-4 h-4" />
+              </div>
+              <input
+                id="company-phone"
+                name="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                className="w-full bg-[#f7faf8] dark:bg-[#091413] border border-black/[0.08] dark:border-[#285A48] rounded-[14px] pl-10 pr-4 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] placeholder:text-[#8e9892] dark:placeholder:text-[#86A99A] outline-none transition-all focus:border-[#086948] dark:focus:border-[#8bd5b9] focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 font-home-body"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Country (Optional) */}
@@ -511,21 +606,26 @@ export function RegisterCompanyForm() {
           <div className="flex items-center justify-between">
             <label
               htmlFor="company-country"
-              className="text-xs font-bold text-muted-foreground uppercase tracking-wider block"
+              className="text-[11px] font-bold text-[#4B5750] dark:text-[#86A99A] uppercase tracking-wider block font-home-mono"
             >
-              Country
+              COUNTRY
             </label>
-            <span className="text-xs text-muted-foreground">Optional</span>
+            <span className="text-xs text-[#8e9892] dark:text-[#86A99A] font-home-body">Optional</span>
           </div>
-          <input
-            id="company-country"
-            name="country"
-            type="text"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            placeholder="e.g. United States"
-            className="w-full bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20"
-          />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#76786d] dark:text-[#86A99A]">
+              <MapPin className="w-4 h-4" />
+            </div>
+            <input
+              id="company-country"
+              name="country"
+              type="text"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="e.g. United States"
+              className="w-full bg-[#f7faf8] dark:bg-[#091413] border border-black/[0.08] dark:border-[#285A48] rounded-[14px] pl-10 pr-4 h-12 text-sm text-[#161e12] dark:text-[#F3FDF8] placeholder:text-[#8e9892] dark:placeholder:text-[#86A99A] outline-none transition-all focus:border-[#086948] dark:focus:border-[#8bd5b9] focus:ring-2 focus:ring-[#086948]/15 dark:focus:ring-[#8bd5b9]/20 font-home-body"
+            />
+          </div>
         </div>
 
         {/* Submit Button */}
@@ -533,15 +633,18 @@ export function RegisterCompanyForm() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 rounded-full h-11 inline-flex items-center justify-center gap-2 text-sm font-semibold transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="w-full bg-[#0C1511] hover:bg-[#1f2c25] dark:bg-[#8bd5b9] dark:hover:bg-[#a6f2d4] active:scale-[0.99] text-white dark:text-[#091413] disabled:opacity-60 rounded-full h-13 px-6 inline-flex items-center justify-center gap-2 text-sm sm:text-base font-semibold shadow-md dark:shadow-[0_0_24px_rgba(139,213,185,0.25)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086948] dark:focus-visible:ring-[#8bd5b9] cursor-pointer"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin text-white dark:text-[#091413]" />
                 <span>Creating your company...</span>
               </>
             ) : (
-              <span>Start Free 14-Day Trial</span>
+              <>
+                <span>Start free 14-day trial</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
             )}
           </button>
         </div>
@@ -549,3 +652,4 @@ export function RegisterCompanyForm() {
     </div>
   );
 }
+
