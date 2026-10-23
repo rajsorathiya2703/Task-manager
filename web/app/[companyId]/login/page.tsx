@@ -139,12 +139,12 @@ export default function CompanyLoginPage({
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background py-12 px-4">
+    <main className="min-h-screen w-full">
       <LoginCard
         companyName={company.name}
         logoUrl={company.logoUrl}
         slug={slug}
       />
-    </div>
+    </main>
   );
 }

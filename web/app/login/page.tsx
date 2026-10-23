@@ -34,15 +34,15 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background py-12 px-4">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#06100c]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#34d399]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background py-12 px-4">
+    <main className="min-h-screen w-full">
       <LoginCard />
-    </div>
+    </main>
   );
 }

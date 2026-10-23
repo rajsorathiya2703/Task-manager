@@ -131,34 +131,34 @@ export function UserProfile({ user }: UserProfileProps) {
     <div className="relative w-full" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center w-full gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 transition-colors"
+        className="flex items-center w-full gap-2.5 px-1 py-1 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer text-left"
       >
-        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center overflow-hidden shrink-0">
+        <div className="w-9 h-9 rounded-full bg-[#1c2128] dark:bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
           {user?.avatarUrl ? (
             <img src={user.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
           ) : (
-            <span className="text-primary-foreground text-xs font-medium">{firstLetter}</span>
+            <span className="text-white dark:text-black text-sm font-bold">{firstLetter}</span>
           )}
         </div>
-        <div className="flex-1 text-left truncate">
-          <p className="text-xs font-medium leading-none truncate text-foreground">{displayName}</p>
+        <div className="flex-1 text-left truncate min-w-0">
+          <p className="text-sm font-semibold leading-tight truncate text-[#111827] dark:text-white">{displayName}</p>
         </div>
-        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <ChevronDown className="w-4 h-4 text-[#64748b] dark:text-[#9ca3af] shrink-0" />
       </button>
 
       {isOpen && (
-        <div className="mt-2 w-full bg-card border border-border rounded-xl shadow-lg py-2 z-50">
+        <div className="mt-2 w-full bg-white dark:bg-[#1e232b] border border-[#dce1e7] dark:border-white/10 rounded-2xl shadow-xl py-2 z-50">
           {/* User Profile Header */}
-          <div className="flex flex-col items-center justify-center p-3 border-b border-border text-center">
-            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center overflow-hidden mb-2 shadow-xs">
+          <div className="flex flex-col items-center justify-center p-3 border-b border-[#dce1e7]/60 dark:border-white/[0.08] text-center">
+            <div className="w-10 h-10 rounded-full bg-[#1c2128] dark:bg-white flex items-center justify-center overflow-hidden mb-2 shadow-xs">
               {user?.avatarUrl ? (
                 <img src={user.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-primary-foreground text-base font-semibold">{firstLetter}</span>
+                <span className="text-white dark:text-black text-base font-bold">{firstLetter}</span>
               )}
             </div>
-            <p className="text-xs font-semibold text-foreground truncate max-w-full px-2">{displayName}</p>
-            <p className="text-[11px] text-muted-foreground truncate max-w-full px-2">{displayEmail}</p>
+            <p className="text-xs font-semibold text-[#111827] dark:text-white truncate max-w-full px-2">{displayName}</p>
+            <p className="text-[11px] text-[#64748b] dark:text-[#9ca3af] truncate max-w-full px-2">{displayEmail}</p>
           </div>
 
           {/* Companies Section */}
