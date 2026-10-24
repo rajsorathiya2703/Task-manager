@@ -278,6 +278,7 @@ export default function ProjectsPage() {
             data={data} 
             onProjectClick={handleOpenEdit}
             onAddProjectClick={handleOpenCreate}
+            onDeleteProject={handleDeleteProject}
             isFiltered={filters.length > 0 || !!searchQuery}
           />
         )

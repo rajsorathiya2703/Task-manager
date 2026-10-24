@@ -88,11 +88,11 @@ export function FilterDropdown({
     <Popover className="relative">
       {({ open }) => (
         <>
-          <Popover.Button className={`flex items-center gap-1.5 px-2 py-1.5 border border-border rounded-md bg-card text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${open || filters.length > 0 ? 'bg-muted' : 'hover:bg-muted'}`}>
+          <Popover.Button className={`flex items-center gap-1.5 px-3 py-1.5 h-9 border border-border dark:border-transparent rounded-lg bg-card dark:bg-gunmetal text-xs font-medium text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 ${open || filters.length > 0 ? 'bg-muted dark:bg-iron-grey/40 text-foreground' : 'hover:bg-muted dark:hover:bg-iron-grey/40'}`}>
             <Filter className="w-3.5 h-3.5" />
-            Filter
+            <span>Filter</span>
             {filters.length > 0 && (
-              <span className="ml-1 flex items-center justify-center bg-primary text-primary-foreground text-[10px] w-4 h-4 rounded-full">
+              <span className="ml-1 flex items-center justify-center bg-carbon-black text-white dark:bg-white dark:text-carbon-black text-[10px] w-4 h-4 rounded-full font-bold">
                 {filters.length}
               </span>
             )}

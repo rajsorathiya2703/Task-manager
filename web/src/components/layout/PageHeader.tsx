@@ -157,13 +157,14 @@ export function PageHeader({
   const currentContextObj = resolvedContexts.find(c => c.key === searchContext);
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-background shrink-0 min-h-[50px]">
+    <header className="flex items-center justify-between px-4 sm:px-6 py-2.5 bg-background shrink-0 min-h-[56px] border-b border-border/40">
       <div className="flex items-center gap-3 min-w-0">
         {/* Toggle Hamburger Button (visible only when sidebar is closed) */}
         {!isOpen && (
           <button 
             onClick={toggleSidebar}
-            className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card shadow-sm mr-1 shrink-0"
+            className="w-9 h-9 rounded-lg flex items-center justify-center border border-border dark:border-transparent bg-card dark:bg-gunmetal hover:bg-muted dark:hover:bg-iron-grey/40 text-foreground transition-colors mr-1 shrink-0"
+            title="Toggle Sidebar"
           >
             <Menu className="w-4 h-4 text-foreground" />
           </button>
@@ -183,108 +184,84 @@ export function PageHeader({
                 <span>/</span>
               </span>
             ))}
-            <div className="text-foreground font-semibold flex items-center gap-2 truncate">
+            <div className="text-foreground font-bold text-2xl tracking-tight flex items-center gap-2 truncate">
               {title}
             </div>
           </div>
         ) : (
-          <div className="text-xl font-semibold text-foreground flex items-center gap-2.5 truncate">
+          <div className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5 truncate">
             {title}
           </div>
         )}
       </div>
 
-      <div className="flex-1 flex items-center justify-end gap-2 shrink-0 min-w-0">
+      <div className="flex-1 flex items-center justify-end gap-2.5 shrink-0 min-w-0">
         {/* Search */}
         {(onSearchChange !== undefined) && (
-          <div className={`flex items-center justify-end transition-all duration-300 ease-in-out ${isSearchOpen || localQuery ? 'w-full max-w-lg' : 'w-8'}`}>
-            {isSearchOpen || localQuery ? (
-              <div className="relative w-full">
-                <div className="flex items-center border border-border rounded-md px-2 py-1 bg-card w-full shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
-                  <Search className="w-4 h-4 text-muted-foreground mr-1.5 shrink-0" />
-                  
-                  {/* Context Tag */}
-                  {searchContext !== 'all' && (
-                    <div className="flex items-center gap-1 bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded mr-1.5 shrink-0 whitespace-nowrap">
-                      {currentContextObj?.icon && (
-                        <currentContextObj.icon className="w-3 h-3" />
-                      )}
-                      Filtered by {currentContextObj?.label || searchContext}
-                      <button 
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleContextSelect('all'); }}
-                        className="hover:text-primary-foreground hover:bg-primary rounded-full p-0.5 transition-colors ml-0.5"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
+          <div className="relative">
+            <div className="flex items-center border border-border dark:border-transparent rounded-lg px-3 py-1.5 bg-card dark:bg-gunmetal w-44 sm:w-52 md:w-56 h-9 shadow-xs focus-within:ring-1 focus-within:ring-primary transition-all">
+              <Search className="w-4 h-4 text-muted-foreground mr-2 shrink-0" />
+              
+              {/* Context Tag */}
+              {searchContext !== 'all' && (
+                <div className="flex items-center gap-1 bg-primary/10 text-primary text-[10px] font-medium px-1.5 py-0.5 rounded mr-1.5 shrink-0 whitespace-nowrap">
+                  {currentContextObj?.icon && (
+                    <currentContextObj.icon className="w-3 h-3" />
                   )}
-
-                  <input 
-                    ref={searchInputRef}
-                    type="text" 
-                    placeholder={searchContext === 'all' ? "Search..." : `Search ${currentContextObj?.label || searchContext}...`}
-                    className="bg-transparent border-none outline-none text-sm w-full text-foreground placeholder:text-muted-foreground min-w-0"
-                    value={localQuery}
-                    onChange={(e) => handleQueryChange(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    onKeyUp={(e) => e.stopPropagation()}
-                    autoFocus
-                    onBlur={() => {
-                      setTimeout(() => {
-                        if (!localQuery) setIsSearchOpen(false);
-                      }, 200);
-                    }}
-                  />
-                  
-                  {localQuery && (
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); clearSearch(); }}
-                      className="text-muted-foreground hover:text-foreground shrink-0 ml-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {!localQuery && (
-                    <span className="text-[10px] bg-muted text-muted-foreground px-1 py-0.5 rounded ml-1.5 shrink-0 hidden sm:block">⌘F</span>
-                  )}
+                  Filtered by {currentContextObj?.label || searchContext}
+                  <button 
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleContextSelect('all'); }}
+                    className="hover:text-primary-foreground hover:bg-primary rounded-full p-0.5 transition-colors ml-0.5"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
                 </div>
+              )}
 
-                {/* Recommendations Dropdown */}
-                {localQuery && (
-                  <div className="absolute top-full mt-1.5 w-full bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden outline-none">
-                    <div className="p-1 flex flex-col">
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Search "{localQuery}" in
-                      </div>
-                      
-                      {resolvedContexts.map((ctx) => {
-                        const IconComp = ctx.icon || Search;
-                        return (
-                          <button 
-                            key={ctx.key}
-                            onClick={() => handleContextSelect(ctx.key)}
-                            className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
-                          >
-                            <IconComp className="w-4 h-4 text-muted-foreground shrink-0" />
-                            <span><span className="font-medium">{ctx.label}:</span> {localQuery}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+              <input 
+                ref={searchInputRef}
+                type="text" 
+                placeholder={searchContext === 'all' ? "Search tasks" : `Search ${currentContextObj?.label || searchContext}...`}
+                className="bg-transparent border-none outline-none text-xs sm:text-sm w-full text-foreground placeholder:text-muted-foreground min-w-0"
+                value={localQuery}
+                onChange={(e) => handleQueryChange(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                onKeyUp={(e) => e.stopPropagation()}
+              />
+              
+              {localQuery && (
+                <button 
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); clearSearch(); }}
+                  className="text-muted-foreground hover:text-foreground shrink-0 ml-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Recommendations Dropdown */}
+            {localQuery && (
+              <div className="absolute top-full mt-1.5 w-full bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden outline-none">
+                <div className="p-1 flex flex-col">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Search "{localQuery}" in
                   </div>
-                )}
+                  
+                  {resolvedContexts.map((ctx) => {
+                    const IconComp = ctx.icon || Search;
+                    return (
+                      <button 
+                        key={ctx.key}
+                        onClick={() => handleContextSelect(ctx.key)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors text-left"
+                      >
+                        <IconComp className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span><span className="font-medium">{ctx.label}:</span> {localQuery}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            ) : (
-              <button 
-                onClick={() => {
-                  setIsSearchOpen(true);
-                  setTimeout(() => searchInputRef.current?.focus(), 50);
-                }}
-                className="p-1.5 border border-border rounded-md hover:bg-muted transition-colors bg-card w-8 h-8 flex items-center justify-center shrink-0"
-                title="Search (Type anywhere to search)"
-              >
-                <Search className="w-3.5 h-3.5 text-foreground" />
-              </button>
             )}
           </div>
         )}
@@ -303,7 +280,7 @@ export function PageHeader({
             {filters.length > 0 && onClearFilters && (
               <button 
                 onClick={onClearFilters}
-                className="flex items-center gap-1.5 px-2 py-1.5 border border-border rounded-md hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900 transition-colors bg-card text-xs font-medium text-muted-foreground"
+                className="flex items-center gap-1.5 px-2.5 h-9 border border-border dark:border-transparent rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900 transition-colors bg-card dark:bg-gunmetal text-xs font-medium text-muted-foreground"
                 title="Clear all filters"
               >
                 <Filter className="w-3 h-3 relative" />
@@ -325,22 +302,30 @@ export function PageHeader({
 
         {/* View Switcher */}
         {onViewChange && (
-          <div className="flex items-center bg-muted/50 p-0.5 rounded-md border border-border">
+          <div className="flex items-center bg-card dark:bg-gunmetal p-1 rounded-lg border border-border dark:border-transparent h-9 shrink-0">
             <button 
               onClick={() => onViewChange('list')}
-              className={`flex items-center justify-center gap-1.5 rounded-[4px] transition-colors ${activeView === 'list' ? 'bg-background shadow-sm border border-border/50 px-2.5 py-1' : 'px-1.5 py-1 hover:text-foreground text-muted-foreground'}`}
+              className={`flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${
+                activeView === 'list' 
+                  ? 'bg-carbon-black text-white dark:bg-white dark:text-carbon-black font-semibold shadow-xs' 
+                  : 'text-muted-foreground dark:text-pale-slate-2 hover:text-foreground dark:hover:text-white font-medium'
+              }`}
               title="List View"
             >
               <List className="w-3.5 h-3.5" />
-              {activeView === 'list' && <span className="text-xs font-medium">List</span>}
+              <span>List</span>
             </button>
             <button 
               onClick={() => onViewChange('board')}
-              className={`flex items-center justify-center gap-1.5 rounded-[4px] transition-colors ${activeView === 'board' ? 'bg-background shadow-sm border border-border/50 px-2.5 py-1' : 'px-1.5 py-1 hover:text-foreground text-muted-foreground'}`}
+              className={`flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-all ${
+                activeView === 'board' 
+                  ? 'bg-carbon-black text-white dark:bg-white dark:text-carbon-black font-semibold shadow-xs' 
+                  : 'text-muted-foreground dark:text-pale-slate-2 hover:text-foreground dark:hover:text-white font-medium'
+              }`}
               title="Board View"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              {activeView === 'board' && <span className="text-xs font-medium">Board</span>}
+              <span>Board</span>
             </button>
           </div>
         )}
@@ -351,29 +336,34 @@ export function PageHeader({
         {/* AI Copilot Toggle */}
         <button
           onClick={toggleChatbot}
-          className={`p-1.5 border rounded-md transition-colors flex items-center justify-center ${
+          className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-colors shrink-0 ${
             isChatbotOpen
               ? "bg-primary/10 text-primary border-primary/40 shadow-xs"
-              : "border-border hover:bg-muted text-foreground bg-card shadow-xs"
+              : "border-border dark:border-transparent hover:bg-muted dark:hover:bg-iron-grey/40 text-foreground bg-card dark:bg-gunmetal shadow-xs"
           }`}
           title="Toggle AI Task Copilot (⌘J)"
         >
-          <Bot className="w-3.5 h-3.5" />
+          <Bot className="w-4 h-4" />
         </button>
 
         {/* Add Button */}
         {shouldShowAdd && (
           onAddClick ? (
-            <Button onClick={onAddClick} variant="primary" className="gap-1.5 h-7 px-3 rounded-md ml-1 text-xs">
-              <Plus className="w-3.5 h-3.5" />
-              {addText}
-            </Button>
+            <button
+              onClick={onAddClick}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold bg-carbon-black hover:bg-gunmetal text-white dark:bg-white dark:hover:bg-platinum dark:text-carbon-black shadow-xs transition-all shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{addText}</span>
+            </button>
           ) : (
             <CompanyLink href={addHref}>
-              <Button variant="primary" className="gap-1.5 h-7 px-3 rounded-md ml-1 text-xs">
-                <Plus className="w-3.5 h-3.5" />
-                {addText}
-              </Button>
+              <button
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold bg-carbon-black hover:bg-gunmetal text-white dark:bg-white dark:hover:bg-platinum dark:text-carbon-black shadow-xs transition-all shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{addText}</span>
+              </button>
             </CompanyLink>
           )
         )}

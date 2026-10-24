@@ -26,16 +26,16 @@ export function GroupByDropdown({
       {({ open, close }) => (
         <>
           <Popover.Button
-            className={`flex items-center gap-1.5 px-2 py-1.5 border border-border rounded-md bg-card text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 h-9 border border-border dark:border-transparent rounded-lg bg-card dark:bg-gunmetal text-xs font-medium text-foreground transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 ${
               open || (selected && selected !== "none" && selected !== "stage")
-                ? "bg-muted text-foreground"
-                : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                ? "bg-muted dark:bg-iron-grey/40 text-foreground"
+                : "hover:bg-muted dark:hover:bg-iron-grey/40"
             }`}
             title="Group items by attribute"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Group:</span>
-            <span className="font-semibold text-foreground">{currentOption?.label || "None"}</span>
+            <Layers className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">Group</span>
+            <span className="font-semibold text-foreground">{currentOption?.label || "Stage"}</span>
             <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
           </Popover.Button>
 

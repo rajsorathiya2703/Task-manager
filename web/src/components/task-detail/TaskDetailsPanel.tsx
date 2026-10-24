@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { Popover } from "@headlessui/react";
-import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, UserCheck, RotateCcw } from "lucide-react";
+import { ChevronDown, Plus, Settings, SignalHigh, SignalMedium, SignalLow, Signal, CalendarDays, Check, UserCheck, RotateCcw, FolderKanban } from "lucide-react";
 
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { PriorityBadge } from "../board/PriorityBadge";
 import { formatDisplayDate } from "../../lib/utils";
 import { BoundField } from "../access";
+import { getSessionProjects, getCachedProjectsSync } from "../../lib/project-cache";
 
 interface TaskDetailsPanelProps {
   taskId?: string;
@@ -21,6 +22,13 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAssigningBack, setIsAssigningBack] = useState(false);
+  const [projects, setProjects] = useState<any[]>(() => getCachedProjectsSync() || []);
+
+  useEffect(() => {
+    getSessionProjects().then((list) => {
+      setProjects(list || []);
+    });
+  }, []);
 
   useEffect(() => {
     import("../../../src/lib/api").then(async ({ fetchMe }) => {
@@ -193,6 +201,59 @@ export function TaskDetailsPanel({ taskId, taskData, setTaskData }: TaskDetailsP
       {/* Grid */}
       <div className="p-3">
         <div className="grid grid-cols-[80px_1fr] gap-y-4 items-center text-xs">
+
+          {/* Project */}
+          <BoundField module="tasks" field="projectId">
+            {({ disabled }) => {
+              const currentPid = typeof taskData?.projectId === 'object'
+                ? (taskData.projectId?._id || taskData.projectId?.id)
+                : taskData?.projectId;
+              const selectedProj = projects.find((p) => (p._id || p.id) === currentPid);
+              const pName = selectedProj?.name || (typeof taskData?.projectId === 'object' ? taskData.projectId.name : null);
+
+              return (
+                <>
+                  <div className="text-muted-foreground">Project</div>
+                  <div className="relative w-full">
+                    {disabled ? (
+                      <div className="flex items-center gap-1.5 font-medium text-foreground cursor-not-allowed opacity-85">
+                        <FolderKanban className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="truncate">{pName || "No Project"}</span>
+                      </div>
+                    ) : (
+                      <Popover>
+                        <Popover.Button className="flex items-center gap-1.5 font-medium text-foreground outline-none text-left">
+                          <FolderKanban className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <span className="truncate max-w-[140px]">{pName || "Select project..."}</span>
+                          <ChevronDown className="w-3 h-3 text-muted-foreground ml-0.5" />
+                        </Popover.Button>
+                        <Popover.Panel anchor="bottom start" className="w-52 bg-card border border-border rounded-lg shadow-lg z-50 py-1 flex flex-col outline-none origin-top-left mt-1 max-h-48 overflow-y-auto">
+                          {projects.map((proj) => {
+                            const pId = proj._id || proj.id;
+                            const isSelected = pId === currentPid;
+                            return (
+                              <button
+                                key={pId}
+                                className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/50 text-xs text-left"
+                                onClick={() => {
+                                  if (setTaskData && taskData) {
+                                    setTaskData({ ...taskData, projectId: pId });
+                                  }
+                                }}
+                              >
+                                <span className="truncate">{proj.name}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-foreground" />}
+                              </button>
+                            );
+                          })}
+                        </Popover.Panel>
+                      </Popover>
+                    )}
+                  </div>
+                </>
+              );
+            }}
+          </BoundField>
 
           {/* Status */}
           <BoundField module="tasks" field="status">

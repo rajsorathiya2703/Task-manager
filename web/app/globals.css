@@ -3,32 +3,66 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f9fafb;
-  --foreground: #111827;
+  /* Requested Color Palette */
+  --bright-snow: #f8f9fa;
+  --platinum: #e9ecef;
+  --alabaster-grey: #dee2e6;
+  --pale-slate: #ced4da;
+  --pale-slate-2: #adb5bd;
+  --slate-grey: #6c757d;
+  --iron-grey: #495057;
+  --gunmetal: #343a40;
+  --carbon-black: #212529;
+
+  /* Semantic Light Theme */
+  --background: var(--platinum);
+  --foreground: var(--carbon-black);
   --card: #ffffff;
-  --card-foreground: #111827;
-  --border: #e5e7eb;
-  --primary: #000000;
+  --card-foreground: var(--carbon-black);
+  --border: var(--alabaster-grey);
+  --primary: var(--carbon-black);
   --primary-foreground: #ffffff;
-  --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
-  --ring: #000000;
+  --muted: var(--bright-snow);
+  --muted-foreground: var(--slate-grey);
+  --ring: var(--carbon-black);
 }
 
 .dark {
-  --background: #111827;
-  --foreground: #f9fafb;
-  --card: #1f2937;
-  --card-foreground: #f9fafb;
-  --border: #374151;
-  --primary: #ffffff;
-  --primary-foreground: #000000;
-  --muted: #374151;
-  --muted-foreground: #9ca3af;
-  --ring: #ffffff;
+  /* Requested Color Palette */
+  --bright-snow: #f8f9fa;
+  --platinum: #e9ecef;
+  --alabaster-grey: #dee2e6;
+  --pale-slate: #ced4da;
+  --pale-slate-2: #adb5bd;
+  --slate-grey: #6c757d;
+  --iron-grey: #495057;
+  --gunmetal: #343a40;
+  --carbon-black: #212529;
+
+  /* Semantic Dark Theme */
+  --background: #181b1f;
+  --foreground: var(--bright-snow);
+  --card: var(--carbon-black);
+  --card-foreground: var(--bright-snow);
+  --border: var(--gunmetal);
+  --primary: var(--bright-snow);
+  --primary-foreground: var(--carbon-black);
+  --muted: var(--gunmetal);
+  --muted-foreground: var(--pale-slate-2);
+  --ring: var(--bright-snow);
 }
 
 @theme inline {
+  --color-bright-snow: var(--bright-snow);
+  --color-platinum: var(--platinum);
+  --color-alabaster-grey: var(--alabaster-grey);
+  --color-pale-slate: var(--pale-slate);
+  --color-pale-slate-2: var(--pale-slate-2);
+  --color-slate-grey: var(--slate-grey);
+  --color-iron-grey: var(--iron-grey);
+  --color-gunmetal: var(--gunmetal);
+  --color-carbon-black: var(--carbon-black);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

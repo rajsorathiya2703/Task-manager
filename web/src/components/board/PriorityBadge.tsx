@@ -2,9 +2,11 @@ import { SignalHigh, SignalMedium, SignalLow, Signal } from "lucide-react";
 
 interface PriorityBadgeProps {
   priority?: "High" | "Medium" | "Low" | "No Priority" | string;
+  className?: string;
 }
 
-export function PriorityBadge({ priority }: PriorityBadgeProps) {
+export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
+  const baseClass = className || "";
   switch (priority) {
     case "High":
       return (

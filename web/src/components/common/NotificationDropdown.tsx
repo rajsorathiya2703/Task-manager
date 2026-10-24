@@ -311,9 +311,9 @@ export function NotificationDropdown() {
         <>
           <Popover.Button
             className={`
-              relative p-2 rounded-xl border border-border/50 bg-card hover:bg-muted text-muted-foreground hover:text-foreground
-              transition-all focus:outline-none focus:ring-2 focus:ring-primary/20
-              ${open ? 'bg-muted text-foreground ring-2 ring-primary/20' : ''}
+              relative w-9 h-9 flex items-center justify-center rounded-lg border border-border dark:border-transparent bg-card dark:bg-gunmetal hover:bg-muted dark:hover:bg-iron-grey/40 text-foreground
+              transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 shrink-0
+              ${open ? 'bg-muted dark:bg-iron-grey/40 text-foreground' : ''}
             `}
             title="Notifications"
           >
