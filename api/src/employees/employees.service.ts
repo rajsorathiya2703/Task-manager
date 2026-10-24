@@ -247,13 +247,6 @@ export class EmployeesService implements OnModuleInit {
               .exec();
           }
 
-          if (matchedRole) {
-            // Add user to role.members array
-            await this.roleModel.updateOne(
-              { _id: matchedRole._id },
-              { $addToSet: { members: userObjId } },
-            );
-          }
         }
 
         const roleIdsToAdd = matchedRole?._id ? [matchedRole._id] : [];
@@ -271,18 +264,45 @@ export class EmployeesService implements OnModuleInit {
           if (existingMembership) {
             existingMembership.employeeId = emp._id as Types.ObjectId;
             existingMembership.status = 'active';
-            if (isRoleAdmin) {
-              existingMembership.isSystemAdmin = true;
+
+            const hasAssignedRoles =
+              (existingMembership.roleIds && existingMembership.roleIds.length > 0) ||
+              Boolean(existingMembership.isCompanyOwner);
+
+            if (!hasAssignedRoles) {
+              // Initial role assignment for membership with no roles assigned yet
+              if (matchedRole?._id) {
+                existingMembership.roleIds = [matchedRole._id];
+                if (this.roleModel) {
+                  await this.roleModel.updateOne(
+                    { _id: matchedRole._id },
+                    { $addToSet: { members: userObjId } },
+                  );
+                }
+              }
+              if (isRoleAdmin) {
+                existingMembership.isSystemAdmin = true;
+              }
+            } else {
+              // Membership already has roles assigned: do NOT re-inject default role.
+              // Instead, sync Employee.role to match highest priority assigned role.
+              if (this.roleModel && existingMembership.roleIds?.length > 0) {
+                const topRole = await this.roleModel
+                  .findOne({ _id: { $in: existingMembership.roleIds }, companyId: compId })
+                  .sort({ priority: -1 })
+                  .select('name')
+                  .lean()
+                  .exec();
+                if (topRole?.name && emp.role !== topRole.name) {
+                  emp.role = topRole.name;
+                  await this.employeeModel.updateOne(
+                    { _id: emp._id },
+                    { $set: { role: topRole.name } },
+                  );
+                }
+              }
             }
-            if (
-              matchedRole?._id &&
-              !existingMembership.roleIds?.some((r: any) => String(r) === String(matchedRole._id))
-            ) {
-              existingMembership.roleIds = [
-                ...(existingMembership.roleIds || []),
-                matchedRole._id,
-              ];
-            }
+
             if (typeof existingMembership.save === 'function') {
               await existingMembership.save();
             } else {
@@ -299,6 +319,7 @@ export class EmployeesService implements OnModuleInit {
               );
             }
           } else {
+            // Brand-new membership: first time login into this company
             await this.membershipModel.create({
               companyId: compId,
               userId: userObjId,
@@ -309,6 +330,13 @@ export class EmployeesService implements OnModuleInit {
               status: 'active',
               joinedAt: new Date(),
             });
+
+            if (matchedRole && this.roleModel) {
+              await this.roleModel.updateOne(
+                { _id: matchedRole._id },
+                { $addToSet: { members: userObjId } },
+              );
+            }
           }
         }
 

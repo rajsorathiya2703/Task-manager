@@ -957,17 +957,22 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
       };
 
       rModel = {
-        findOne: jest.fn().mockImplementation((query: any) => ({
-          sort: () => ({
-            select: () => ({
-              lean: () => ({
-                exec: jest.fn().mockResolvedValue(
-                  rolesDb.find((r) => r.slug === query.slug && r.isActive) || null,
-                ),
-              }),
-            }),
-          }),
-        })),
+        findOne: jest.fn().mockImplementation((query: any) => {
+          const chain: any = {
+            sort: () => chain,
+            select: () => chain,
+            lean: () => chain,
+            exec: jest.fn().mockResolvedValue(
+              rolesDb.find((r) => {
+                if (query.slug && r.slug !== query.slug) return false;
+                if (query._id?.$in && !query._id.$in.some((id: any) => String(id) === String(r._id))) return false;
+                if (query.isActive !== undefined && r.isActive !== query.isActive) return false;
+                return true;
+              }) || null,
+            ),
+          };
+          return chain;
+        }),
         updateOne: jest.fn().mockImplementation(async (query: any, update: any) => {
           const role = rolesDb.find((r) => String(r._id) === String(query._id));
           if (role && update.$addToSet?.members) {
@@ -1008,6 +1013,11 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
         const emp = new MockEmp(data);
         employeesDb.push(emp);
         return emp;
+      };
+      (actService as any)._seedMembership = (data: any) => {
+        const mem = { _id: new Types.ObjectId(), save: jest.fn(), ...data };
+        membershipsDb.push(mem);
+        return mem;
       };
       (actService as any)._getMemberships = () => membershipsDb;
       (actService as any)._getRoles = () => rolesDb;
@@ -1124,6 +1134,43 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
       expect(membershipsAfterSecond).toHaveLength(1);
       expect(membershipsAfterSecond[0].roleIds).toHaveLength(1);
     });
+
+    it('(e) preserves existing assigned roles and does not restore Employee role if user was updated in Configuration -> Roles', async () => {
+      const customRoleId = new Types.ObjectId();
+      const user = { _id: new Types.ObjectId(), email: 'customrole@example.com' };
+
+      // Pre-seed an employee record
+      (actService as any)._seedEmployee({
+        _id: new Types.ObjectId(),
+        companyId: company1Id,
+        email: 'customrole@example.com',
+        userId: user._id,
+        role: 'Manager',
+      });
+
+      // Pre-seed membership with Manager role (assigned via Configuration -> Roles)
+      (actService as any)._seedMembership({
+        companyId: company1Id,
+        userId: user._id,
+        roleIds: [customRoleId],
+        status: 'active',
+      });
+
+      // User logs in and activateForUser runs
+      await actService.activateForUser(user);
+
+      // Verify membership roleIds still only contains customRoleId (NOT defaultRoleId Employee)
+      const memberships = (actService as any)._getMemberships();
+      const userMem = memberships.find((m: any) => String(m.userId) === String(user._id));
+      expect(userMem).toBeDefined();
+      expect(userMem.roleIds.map(String)).toEqual([String(customRoleId)]);
+      expect(userMem.roleIds.map(String)).not.toContain(String(defaultRoleId));
+
+      // Verify role.members of default role does NOT contain user
+      const roles = (actService as any)._getRoles();
+      const empRole = roles.find((r: any) => String(r._id) === String(defaultRoleId));
+      expect(empRole.members.map(String)).not.toContain(String(user._id));
+    });
   });
 
   describe('BUG-01: Employee Invitation Flow', () => {
@@ -1173,11 +1220,12 @@ describe('EmployeesService - PBAC Scope Filtering (P1-15)', () => {
         testEmpModel,
         {} as any,
         testUsersService,
-        undefined,
-        undefined,
-        undefined,
-        mockEmailService,
-        mockCompanyModel,
+        undefined, // membershipModel
+        undefined, // companyMemberModel
+        undefined, // roleModel
+        undefined, // userModel
+        mockEmailService, // emailService
+        mockCompanyModel, // companyModel
       );
     });
 

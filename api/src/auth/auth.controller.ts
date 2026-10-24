@@ -179,7 +179,7 @@ export class AuthController {
 
     const resolvedCompanySlug =
       (companySlug && companySlug.trim()) ||
-      ((req.headers['x-company-slug'] || req.headers['x-company-id']) as string) ||
+      ((req.headers?.['x-company-slug'] || req.headers?.['x-company-id']) as string) ||
       undefined;
 
     let activeCompanyId: string | undefined = undefined;

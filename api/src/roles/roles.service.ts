@@ -375,13 +375,38 @@ export class RolesService {
       }
 
       if (removedUserIds.length > 0) {
+        const removedObjectIds = removedUserIds.map((uid) => new Types.ObjectId(uid));
         await this.membershipModel.updateMany(
           {
             companyId: compObjectId,
-            userId: { $in: removedUserIds.map((uid) => new Types.ObjectId(uid)) },
+            userId: { $in: removedObjectIds },
           },
           { $pull: { roleIds: role._id } },
         );
+
+        if (this.employeeModel) {
+          for (const uid of removedObjectIds) {
+            const mem = await this.membershipModel
+              .findOne({ companyId: compObjectId, userId: uid })
+              .select('roleIds')
+              .lean()
+              .exec();
+            if (mem && mem.roleIds && mem.roleIds.length > 0) {
+              const topRole = await this.roleModel
+                .findOne({ _id: { $in: mem.roleIds }, companyId: compObjectId })
+                .sort({ priority: -1 })
+                .select('name')
+                .lean()
+                .exec();
+              if (topRole?.name) {
+                await this.employeeModel.updateOne(
+                  { companyId: compObjectId, userId: uid },
+                  { $set: { role: topRole.name } },
+                );
+              }
+            }
+          }
+        }
       }
     }
 
@@ -510,11 +535,7 @@ export class RolesService {
             emp.userId = userId;
             updated = true;
           }
-          if (
-            !emp.role ||
-            emp.role.toLowerCase() === 'owner' ||
-            (role.slug === 'employee' && emp.role.toLowerCase() !== 'admin')
-          ) {
+          if (role?.name && emp.role !== role.name) {
             emp.role = role.name;
             updated = true;
           }
