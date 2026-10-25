@@ -314,6 +314,18 @@ export function TaskMainContent({
     }
   };
 
+  const handleAddLabel = (newTag: string) => {
+    const trimmed = newTag.trim();
+    if (!trimmed || !setTaskData || !taskData) return;
+    const currentTags = taskData.tags || [];
+    if (!currentTags.includes(trimmed)) {
+      setTaskData({
+        ...taskData,
+        tags: [...currentTags, trimmed],
+      });
+    }
+  };
+
   const priority = taskData?.priority || "High";
   const status = taskData?.status || "To Do";
 
@@ -930,7 +942,7 @@ export function TaskMainContent({
             <Tag className="w-4 h-4 text-muted-foreground" />
             <span>Labels</span>
           </div>
-          <div className="flex items-center gap-1.5 flex-1 flex-nowrap overflow-x-auto custom-scrollbar py-0.5 min-w-0">
+          <div className="flex items-center gap-1.5 flex-1 flex-wrap py-0.5 min-w-0">
             {(taskData?.tags || []).map((label: string) => (
               <div
                 key={label}
@@ -954,25 +966,58 @@ export function TaskMainContent({
                 <Popover.Button className="w-7 h-7 rounded-md border border-border/80 bg-card hover:bg-muted/50 flex items-center justify-center text-xs text-muted-foreground hover:text-foreground cursor-pointer shadow-xs transition-colors shrink-0">
                   +
                 </Popover.Button>
-                <Popover.Panel className="absolute left-0 top-full mt-1.5 w-56 bg-card border border-border rounded-xl shadow-lg z-50 p-2.5 outline-none">
-                  <input
-                    type="text"
-                    placeholder="Type label & press Enter..."
-                    className="w-full text-xs px-2.5 py-1.5 bg-muted/50 border border-border rounded-lg outline-none focus:border-primary text-foreground"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const newTag = e.currentTarget.value.trim();
-                        if (newTag && setTaskData && taskData) {
-                          const currentTags = taskData.tags || [];
-                          if (!currentTags.includes(newTag)) {
-                            setTaskData({ ...taskData, tags: [...currentTags, newTag] });
+                <Popover.Panel
+                  anchor="bottom start"
+                  className="w-64 bg-card border border-border rounded-xl shadow-xl z-50 p-2.5 outline-none mt-1.5"
+                >
+                  {({ close }) => (
+                    <div className="space-y-2">
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.elements.namedItem('labelInput') as HTMLInputElement;
+                          const val = input?.value?.trim();
+                          if (val) {
+                            handleAddLabel(val);
+                            input.value = '';
+                            close();
                           }
-                          e.currentTarget.value = '';
-                        }
-                      }
-                    }}
-                  />
+                        }}
+                        className="flex items-center gap-1.5"
+                      >
+                        <input
+                          name="labelInput"
+                          type="text"
+                          autoFocus
+                          placeholder="Type label & press Enter..."
+                          className="flex-1 text-xs px-2.5 py-1.5 bg-muted/50 border border-border rounded-lg outline-none focus:border-primary text-foreground"
+                        />
+                        <button
+                          type="submit"
+                          className="px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 cursor-pointer shrink-0"
+                        >
+                          Add
+                        </button>
+                      </form>
+                      <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/40">
+                        {['Bug', 'Feature', 'Urgent', 'Enhancement', 'Documentation']
+                          .filter((suggestion) => !(taskData?.tags || []).includes(suggestion))
+                          .map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              onClick={() => {
+                                handleAddLabel(suggestion);
+                                close();
+                              }}
+                              className="px-2 py-0.5 rounded text-[11px] bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50 cursor-pointer transition-colors"
+                            >
+                              + {suggestion}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </Popover.Panel>
               </Popover>
             )}
