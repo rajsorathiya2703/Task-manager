@@ -617,6 +617,112 @@ describe('DayOffService - Scope Filtering & Approvals (P1-18)', () => {
         );
       });
     });
+
+    describe('Leave Application Date & Employee Status Lifecycle', () => {
+      it('rejects applyLeave when fromDate is in the past (before current date)', async () => {
+        const testEmpId = new Types.ObjectId();
+        employeeModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            _id: testEmpId,
+            companyId: companyA,
+            fullName: { firstName: 'Test', lastName: 'Employee' },
+          }),
+        });
+
+        const activeLtId = new Types.ObjectId();
+        leaveTypeModel.findOne = jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            _id: activeLtId,
+            companyId: companyA,
+            isActive: true,
+            name: 'Sick Leave',
+            code: 'SICK',
+          }),
+        });
+
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        await expect(
+          service.applyLeave(companyA, testEmpId, aliceUser, {
+            leaveTypeId: activeLtId.toString(),
+            fromDate: yesterdayStr,
+            toDate: yesterdayStr,
+            reason: 'Sick yesterday',
+          }),
+        ).rejects.toThrow('Leave cannot be applied before the current date.');
+      });
+
+      it('updates employee status to On Leave when leave is approved via updateApplicationStatus', async () => {
+        const appId = new Types.ObjectId().toString();
+        const testEmpId = new Types.ObjectId();
+        const mockApp = {
+          _id: appId,
+          companyId: companyA,
+          employeeId: { _id: testEmpId, email: 'emp@test.com', status: 'Active' },
+          leaveTypeId: { _id: new Types.ObjectId(), name: 'Paid Leave' },
+          fromDate: new Date(),
+          toDate: new Date(),
+          daysCount: 1,
+          status: 'pending',
+          save: jest.fn().mockResolvedValue(true),
+        };
+
+        applicationModel.findOne = jest.fn().mockReturnValue({
+          populate: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue(mockApp),
+        });
+
+        employeeModel.updateOne = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+
+        const result = await service.updateApplicationStatus(
+          companyA,
+          appId,
+          'approved',
+          { id: 'admin1', name: 'Admin User' },
+          undefined,
+          'all',
+          true,
+        );
+
+        expect(result.status).toBe('approved');
+        expect(employeeModel.updateOne).toHaveBeenCalledWith(
+          { _id: testEmpId, status: 'Active' },
+          { $set: { status: 'On Leave' } },
+        );
+      });
+
+      it('syncEmployeeLeaveStatuses reverts completed leaves back to Active', async () => {
+        const onLeaveEmpId = new Types.ObjectId();
+
+        employeeModel.find = jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([{ _id: onLeaveEmpId }]),
+            }),
+          }),
+        });
+
+        // No active leaves for this employee (toDate < todayStart)
+        applicationModel.find = jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        });
+
+        employeeModel.updateMany = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+
+        await service.syncEmployeeLeaveStatuses(companyA);
+
+        expect(employeeModel.updateMany).toHaveBeenCalledWith(
+          { _id: { $in: [onLeaveEmpId] }, status: 'On Leave' },
+          { $set: { status: 'Active' } },
+        );
+      });
+    });
   });
 });
 

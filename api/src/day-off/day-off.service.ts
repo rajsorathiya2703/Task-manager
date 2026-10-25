@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   Logger,
   Optional,
+  OnModuleInit,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -23,8 +25,9 @@ import { escapeRegExp } from '../common/utils/escape-regexp';
 import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
-export class DayOffService {
+export class DayOffService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DayOffService.name);
+  private syncInterval?: NodeJS.Timeout;
 
   constructor(
     @InjectModel(LeaveType.name) private leaveTypeModel: Model<LeaveType>,
@@ -38,6 +41,29 @@ export class DayOffService {
     private mailService?: DayOffMailService,
     @Optional() private eventsGateway?: EventsGateway,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.syncEmployeeLeaveStatuses();
+    } catch (err: any) {
+      this.logger.warn(`Initial employee leave status sync warning: ${err.message}`);
+    }
+
+    // Schedule periodic sync every 15 minutes to automatically update statuses when leaves complete or start
+    this.syncInterval = setInterval(() => {
+      this.syncEmployeeLeaveStatuses().catch(() => {});
+    }, 15 * 60 * 1000);
+
+    if (this.syncInterval && typeof this.syncInterval.unref === 'function') {
+      this.syncInterval.unref();
+    }
+  }
+
+  onModuleDestroy(): void {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+    }
+  }
 
   /**
    * Seed company defaults (settings and default leave types) on company creation.
@@ -472,6 +498,20 @@ export class DayOffService {
       throw new BadRequestException('From Date cannot be after To Date.');
     }
 
+    // Validate that leave cannot be applied before the current date
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    let fromDateStrVal = '';
+    if (typeof dto.fromDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dto.fromDate)) {
+      fromDateStrVal = dto.fromDate.split('T')[0];
+    } else {
+      fromDateStrVal = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-${String(fromDate.getDate()).padStart(2, '0')}`;
+    }
+    const todayUtcStr = now.toISOString().split('T')[0];
+    if (fromDateStrVal < todayStr && fromDateStrVal < todayUtcStr) {
+      throw new BadRequestException('Leave cannot be applied before the current date.');
+    }
+
     // Calculate days count
     let daysCount = 1;
     if (dto.isHalfDay || leaveType.code === 'HALF_DAY') {
@@ -826,6 +866,18 @@ export class DayOffService {
       application.daysCount,
     );
 
+    // Update employee status to 'On Leave' on approved leave
+    const empId = application.employeeId?._id || application.employeeId;
+    if (this.employeeModel && typeof this.employeeModel.updateOne === 'function') {
+      await this.employeeModel.updateOne(
+        { _id: empId, status: 'Active' },
+        { $set: { status: 'On Leave' } },
+      );
+    }
+    if (application.employeeId && typeof application.employeeId === 'object') {
+      (application.employeeId as any).status = 'On Leave';
+    }
+
     // Notify employee via email and in-app notification
     const employee = application.employeeId as any;
     const leaveType = application.leaveTypeId as any;
@@ -959,6 +1011,18 @@ export class DayOffService {
         );
       }
 
+      // Update employee status to 'On Leave' on approved leave
+      const empId = (application.employeeId as any)?._id || application.employeeId;
+      if (this.employeeModel && typeof this.employeeModel.updateOne === 'function') {
+        await this.employeeModel.updateOne(
+          { _id: empId, status: 'Active' },
+          { $set: { status: 'On Leave' } },
+        );
+      }
+      if (application.employeeId && typeof application.employeeId === 'object') {
+        (application.employeeId as any).status = 'On Leave';
+      }
+
       // Notify employee
       const employee = application.employeeId as any;
       const leaveType = application.leaveTypeId as any;
@@ -995,6 +1059,12 @@ export class DayOffService {
       });
     } else if (status === 'rejected') {
       application.rejectionReason = reason || '';
+
+      // If previously approved, sync employee status back if leave is no longer valid
+      if (previousStatus === 'approved') {
+        const empId = (application.employeeId as any)?._id || application.employeeId;
+        await this.syncEmployeeLeaveStatuses(application.companyId || companyId, empId).catch(() => {});
+      }
 
       const leaveType = application.leaveTypeId as any;
       const fromDateStr = new Date(application.fromDate).toISOString().split('T')[0];
@@ -1092,6 +1162,108 @@ export class DayOffService {
 
     balance.used = (balance.used || 0) + daysCount;
     await balance.save();
+  }
+
+  /**
+   * Automatically synchronizes Employee status based on approved leave applications:
+   * 1. If an employee is 'On Leave' but has no active approved leave today (all leaves completed or none),
+   *    automatically revert status back to 'Active'.
+   * 2. If an employee is 'Active' and has an approved leave currently active today,
+   *    update status to 'On Leave'.
+   */
+  async syncEmployeeLeaveStatuses(
+    companyId?: Types.ObjectId | string,
+    specificEmployeeId?: Types.ObjectId | string,
+  ): Promise<void> {
+    try {
+      if (!this.employeeModel || !this.applicationModel) return;
+
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+      const empFilter: any = {};
+      if (companyId) {
+        empFilter.companyId = new Types.ObjectId(companyId);
+      }
+      if (specificEmployeeId) {
+        empFilter._id = new Types.ObjectId(specificEmployeeId);
+      }
+
+      // Step 1: Find employees who are currently 'On Leave'
+      if (typeof this.employeeModel.find === 'function') {
+        const empQuery = this.employeeModel.find({ ...empFilter, status: 'On Leave' });
+        const onLeaveFind = typeof empQuery?.select === 'function' ? empQuery.select('_id') : empQuery;
+        const onLeaveEmployees = typeof (onLeaveFind as any)?.lean === 'function'
+          ? await (onLeaveFind as any).lean().exec()
+          : typeof (onLeaveFind as any)?.exec === 'function'
+          ? await (onLeaveFind as any).exec()
+          : await onLeaveFind;
+
+        if (Array.isArray(onLeaveEmployees) && onLeaveEmployees.length > 0) {
+          const onLeaveEmpIds = onLeaveEmployees.map((e: any) => e._id);
+
+          // Find which of these employees still have an active approved leave (toDate >= todayStart)
+          const appQuery = this.applicationModel.find({
+            employeeId: { $in: onLeaveEmpIds },
+            status: 'approved',
+            toDate: { $gte: todayStart },
+          });
+          const activeLeavesFind = typeof appQuery?.select === 'function' ? appQuery.select('employeeId') : appQuery;
+
+          const activeLeaves = typeof (activeLeavesFind as any)?.lean === 'function'
+            ? await (activeLeavesFind as any).lean().exec()
+            : typeof (activeLeavesFind as any)?.exec === 'function'
+            ? await (activeLeavesFind as any).exec()
+            : await activeLeavesFind;
+
+          const stillActiveEmpIdSet = new Set(
+            (activeLeaves || []).map((l: any) => (l.employeeId?._id || l.employeeId)?.toString()),
+          );
+
+          // Completed employees: leave end date has passed, revert to 'Active'
+          const completedEmpIds = onLeaveEmpIds.filter(
+            (id: any) => !stillActiveEmpIdSet.has(id.toString()),
+          );
+
+          if (completedEmpIds.length > 0 && typeof this.employeeModel.updateMany === 'function') {
+            await this.employeeModel.updateMany(
+              { _id: { $in: completedEmpIds }, status: 'On Leave' },
+              { $set: { status: 'Active' } },
+            );
+            this.logger.log(`Automatically updated ${completedEmpIds.length} employee(s) to 'Active' (leave completed).`);
+          }
+        }
+
+        // Step 2: Find employees with approved leave that is active today (fromDate <= todayEnd && toDate >= todayStart)
+        const currentActiveQuery = this.applicationModel.find({
+          ...(companyId ? { companyId: new Types.ObjectId(companyId) } : {}),
+          ...(specificEmployeeId ? { employeeId: new Types.ObjectId(specificEmployeeId) } : {}),
+          status: 'approved',
+          fromDate: { $lte: todayEnd },
+          toDate: { $gte: todayStart },
+        });
+        const currentActiveLeavesFind = typeof currentActiveQuery?.select === 'function' ? currentActiveQuery.select('employeeId') : currentActiveQuery;
+
+        const currentActiveLeaves = typeof (currentActiveLeavesFind as any)?.lean === 'function'
+          ? await (currentActiveLeavesFind as any).lean().exec()
+          : typeof (currentActiveLeavesFind as any)?.exec === 'function'
+          ? await (currentActiveLeavesFind as any).exec()
+          : await currentActiveLeavesFind;
+
+        if (Array.isArray(currentActiveLeaves) && currentActiveLeaves.length > 0) {
+          const activeLeaveEmpIds = currentActiveLeaves.map((l: any) => l.employeeId?._id || l.employeeId);
+          if (typeof this.employeeModel.updateMany === 'function') {
+            await this.employeeModel.updateMany(
+              { _id: { $in: activeLeaveEmpIds }, status: 'Active' },
+              { $set: { status: 'On Leave' } },
+            );
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Error in syncEmployeeLeaveStatuses: ${err.message}`);
+    }
   }
 
   // --- Notifications ---

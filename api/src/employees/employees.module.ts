@@ -12,6 +12,7 @@ import { Company, CompanySchema } from '../companies/schemas/company.schema';
 import { UsersModule } from '../users/users.module';
 import { CompaniesModule } from '../companies/companies.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { DayOffModule } from '../day-off/day-off.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { TasksModule } from '../tasks/tasks.module';
     forwardRef(() => UsersModule),
     forwardRef(() => CompaniesModule),
     forwardRef(() => TasksModule),
+    forwardRef(() => DayOffModule),
   ],
   controllers: [EmployeesController],
   providers: [EmployeesService],

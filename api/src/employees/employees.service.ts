@@ -7,6 +7,8 @@ import {
   OnModuleInit,
   Logger,
   Optional,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -19,6 +21,7 @@ import { CompanyMember } from '../companies/schemas/company-member.schema';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
 import { Company } from '../companies/schemas/company.schema';
 import { EmailService } from '../tasks/email.service';
+import { DayOffService } from '../day-off/day-off.service';
 import {
   isEmployeeInScope,
   EmployeeSubject,
@@ -55,6 +58,9 @@ export class EmployeesService implements OnModuleInit {
     @Optional()
     @InjectModel(Company.name)
     private companyModel?: Model<Company>,
+    @Optional()
+    @Inject(forwardRef(() => DayOffService))
+    private dayOffService?: DayOffService,
   ) {}
 
   async onModuleInit() {
@@ -747,6 +753,11 @@ export class EmployeesService implements OnModuleInit {
     // Ensure company owners and members assigned roles have linked Employee records
     await this.syncMembersWithoutEmployees(companyId);
 
+    // Synchronize leave statuses for employees in company
+    if (this.dayOffService && typeof this.dayOffService.syncEmployeeLeaveStatuses === 'function') {
+      await this.dayOffService.syncEmployeeLeaveStatuses(companyId).catch(() => {});
+    }
+
     const scopeFilter = await this.buildEmployeeScopeFilter(
       companyId,
       userId,
@@ -889,6 +900,10 @@ export class EmployeesService implements OnModuleInit {
   ): Promise<Employee> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Employee #${id} not found`);
+    }
+
+    if (this.dayOffService && typeof this.dayOffService.syncEmployeeLeaveStatuses === 'function') {
+      await this.dayOffService.syncEmployeeLeaveStatuses(companyId, id).catch(() => {});
     }
 
     const employee = await this.employeeModel

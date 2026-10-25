@@ -68,7 +68,9 @@ export function ApplyLeaveDialog({
     if (isOpen) {
       setError(null);
       setSuccessMessage(null);
-      const initialDate = selectedDate || new Date().toISOString().split("T")[0];
+      const todayIso = formatDateToISO(new Date());
+      const initialDate =
+        selectedDate && selectedDate >= todayIso ? selectedDate : todayIso;
       setFromDate(initialDate);
       setToDate(initialDate);
       setDurationType("full");
@@ -161,6 +163,11 @@ export function ApplyLeaveDialog({
     }
     if (new Date(fromDate) > new Date(toDate)) {
       setError("From Date cannot be later than To Date.");
+      return;
+    }
+    const todayIso = formatDateToISO(new Date());
+    if (fromDate < todayIso) {
+      setError("Leave cannot be applied before the current date.");
       return;
     }
     if (!reason.trim()) {
@@ -541,6 +548,11 @@ export function ApplyLeaveDialog({
                       </div>
                       <DayPicker
                         mode="single"
+                        disabled={(date) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          return date < today;
+                        }}
                         selected={parseISODate(fromDate)}
                         onSelect={(date) => {
                           if (date) {
@@ -609,6 +621,11 @@ export function ApplyLeaveDialog({
                       </div>
                       <DayPicker
                         mode="range"
+                        disabled={(date) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          return date < today;
+                        }}
                         selected={{
                           from: parseISODate(fromDate),
                           to: parseISODate(toDate),
