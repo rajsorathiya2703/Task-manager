@@ -439,6 +439,12 @@ export function TaskActivityPanel({
                         <textarea
                           value={editingContent}
                           onChange={(e) => setEditingContent(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleUpdateComment(act.id);
+                            }
+                          }}
                           rows={2}
                           className="w-full text-xs p-2 bg-muted/40 border border-border rounded-lg outline-none focus:border-primary text-foreground resize-none"
                         />
@@ -561,7 +567,12 @@ export function TaskActivityPanel({
               value={commentText}
               onChange={handleTextChange}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  if (showMentionList && filteredMentionMembers.length > 0) {
+                    e.preventDefault();
+                    handleSelectMention(filteredMentionMembers[0].name);
+                    return;
+                  }
                   e.preventDefault();
                   handleSubmit();
                 }
