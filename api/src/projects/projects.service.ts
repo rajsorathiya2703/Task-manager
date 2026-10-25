@@ -161,11 +161,19 @@ export class ProjectsService {
     if (createProjectDto.teamId) {
       await this.validateTeamBelongsToCompany(companyId, createProjectDto.teamId);
     }
+
     const createdProject = new this.projectModel({
       ...createProjectDto,
       companyId,
       userId,
       color: createProjectDto.color || '#3b82f6',
+      updates: (createProjectDto as any).updates || [
+        {
+          type: 'created',
+          message: 'Project created',
+          timestamp: new Date(),
+        },
+      ],
     });
     return createdProject.save();
   }
@@ -277,26 +285,137 @@ export class ProjectsService {
     email?: string,
     isSystemAdmin?: boolean,
     scope: ScopeType = 'own',
+    user?: { name?: string; email?: string; avatarUrl?: string },
   ): Promise<Project | null> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException('Project not found');
     }
-    if (!isSystemAdmin && scope !== 'all') {
-      const existing = await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
-      if (!existing) {
-        throw new NotFoundException('Project not found');
-      }
+    const existing = await this.findOne(companyId, id, userId, email, isSystemAdmin, scope);
+    if (!existing) {
+      throw new NotFoundException('Project not found');
     }
 
     if (updateProjectDto.teamId) {
       await this.validateTeamBelongsToCompany(companyId, updateProjectDto.teamId);
     }
 
+    let userName = user?.name;
+    if (!userName && email) {
+      try {
+        const emp = await this.employeeModel.findOne({ companyId, email }).exec();
+        if (emp && emp.fullName) {
+          userName = `${emp.fullName.firstName || ''} ${emp.fullName.lastName || ''}`.trim() || emp.fullName.firstName;
+        }
+      } catch {}
+      if (!userName) {
+        userName = email.split('@')[0];
+      }
+    }
+    if (!userName && userId) {
+      try {
+        const emp = await this.employeeModel.findOne({ companyId, userId }).exec();
+        if (emp && emp.fullName) {
+          userName = `${emp.fullName.firstName || ''} ${emp.fullName.lastName || ''}`.trim();
+        }
+      } catch {}
+    }
+    if (!userName) {
+      userName = 'User';
+    }
+
+    const userInfo = {
+      name: userName,
+      email: email || user?.email,
+      avatarUrl: user?.avatarUrl,
+    };
+
+    const newUpdates: any[] = [];
+    const timestamp = new Date();
+
+    if (updateProjectDto.status !== undefined && updateProjectDto.status !== existing.status) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'status',
+        message: `changed status from ${existing.status || 'To Do'} to ${updateProjectDto.status}`,
+        timestamp,
+      });
+    }
+
+    if (updateProjectDto.priority !== undefined && updateProjectDto.priority !== existing.priority) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'priority',
+        message: `changed priority from ${existing.priority || 'Medium'} to ${updateProjectDto.priority}`,
+        timestamp,
+      });
+    }
+
+    if (updateProjectDto.name !== undefined && updateProjectDto.name !== existing.name) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'name',
+        message: `changed project name to "${updateProjectDto.name}"`,
+        timestamp,
+      });
+    }
+
+    if (updateProjectDto.description !== undefined && updateProjectDto.description !== existing.description) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'description',
+        message: 'updated project description',
+        timestamp,
+      });
+    }
+
+    if (updateProjectDto.color !== undefined && updateProjectDto.color !== existing.color) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'color',
+        message: 'updated project color',
+        timestamp,
+      });
+    }
+
+    const isModifyingStartDate = updateProjectDto.startDate !== undefined && String(updateProjectDto.startDate) !== String(existing.startDate);
+    const isModifyingDueDate = updateProjectDto.dueDate !== undefined && String(updateProjectDto.dueDate) !== String(existing.dueDate);
+    if (isModifyingStartDate || isModifyingDueDate) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'timeline',
+        message: 'updated project timeline',
+        timestamp,
+      });
+    }
+
+    const existingTeamId = (existing.teamId as any)?._id || existing.teamId;
+    if (updateProjectDto.teamId !== undefined && String(updateProjectDto.teamId || '') !== String(existingTeamId || '')) {
+      newUpdates.push({
+        user: userInfo,
+        type: 'team',
+        message: 'updated assigned team',
+        timestamp,
+      });
+    }
+
     const safeUpdateDto: any = { ...updateProjectDto };
     delete safeUpdateDto.companyId;
 
+    if (safeUpdateDto.newUpdate) {
+      newUpdates.push(safeUpdateDto.newUpdate);
+      delete safeUpdateDto.newUpdate;
+    }
+
+    let updateOps: any = safeUpdateDto;
+    if (newUpdates.length > 0) {
+      updateOps = {
+        ...safeUpdateDto,
+        $push: { updates: { $each: newUpdates } },
+      };
+    }
+
     const updated = await this.projectModel
-      .findOneAndUpdate({ _id: id, companyId }, safeUpdateDto, { new: true })
+      .findOneAndUpdate({ _id: id, companyId }, updateOps, { new: true })
       .populate('teamId')
       .exec();
     if (!updated) {

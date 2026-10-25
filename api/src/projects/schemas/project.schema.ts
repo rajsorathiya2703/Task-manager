@@ -3,6 +3,27 @@ import { Document, Types } from 'mongoose';
 import { applyTenantPlugin } from '../../common/tenant.plugin';
 
 @Schema({ timestamps: true })
+export class ProjectUpdate {
+  @Prop({ type: Object })
+  user?: {
+    name: string;
+    avatarUrl?: string;
+    email?: string;
+  };
+
+  @Prop({ required: true })
+  type: string;
+
+  @Prop({ required: true })
+  message: string;
+
+  @Prop({ default: Date.now })
+  timestamp: Date;
+}
+
+export const ProjectUpdateSchema = SchemaFactory.createForClass(ProjectUpdate);
+
+@Schema({ timestamps: true })
 export class Project extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Company', required: true, index: true })
   companyId: Types.ObjectId;
@@ -33,6 +54,9 @@ export class Project extends Document {
 
   @Prop({ type: Types.ObjectId, ref: 'Team' })
   teamId?: Types.ObjectId;
+
+  @Prop({ type: [ProjectUpdateSchema], default: [] })
+  updates?: ProjectUpdate[];
 }
 
 export const ProjectSchema = SchemaFactory.createForClass(Project);
@@ -40,3 +64,4 @@ export const ProjectSchema = SchemaFactory.createForClass(Project);
 ProjectSchema.index({ companyId: 1, status: 1 });
 
 applyTenantPlugin(ProjectSchema);
+

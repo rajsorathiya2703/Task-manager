@@ -6,10 +6,11 @@ import { Board } from "@/src/components/board/Board";
 import { ListView } from "@/src/components/board/ListView";
 import { fetchTasks, fetchProjectById, updateTask } from "@/src/lib/api";
 import { Task, Project } from "@/src/lib/data";
-import { Loader2 } from "lucide-react";
+import { Loader2, Edit } from "lucide-react";
 import { useAccessControl } from "@/src/contexts/AccessContext";
 import { AccessDenied } from "@/src/components/access";
 import { useCompanyPath } from "@/src/lib/useCompanyPath";
+import Link from "next/link";
 
 const emptyData: Record<string, Task[]> = {
   "To Do": [],
@@ -23,6 +24,7 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
   const cp = useCompanyPath();
   const { can } = useAccessControl();
   const canCreateTask = can("tasks", "create");
+  const canUpdateProject = can("projects", "update");
   const [view, setView] = useState<'board' | 'list'>('board');
   const [project, setProject] = useState<Project | null>(null);
   const [data, setData] = useState<Record<string, Task[]>>(emptyData);
@@ -141,14 +143,24 @@ export default function ProjectTasksPage({ params }: { params: Promise<{ id: str
   const initialLetter = (project?.name ? project.name.charAt(0) : "P").toUpperCase();
 
   const titleNode = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       <div
         className="w-5 h-5 rounded-md flex items-center justify-center text-white font-bold text-[10px] shrink-0 shadow-xs"
         style={{ backgroundColor: projectColor }}
       >
         {initialLetter}
       </div>
-      <span className="truncate">{project?.name || "Project"}</span>
+      <span className="truncate font-semibold">{project?.name || "Project"}</span>
+      {canUpdateProject && (
+        <Link
+          href={cp(`/projects/${id}/edit`)}
+          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground bg-muted/60 hover:bg-muted transition-colors border border-border/50 ml-1"
+          title="Edit Project"
+        >
+          <Edit className="w-3 h-3" />
+          <span>Edit Project</span>
+        </Link>
+      )}
     </div>
   );
 

@@ -12,6 +12,8 @@ import { GroupByOption } from "@/src/components/common/GroupByDropdown";
 import { Loader2 } from "lucide-react";
 import { useCompanyPath } from "@/src/lib/useCompanyPath";
 
+import { useRouter } from "next/navigation";
+
 const defaultStages = ["To Do", "Doing", "Completed", "On Hold"];
 const defaultPriorities = ["High", "Medium", "Low"];
 
@@ -21,6 +23,7 @@ const groupByOptions: GroupByOption[] = [
 ];
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const cp = useCompanyPath();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [data, setData] = useState<Record<string, Project[]>>({
@@ -154,13 +157,14 @@ export default function ProjectsPage() {
   }, [filters, searchQuery, searchContext, groupBy]);
 
   const handleOpenCreate = () => {
-    setSelectedProject(null);
-    setIsDialogOpen(true);
+    router.push(cp("/projects/new"));
   };
 
   const handleOpenEdit = (project: Project) => {
-    setSelectedProject(project);
-    setIsDialogOpen(true);
+    const targetId = project.id || (project as any)._id;
+    if (targetId) {
+      router.push(cp(`/projects/${targetId}/edit`));
+    }
   };
 
   const handleSaveProject = async (projectData: Partial<Project>) => {
@@ -242,6 +246,7 @@ export default function ProjectsPage() {
         activeView={view} 
         onViewChange={setView}
         addText="Add Project"
+        addHref={cp("/projects/new")}
         onAddClick={handleOpenCreate}
         showAdd={true}
         filters={filters}

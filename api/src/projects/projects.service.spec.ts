@@ -327,7 +327,7 @@ describe('ProjectsService - Authorization & Tenant Scoping (P1-09 & MC-19)', () 
       expect(result?.name).toBe('Updated Alpha');
       expect(projectModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: mockProjectId, companyId: mockCompanyId },
-        { name: 'Updated Alpha' },
+        expect.objectContaining({ name: 'Updated Alpha' }),
         { new: true },
       );
     });
@@ -378,6 +378,50 @@ describe('ProjectsService - Authorization & Tenant Scoping (P1-09 & MC-19)', () 
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('Owner Updated');
+    });
+
+    it('should generate activity updates when fields like status or priority change', async () => {
+      projectModel.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({ ...mockProjectAlpha, status: 'To Do', priority: 'Medium' }),
+      });
+      projectModel.findOneAndUpdate.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({ ...mockProjectAlpha, status: 'Doing', priority: 'High' }),
+      });
+
+      await service.update(
+        mockCompanyId,
+        mockProjectId,
+        { status: 'Doing', priority: 'High' },
+        mockOwnerUserId,
+        'owner@example.com',
+        false,
+        'own',
+      );
+
+      expect(projectModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: mockProjectId, companyId: mockCompanyId },
+        expect.objectContaining({
+          status: 'Doing',
+          priority: 'High',
+          $push: {
+            updates: {
+              $each: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'status',
+                  message: 'changed status from To Do to Doing',
+                }),
+                expect.objectContaining({
+                  type: 'priority',
+                  message: 'changed priority from Medium to High',
+                }),
+              ]),
+            },
+          },
+        }),
+        { new: true },
+      );
     });
 
     it('should THROW ForbiddenException when User B attempts to update User A Project Alpha under scope own', async () => {
