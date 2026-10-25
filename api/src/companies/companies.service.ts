@@ -3,6 +3,8 @@ import {
   Optional,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -16,6 +18,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
 import { normalizeEmail } from './email.util';
 import { TRIAL_DAYS } from './subscription.constants';
+import { generateSecretCode, hashSecretCode } from './secret-code.util';
 
 function generateBaseSlug(name: string): string {
   const sanitized = name
@@ -647,8 +650,77 @@ export class CompaniesService {
     return { isMember: false };
   }
 
-  async regenerateSecretCode(_userId: any, _slug: string) {
-    return { secretCode: 'code' };
+  private async assertCompanyOwner(
+    userId: string | Types.ObjectId,
+    companyId: Types.ObjectId,
+  ): Promise<void> {
+    if (!userId) {
+      throw new ForbiddenException('Only the workspace owner can perform this action');
+    }
+
+    const userObjectId = new Types.ObjectId(userId.toString());
+
+    // 1. Check company.ownerUserId
+    const company = await this.companyModel.findById(companyId).select('ownerUserId').exec();
+    if (company && company.ownerUserId && company.ownerUserId.toString() === userObjectId.toString()) {
+      return;
+    }
+
+    // 2. Check companyMemberModel
+    if (this.companyMemberModel && typeof this.companyMemberModel.findOne === 'function') {
+      const member = await this.companyMemberModel
+        .findOne({
+          companyId,
+          userId: userObjectId,
+          role: 'owner',
+        })
+        .exec();
+      if (member) {
+        return;
+      }
+    }
+
+    // 3. Check membershipModel
+    if (this.membershipModel && typeof this.membershipModel.findOne === 'function') {
+      const membership = await this.membershipModel
+        .findOne({
+          companyId,
+          userId: userObjectId,
+          status: 'active',
+          isCompanyOwner: true,
+        })
+        .exec();
+      if (membership) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException('Only the workspace owner can perform this action');
+  }
+
+  async regenerateSecretCode(
+    userId: string | Types.ObjectId,
+    slug: string,
+  ): Promise<{ secretCode: string }> {
+    const cleanSlug = (slug || '').trim().toLowerCase();
+    const company = await this.companyModel
+      .findOne({ slug: cleanSlug })
+      .exec();
+
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
+
+    await this.assertCompanyOwner(userId, company._id);
+
+    const secretCode = generateSecretCode();
+    const secretCodeHash = await hashSecretCode(secretCode);
+
+    await this.companyModel
+      .findByIdAndUpdate(company._id, { $set: { secretCodeHash } })
+      .exec();
+
+    return { secretCode };
   }
 
   async getCompanyProfile(_userId: any, slug: string) {

@@ -22,6 +22,8 @@ describe('CompaniesService', () => {
     companyModel = {
       create: jest.fn(),
       findByIdAndDelete: jest.fn(),
+      findById: jest.fn(),
+      findByIdAndUpdate: jest.fn(),
       find: jest.fn(),
       findOne: jest.fn(),
       exists: jest.fn(),
@@ -346,6 +348,83 @@ describe('CompaniesService', () => {
         trialEndsAt: mockCompanyA.trialEndsAt,
         createdAt: mockCompanyA.createdAt,
       });
+    });
+  });
+
+  describe('regenerateSecretCode', () => {
+    it('generates a random formatted code and persists its hash when called by the owner', async () => {
+      const ownerId = new Types.ObjectId();
+      const companyId = new Types.ObjectId();
+      const mockCompany = {
+        _id: companyId,
+        slug: 'acme-corp',
+        ownerUserId: ownerId,
+      };
+
+      companyModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockCompany),
+      });
+      companyModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(mockCompany),
+        }),
+      });
+      companyModel.findByIdAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockCompany),
+      });
+
+      const res = await service.regenerateSecretCode(ownerId.toString(), 'acme-corp');
+
+      expect(res.secretCode).toBeDefined();
+      expect(res.secretCode).not.toBe('code');
+      // Format should be XXXX-XXXX-XXXX
+      expect(res.secretCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{4}$/);
+
+      expect(companyModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        companyId,
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            secretCodeHash: expect.any(String),
+          }),
+        }),
+      );
+    });
+
+    it('throws ForbiddenException if non-owner tries to regenerate code', async () => {
+      const ownerId = new Types.ObjectId();
+      const nonOwnerId = new Types.ObjectId();
+      const companyId = new Types.ObjectId();
+      const mockCompany = {
+        _id: companyId,
+        slug: 'acme-corp',
+        ownerUserId: ownerId,
+      };
+
+      companyModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockCompany),
+      });
+      companyModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(mockCompany),
+        }),
+      });
+      companyMemberModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.regenerateSecretCode(nonOwnerId.toString(), 'acme-corp'),
+      ).rejects.toThrow('Only the workspace owner can perform this action');
+    });
+
+    it('throws NotFoundException if company does not exist', async () => {
+      companyModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.regenerateSecretCode(new Types.ObjectId().toString(), 'non-existent'),
+      ).rejects.toThrow('Company not found');
     });
   });
 });
