@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { usePathname } from "next/navigation";
 import { fetchMe, getCompanySlug, setCompanySlug } from "../lib/api";
+import { peekCache } from "../lib/cache";
 
 export type ActionType = "create" | "read" | "update" | "delete" | string;
 export type ScopeType = "own" | "team" | "all" | "none";
@@ -133,15 +134,24 @@ const extractSlugFromPath = (path: string | null): string => {
 };
 
 export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any | null>(null);
-  const [access, setAccess] = useState<Record<string, EffectiveModuleAccess>>({});
-  const [roles, setRoles] = useState<EffectiveRole[]>([]);
-  const [policyVersion, setPolicyVersion] = useState<number>(0);
-  const [isSystemAdmin, setIsSystemAdmin] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
+  const pathname = usePathname();
+  const slugFromPath = extractSlugFromPath(pathname);
+  const cachedMe = typeof window !== "undefined" ? peekCache<any>(`me:${slugFromPath || "_global"}`, "local") : null;
+  const initialSysAdmin = Boolean(
+    cachedMe?.is_system_admin === true ||
+      cachedMe?.roles?.some(
+        (r: any) => r.slug === "system-admin" || (r.priority ?? 0) >= 1000
+      )
+  );
+
+  const [user, setUser] = useState<any | null>(cachedMe || null);
+  const [access, setAccess] = useState<Record<string, EffectiveModuleAccess>>(cachedMe?.access || {});
+  const [roles, setRoles] = useState<EffectiveRole[]>(cachedMe?.roles || []);
+  const [policyVersion, setPolicyVersion] = useState<number>(cachedMe?.policyVersion ?? 0);
+  const [isSystemAdmin, setIsSystemAdmin] = useState<boolean>(initialSysAdmin);
+  const [loading, setLoading] = useState<boolean>(!cachedMe);
   const [error, setError] = useState<Error | null>(null);
 
-  const pathname = usePathname();
   const isPublicRoute = NON_TENANT_ROUTES.some(
     (route) => pathname === route || pathname?.startsWith(route + "/")
   );
@@ -149,6 +159,7 @@ export const AccessProvider = ({ children }: { children: React.ReactNode }) => {
   const refreshAccess = useCallback(async () => {
     try {
       setError(null);
+      if (!user) setLoading(true);
       const slugFromPath = extractSlugFromPath(pathname);
       const activeSlug = slugFromPath;
       if (activeSlug && activeSlug !== getCompanySlug()) {

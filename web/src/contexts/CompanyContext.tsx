@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { fetchMe, setCompanySlug, getCompanySlug } from '../lib/api';
+import { peekCache } from '../lib/cache';
 
 export interface CompanyMembership {
   roleIds: string[];
@@ -32,15 +33,25 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({ slug, children
     setCompanySlug(slug);
   }
 
-  const [companyName, setCompanyName] = useState<string>(slug || '');
-  const [membership, setMembership] = useState<CompanyMembership | null>(null);
-  const [user, setUser] = useState<any | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Synchronous cache inspection for instant initial state
+  const cachedMe = typeof window !== 'undefined' ? peekCache<any>(`me:${slug || '_global'}`, 'local') : null;
+  const initialUser = cachedMe || null;
+  const initialMembership = cachedMe?.membership || null;
+  const matchedCompany = cachedMe?.memberships?.find(
+    (m: any) => m.companySlug?.toLowerCase() === slug.toLowerCase(),
+  );
+  const initialCompanyName = matchedCompany?.companyName || slug || '';
+
+  const [companyName, setCompanyName] = useState<string>(initialCompanyName);
+  const [membership, setMembership] = useState<CompanyMembership | null>(initialMembership);
+  const [user, setUser] = useState<any | null>(initialUser);
+  const [loading, setLoading] = useState<boolean>(!initialUser);
   const [error, setError] = useState<Error | null>(null);
 
   const refresh = useCallback(async () => {
     if (!slug) return;
-    setLoading(true);
+    // Only show loading if we have no prior data
+    if (!user) setLoading(true);
     try {
       setError(null);
       // Ensure the api client slug is set before network call
@@ -66,7 +77,7 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({ slug, children
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [slug, user]);
 
   useEffect(() => {
     setCompanySlug(slug);

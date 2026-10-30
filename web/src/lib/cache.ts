@@ -1,20 +1,24 @@
 /**
- * cache.ts — In-memory, browser-only request cache.
+ * cache.ts — Multi-tier, browser-safe request cache.
  *
  * Rules:
  *  - Disabled on the server (typeof window === 'undefined').
  *  - Disabled when NEXT_PUBLIC_API_CACHE=off.
- *  - Max 100 entries (oldest evicted first).
- *  - Each caller gets a deep copy of the cached value.
- *  - If an invalidation fires while a request is in flight,
- *    the response is returned to the caller but NOT stored.
+ *  - Max 100 entries in heap memory (oldest evicted first).
+ *  - Automatically cascades across In-Memory -> SessionStorage -> LocalStorage.
+ *  - Synchronous cache inspection via peekCache() for instant 0ms component hydration.
+ *  - Supports direct updates via writeCache() for WebSockets and optimistic mutations.
  */
+
+import { sessionStore, localStore } from './storage';
 
 const CACHE_ENABLED =
   typeof window !== 'undefined' &&
   process.env.NEXT_PUBLIC_API_CACHE !== 'off';
 
 const MAX_ENTRIES = 100;
+
+export type StorageTier = 'memory' | 'session' | 'local' | 'any';
 
 interface CacheEntry<T> {
   value: T;
@@ -23,28 +27,28 @@ interface CacheEntry<T> {
   key: string;
 }
 
-// The store: key → entry
+// In-memory heap store: key → entry
 const store = new Map<string, CacheEntry<unknown>>();
 
-// Keys that were invalidated while a fetch was in-flight.
-// Any response that lands after its key was invalidated is NOT stored.
+// Keys that were invalidated while a fetch was in-flight
 const invalidatedDuringFlight = new Set<string>();
 
 // In-flight promise map: key → Promise
-// Prevents duplicate parallel requests for the same key.
 const inFlight = new Map<string, Promise<unknown>>();
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function deepCopy<T>(value: T): T {
-  // Fast path for primitives and null
   if (value === null || typeof value !== 'object') return value;
-  return JSON.parse(JSON.stringify(value));
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
 }
 
 function evictOldest() {
   if (store.size < MAX_ENTRIES) return;
-  // Delete the first (oldest-inserted) key
   const firstKey = store.keys().next().value;
   if (firstKey) store.delete(firstKey);
 }
@@ -52,55 +56,123 @@ function evictOldest() {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Fetch `key` from cache or run `loader()`.
- *
- * @param key    Unique string cache key.
- * @param loader Async function that fetches fresh data.
- * @param opts
- *   ttl   Time-to-live in milliseconds.
- *   tags  Cache tags for grouped invalidation.
- *   fresh If true, skip the cache read and refresh the entry.
+ * Synchronous inspection of cache across tiers.
+ * Used by React components for instant 0ms initial render without spinners.
+ */
+export function peekCache<T>(key: string, tier: StorageTier = 'any'): T | null {
+  if (!CACHE_ENABLED) return null;
+
+  // 1. Check in-memory store
+  const memoryEntry = store.get(key);
+  if (memoryEntry && Date.now() < memoryEntry.expiresAt) {
+    return deepCopy(memoryEntry.value) as T;
+  }
+
+  // 2. Check SessionStorage (survives route changes and tab navigation)
+  if (tier === 'session' || tier === 'any') {
+    const sessionVal = sessionStore.get<T>(key);
+    if (sessionVal !== null && sessionVal !== undefined) {
+      // Rehydrate in-memory store
+      store.set(key, {
+        value: sessionVal,
+        expiresAt: Date.now() + 60 * 1000,
+        tags: [],
+        key,
+      });
+      return deepCopy(sessionVal);
+    }
+  }
+
+  // 3. Check LocalStorage (cross-session persistent)
+  if (tier === 'local' || tier === 'any') {
+    const localVal = localStore.get<T>(key);
+    if (localVal !== null && localVal !== undefined) {
+      store.set(key, {
+        value: localVal,
+        expiresAt: Date.now() + 60 * 1000,
+        tags: [],
+        key,
+      });
+      return deepCopy(localVal);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Directly writes a value into the cache tiers.
+ * Useful for WebSocket event listeners and optimistic mutation updates.
+ */
+export function writeCache<T>(
+  key: string,
+  value: T,
+  opts?: { ttl?: number; tags?: string[]; tier?: StorageTier },
+): void {
+  if (!CACHE_ENABLED) return;
+
+  const ttl = opts?.ttl ?? 5 * 60 * 1000;
+  const tags = opts?.tags ?? [];
+  const tier = opts?.tier ?? 'session';
+
+  // 1. Heap memory
+  evictOldest();
+  store.set(key, {
+    value,
+    expiresAt: Date.now() + ttl,
+    tags,
+    key,
+  });
+
+  // 2. SessionStorage
+  if (tier === 'session' || tier === 'any') {
+    sessionStore.set(key, value, { ttlMs: ttl, tags });
+  }
+
+  // 3. LocalStorage
+  if (tier === 'local') {
+    localStore.set(key, value, { ttlMs: ttl, tags });
+  }
+}
+
+/**
+ * Fetch `key` from cache or execute `loader()`.
+ * Follows waterfall: In-Memory -> SessionStorage -> LocalStorage -> Network.
  */
 export async function cached<T>(
   key: string,
   loader: () => Promise<T>,
-  opts: { ttl: number; tags: string[]; fresh?: boolean },
+  opts: { ttl: number; tags: string[]; fresh?: boolean; tier?: StorageTier },
 ): Promise<T> {
   if (!CACHE_ENABLED) return loader();
 
-  const { ttl, tags, fresh = false } = opts;
+  const { ttl, tags, fresh = false, tier = 'session' } = opts;
 
-  // Cache hit (and not requesting fresh data)
+  // Cache hit check (if fresh=false)
   if (!fresh) {
-    const entry = store.get(key);
-    if (entry && Date.now() < entry.expiresAt) {
-      return deepCopy(entry.value) as T;
+    const hit = peekCache<T>(key, tier);
+    if (hit !== null && hit !== undefined) {
+      return hit;
     }
   }
 
-  // Deduplicate in-flight requests for the same key
+  // Deduplicate concurrent in-flight requests for the exact same key
   const existing = inFlight.get(key);
   if (existing && !fresh) {
     return existing as Promise<T>;
   }
 
-  // Miss — fetch fresh data
+  // Cache miss or fresh refresh requested
   const promise = (async () => {
-    // Clear any stale invalidation marker for this key
     invalidatedDuringFlight.delete(key);
 
     const value = await loader();
 
-    // Only store if the key was not invalidated during the fetch
+    // Do not store if invalidated while the network request was in-flight
     if (!invalidatedDuringFlight.has(key)) {
-      evictOldest();
-      store.set(key, {
-        value,
-        expiresAt: Date.now() + ttl,
-        tags,
-        key,
-      });
+      writeCache(key, value, { ttl, tags, tier });
     }
+
     invalidatedDuringFlight.delete(key);
     inFlight.delete(key);
 
@@ -109,7 +181,6 @@ export async function cached<T>(
 
   inFlight.set(key, promise);
 
-  // On error, clean up
   promise.catch(() => {
     inFlight.delete(key);
   });
@@ -118,32 +189,53 @@ export async function cached<T>(
 }
 
 /**
- * Invalidate all cache entries that have at least one matching tag.
- * Also marks any in-flight keys with those tags so their responses are discarded.
+ * Invalidate all cache entries that match at least one tag.
+ * Cascades across In-Memory, SessionStorage, and LocalStorage.
  */
 export function invalidateTags(tags: string[]): void {
-  if (!CACHE_ENABLED) return;
+  if (!CACHE_ENABLED || !tags || tags.length === 0) return;
+
+  // 1. In-memory
   for (const [key, entry] of store.entries()) {
     if (entry.tags.some((t) => tags.includes(t))) {
       store.delete(key);
       invalidatedDuringFlight.add(key);
     }
   }
+
+  // 2. SessionStorage
+  sessionStore.invalidateTags(tags);
+
+  // 3. LocalStorage
+  localStore.invalidateTags(tags);
+
+  // Dispatch custom event so active UI components can reactively update
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('app:cache-invalidated', { detail: { tags } }));
+  }
 }
 
 /**
- * Wipe every entry from the cache (used on logout, auth changes, chatbot replies).
+ * Wipe every entry from cache tiers (on logout or company switch).
  */
 export function clearCache(): void {
   if (!CACHE_ENABLED) return;
+
   for (const key of store.keys()) {
     invalidatedDuringFlight.add(key);
   }
   store.clear();
+
+  sessionStore.clearNamespace();
+  localStore.clearNamespace((k) => !k.startsWith('theme'));
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('app:cache-cleared'));
+  }
 }
 
 /**
- * Return cache statistics (useful during development / P11 verification).
+ * Return cache statistics (for dev tools and diagnostics).
  */
 export function cacheStats(): { size: number; keys: string[] } {
   return { size: store.size, keys: [...store.keys()] };

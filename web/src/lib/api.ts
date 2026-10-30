@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { clearCache, invalidateTags, cached } from './cache';
 import { getInvalidationTags } from './cache-rules';
+import { cookieStore } from './storage';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -12,6 +13,9 @@ export const setCompanySlug = (slug: string) => {
   const changed = currentCompanySlug !== next;
   currentCompanySlug = next;
   if (changed && typeof window !== 'undefined') {
+    if (next) {
+      cookieStore.set('active_company_slug', next);
+    }
     queueMicrotask(() => {
       window.dispatchEvent(new CustomEvent('companySlugChanged', { detail: next }));
     });
@@ -195,6 +199,7 @@ export const fetchMe = async (
     ttl: 2 * 60 * 1000, // 2 min
     tags: ['me'],
     fresh: opts?.fresh,
+    tier: 'local',
   });
 };
 

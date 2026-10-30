@@ -15,6 +15,8 @@ import { fetchEmployeeActivity, fetchMe } from "@/src/lib/api";
 import { useAccess } from "@/src/contexts/AccessContext";
 import { useCompany } from "@/src/contexts/CompanyContext";
 import { useSocket } from "@/src/contexts/SocketContext";
+import { useCachedQuery } from "@/src/lib/useCachedQuery";
+import { usePersistentState } from "@/src/lib/usePersistentState";
 import {
   Loader2,
   RefreshCw,
@@ -26,89 +28,65 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { slug, companyName } = useCompany();
-  const [range, setRange] = useState<"weekly" | "monthly">("weekly");
-  const [data, setData] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [accessState, setAccessState] = useState<"ok" | "no_company" | "forbidden" | "error">("ok");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { slug, companyName, user: companyUser } = useCompany();
   const accessContext = useAccess();
   const { socket } = useSocket();
 
-  useEffect(() => {
-    if (!accessContext.loading) {
-      console.log("[AccessContext] Loaded snapshot from /auth/me:", {
-        roles: accessContext.roles,
-        isSystemAdmin: accessContext.isSystemAdmin,
-        policyVersion: accessContext.policyVersion,
-        access: accessContext.access,
-        canDashboardRead: accessContext.can("dashboard", "read"),
-      });
-    }
-  }, [accessContext.loading, accessContext.policyVersion]);
+  // Persistent range preference (weekly vs monthly)
+  const [range, setRange] = usePersistentState<"weekly" | "monthly">(
+    slug ? `${slug}:dash_range` : "dash_range",
+    "weekly",
+  );
 
-  const loadDashboard = async (showSpinner = true) => {
-    if (!slug) {
-      setAccessState("no_company");
-      setLoading(false);
-      setIsRefreshing(false);
-      return;
-    }
+  const [accessState, setAccessState] = useState<"ok" | "no_company" | "forbidden" | "error">(
+    !slug ? "no_company" : "ok",
+  );
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    if (showSpinner) setLoading(true);
-    else setIsRefreshing(true);
-
-    try {
-      // 1. Verify current user profile
-      const me = await fetchMe(slug, { fresh: !showSpinner ? true : undefined });
-      setCurrentUser(me);
-
-      // 2. Fetch employee activity dashboard metrics
-      const res = await fetchEmployeeActivity(range, undefined, undefined, undefined, {
-        fresh: !showSpinner ? true : undefined,
-      });
-      setData(res);
-      setAccessState("ok");
-      setErrorMessage(null);
-    } catch (err: any) {
+  // Component-level cached query for Dashboard analytics
+  const {
+    data,
+    isLoading,
+    isRefetching,
+    refetch,
+  } = useCachedQuery<any>({
+    key: `dashboard:${slug || "_global"}:${range}`,
+    loader: () => fetchEmployeeActivity(range),
+    tags: ["dashboard"],
+    tier: "session",
+    ttl: 60 * 1000,
+    enabled: Boolean(slug),
+    onError: (err: any) => {
       console.error("Failed to load dashboard activity", err);
       const status = err?.response?.status;
-
-      // 401 Unauthorized -> redirect to login
       if (status === 401) {
         router.replace(slug ? `/${slug}/login` : "/login");
-        return;
-      }
-
-      // 403 Forbidden -> show access pending/restricted state with company name
-      if (status === 403) {
+      } else if (status === 403) {
         setAccessState("forbidden");
-        setData(null);
       } else {
         setAccessState("error");
-        setErrorMessage(err?.response?.data?.message || err?.message || "Failed to load dashboard data");
-        setData(null);
+        setErrorMessage(
+          err?.response?.data?.message || err?.message || "Failed to load dashboard data",
+        );
       }
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  };
+    },
+    onSuccess: () => {
+      setAccessState("ok");
+      setErrorMessage(null);
+    },
+  });
 
-  useEffect(() => {
-    loadDashboard(true);
-  }, [range, slug]);
+  const currentUser = companyUser || accessContext.user;
 
+  // Real-time socket event updates
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !slug) return;
     let t: ReturnType<typeof setTimeout>;
 
-    const refresh = () => {
+    const onRealtimeUpdate = () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        loadDashboard(false);
+        refetch(true);
       }, 1000);
     };
 
@@ -120,13 +98,13 @@ export default function DashboardPage() {
       "team:updated",
       "team:deleted",
     ];
-    events.forEach((e) => socket.on(e, refresh));
+    events.forEach((e) => socket.on(e, onRealtimeUpdate));
 
     return () => {
       clearTimeout(t);
-      events.forEach((e) => socket.off(e, refresh));
+      events.forEach((e) => socket.off(e, onRealtimeUpdate));
     };
-  }, [socket, range, slug]);
+  }, [socket, slug, refetch]);
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -169,17 +147,17 @@ export default function DashboardPage() {
 
             {/* Refresh Button */}
             <button
-              onClick={() => loadDashboard(false)}
-              disabled={loading || isRefreshing}
+              onClick={() => refetch(true)}
+              disabled={isLoading || isRefetching}
               className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shadow-sm disabled:opacity-50"
               title="Refresh dashboard data"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-primary" : ""}`} />
             </button>
           </div>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
             <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
             <p className="text-sm font-medium">Computing aggregated analytics & activity heatmap...</p>
@@ -239,35 +217,33 @@ export default function DashboardPage() {
                   href="/my-account"
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
                 >
-                  Go to My Account
-                  <ArrowRight className="w-4 h-4" />
+                  <Building2 className="w-4 h-4" />
+                  Switch or Join Company
                 </Link>
                 <button
-                  onClick={() => loadDashboard(true)}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-foreground font-medium text-sm hover:bg-muted transition-colors"
+                  onClick={() => refetch(true)}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-foreground font-medium text-sm hover:bg-muted transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Check Again
+                  Retry Access
                 </button>
               </div>
             </div>
           </div>
         ) : accessState === "error" ? (
-          /* Generic Error State */
+          /* Error State */
           <div className="flex flex-col items-center justify-center py-12 px-4">
-            <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 shadow-sm text-center">
+            <div className="max-w-md w-full bg-card border border-destructive/20 rounded-2xl p-8 shadow-sm text-center">
               <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-7 h-7" />
               </div>
-              <h3 className="text-lg font-bold text-foreground mb-2">
-                Failed to load dashboard
-              </h3>
+              <h3 className="text-lg font-bold text-foreground mb-2">Unable to Load Dashboard</h3>
               <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
                 {errorMessage || "An unexpected error occurred while loading dashboard metrics."}
               </p>
               <button
-                onClick={() => loadDashboard(true)}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
+                onClick={() => refetch(true)}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
               >
                 <RefreshCw className="w-4 h-4" />
                 Try Again
@@ -275,6 +251,7 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
+          /* Full Activity Dashboard */
           <>
             {/* 1. TOP SECTION: Employee Profile & GitHub-Style Heatmap */}
             <EmployeeProfileStreakCard
@@ -310,4 +287,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
