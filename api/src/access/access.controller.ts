@@ -35,9 +35,9 @@ export class AccessController {
    * GET /access/catalog
    *
    * Returns the registered modules, actions, and fields.
+   * Open to any authenticated user so the role builder / permission matrices can render.
    */
   @Get('catalog')
-  @RequireAccess({ module: 'roles', action: 'read' })
   getCatalog() {
     return MODULE_CATALOG;
   }

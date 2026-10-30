@@ -14,6 +14,9 @@ import { Membership } from './schemas/membership.schema';
 import { TrialRegistry } from './schemas/trial-registry.schema';
 import { User } from '../users/schemas/user.schema';
 import { Employee } from '../employees/schemas/employee.schema';
+import { Role, RoleDocument } from '../access/schemas/role.schema';
+import { PolicyCompilerService } from '../access/policy-compiler.service';
+import { buildDefaultRoles } from '../access/access.seed';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { RegisterCompanyDto } from './dto/register-company.dto';
 import { normalizeEmail } from './email.util';
@@ -56,6 +59,11 @@ export class CompaniesService {
     @Optional()
     @InjectModel(Employee.name)
     private readonly employeeModel?: Model<Employee>,
+    @Optional()
+    @InjectModel(Role.name)
+    private readonly roleModel?: Model<RoleDocument>,
+    @Optional()
+    private readonly policyCompilerService?: PolicyCompilerService,
   ) {}
 
   /**
@@ -202,8 +210,9 @@ export class CompaniesService {
           // Employee creation fallback if duplicate or already exists
         }
       }
+      let ownerMembershipDoc: any = null;
       if (this.membershipModel) {
-        await this.membershipModel.create({
+        ownerMembershipDoc = await this.membershipModel.create({
           companyId: company._id,
           userId: userObjectId,
           employeeId: ownerEmpId,
@@ -213,6 +222,12 @@ export class CompaniesService {
           roleIds: [],
         });
       }
+
+      await this.bootstrapCompanyDefaultRoles(
+        company._id as Types.ObjectId,
+        userObjectId,
+        ownerMembershipDoc?._id,
+      );
     } catch (memberErr) {
       if (registryCreated && this.trialRegistryModel) {
         await this.trialRegistryModel.deleteOne({ normalizedEmail });
@@ -324,8 +339,9 @@ export class CompaniesService {
           // Fallback
         }
       }
+      let ownerMembershipDoc: any = null;
       if (this.membershipModel) {
-        await this.membershipModel.create({
+        ownerMembershipDoc = await this.membershipModel.create({
           companyId: company._id,
           userId: userObjectId,
           employeeId: ownerEmpId,
@@ -335,12 +351,70 @@ export class CompaniesService {
           roleIds: [],
         });
       }
+
+      await this.bootstrapCompanyDefaultRoles(
+        company._id as Types.ObjectId,
+        userObjectId,
+        ownerMembershipDoc?._id,
+      );
     } catch (memberErr) {
       await this.companyModel.findByIdAndDelete(company._id);
       throw memberErr;
     }
 
     return company;
+  }
+
+  /**
+   * Bootstraps the 5 isolated default roles for a newly created company,
+   * compiles its initial access policy document, and attaches the System Admin
+   * role to the owner's membership and the role's members list.
+   */
+  private async bootstrapCompanyDefaultRoles(
+    companyId: Types.ObjectId,
+    ownerUserId: Types.ObjectId,
+    membershipId?: Types.ObjectId,
+  ): Promise<void> {
+    if (!this.roleModel) return;
+
+    try {
+      const existingCount = await this.roleModel.countDocuments({ companyId });
+      let sysAdminRoleId: Types.ObjectId | undefined;
+
+      if (existingCount === 0) {
+        const rolesToInsert = buildDefaultRoles([ownerUserId]).map((r) => ({
+          ...r,
+          companyId,
+        }));
+        const inserted = await this.roleModel.insertMany(rolesToInsert, { ordered: false });
+        const sysAdmin = inserted.find((r) => r.slug === 'system-admin');
+        if (sysAdmin) {
+          sysAdminRoleId = sysAdmin._id as Types.ObjectId;
+        }
+
+        if (this.policyCompilerService) {
+          await this.policyCompilerService.compileAndPersist(companyId).catch(() => {});
+        }
+      } else {
+        const sysAdmin = await this.roleModel.findOne({ companyId, slug: 'system-admin' });
+        if (sysAdmin) {
+          sysAdminRoleId = sysAdmin._id as Types.ObjectId;
+          await this.roleModel.updateOne(
+            { _id: sysAdmin._id },
+            { $addToSet: { members: ownerUserId } },
+          ).catch(() => {});
+        }
+      }
+
+      if (sysAdminRoleId && membershipId && this.membershipModel) {
+        await this.membershipModel.updateOne(
+          { _id: membershipId },
+          { $addToSet: { roleIds: sysAdminRoleId } },
+        ).catch(() => {});
+      }
+    } catch {
+      // Defensive fallback: role bootstrapping errors should not prevent company registration
+    }
   }
 
   /**

@@ -19,6 +19,8 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { Membership } from '../companies/schemas/membership.schema';
 import { CompanyMember } from '../companies/schemas/company-member.schema';
 import { Role, RoleDocument } from '../access/schemas/role.schema';
+import { buildDefaultRoles } from '../access/access.seed';
+import { PolicyCompilerService } from '../access/policy-compiler.service';
 import { Company } from '../companies/schemas/company.schema';
 import { EmailService } from '../tasks/email.service';
 import { DayOffService } from '../day-off/day-off.service';
@@ -61,6 +63,8 @@ export class EmployeesService implements OnModuleInit {
     @Optional()
     @Inject(forwardRef(() => DayOffService))
     private dayOffService?: DayOffService,
+    @Optional()
+    private policyCompilerService?: PolicyCompilerService,
   ) {}
 
   async onModuleInit() {
@@ -135,74 +139,14 @@ export class EmployeesService implements OnModuleInit {
           try {
             const roleCount = await this.roleModel.countDocuments({ companyId: compId });
             if (roleCount === 0) {
-              const defaultRoles = [
-                {
-                  name: 'System Admin',
-                  slug: 'system-admin',
-                  description: 'Full workspace administrator access',
-                  color: '#ef4444',
-                  priority: 1000,
-                  isSystem: true,
-                  isActive: true,
-                  companyId: compId,
-                  members: [],
-                  moduleGrants: [],
-                  fieldGrants: [],
-                },
-                {
-                  name: 'Admin',
-                  slug: 'admin',
-                  description: 'Workspace administration and resource management',
-                  color: '#f97316',
-                  priority: 100,
-                  isSystem: true,
-                  isActive: true,
-                  companyId: compId,
-                  members: [],
-                  moduleGrants: [],
-                  fieldGrants: [],
-                },
-                {
-                  name: 'Manager',
-                  slug: 'manager',
-                  description: 'Team management and project oversight',
-                  color: '#3b82f6',
-                  priority: 50,
-                  isSystem: true,
-                  isActive: true,
-                  companyId: compId,
-                  members: [],
-                  moduleGrants: [],
-                  fieldGrants: [],
-                },
-                {
-                  name: 'Team Leader',
-                  slug: 'team-leader',
-                  description: 'Team coordination and task management',
-                  color: '#8b5cf6',
-                  priority: 25,
-                  isSystem: true,
-                  isActive: true,
-                  companyId: compId,
-                  members: [],
-                  moduleGrants: [],
-                  fieldGrants: [],
-                },
-                {
-                  name: 'Employee',
-                  slug: 'employee',
-                  description: 'Standard workspace collaborator',
-                  color: '#10b981',
-                  priority: 10,
-                  isSystem: true,
-                  isActive: true,
-                  companyId: compId,
-                  members: [],
-                  moduleGrants: [],
-                  fieldGrants: [],
-                },
-              ];
+              const defaultRoles = buildDefaultRoles().map((r) => ({
+                ...r,
+                companyId: compId,
+              }));
               await this.roleModel.insertMany(defaultRoles, { ordered: false }).catch(() => {});
+              if (this.policyCompilerService) {
+                await this.policyCompilerService.compileAndPersist(compId).catch(() => {});
+              }
             }
           } catch {}
         }
