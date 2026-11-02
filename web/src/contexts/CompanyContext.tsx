@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchMe, setCompanySlug, getCompanySlug } from '../lib/api';
 import { peekCache } from '../lib/cache';
 
@@ -48,10 +48,13 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({ slug, children
   const [loading, setLoading] = useState<boolean>(!initialUser);
   const [error, setError] = useState<Error | null>(null);
 
+  const userRef = useRef(user);
+  userRef.current = user;
+
   const refresh = useCallback(async () => {
     if (!slug) return;
     // Only show loading if we have no prior data
-    if (!user) setLoading(true);
+    if (!userRef.current) setLoading(true);
     try {
       setError(null);
       // Ensure the api client slug is set before network call
@@ -77,7 +80,7 @@ export const CompanyProvider: React.FC<CompanyProviderProps> = ({ slug, children
     } finally {
       setLoading(false);
     }
-  }, [slug, user]);
+  }, [slug]);
 
   useEffect(() => {
     setCompanySlug(slug);
