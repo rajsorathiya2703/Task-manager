@@ -3,7 +3,7 @@ services:
     name: task-management-api
     runtime: node
     rootDir: api
-    buildCommand: pnpm install && pnpm run build
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm run build
     startCommand: pnpm run start:prod
     envVars:
       - key: NODE_ENV
