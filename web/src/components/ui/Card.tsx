@@ -1,10 +1,5 @@
 import * as React from "react";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "../../lib/utils";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -13,6 +8,15 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
         "rounded-2xl border border-border bg-card text-card-foreground shadow-sm",
         className
       )}
+      {...props}
+    />
+  );
+}
+
+export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex items-center justify-between p-6 sm:p-8 pb-4", className)}
       {...props}
     />
   );
