@@ -3,9 +3,11 @@ services:
     name: task-management-api
     runtime: node
     rootDir: api
-    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm run build
-    startCommand: pnpm run start:prod
+    buildCommand: pnpm install --prod=false && pnpm run build
+    startCommand: node dist/main
     envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
       - key: NODE_ENV
         value: production
       - key: HOST
